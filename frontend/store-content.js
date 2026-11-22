@@ -51,7 +51,7 @@ export function footerMarkup(c,categoryLinks='') {
   const hasCustomLogo = c.brand.logo && !/^assets\/brand-logo\.(?:webp|png)$/.test(c.brand.logo);
   return `<div class="container">
     <div class="footer-trust-strip" aria-label="Gallery highlights">
-      <div class="footer-trust-item"><strong>Original handmade art</strong><span>Packaged &amp; dispatched directly by the artist</span></div>
+      <div class="footer-trust-item"><strong>Original handmade art</strong></div>
       <div class="footer-trust-item"><strong>India Post tracked delivery</strong><span>₹40 per item across India</span></div>
       <div class="footer-trust-item"><strong>Protected checkout</strong><span>Verified UPI, cards &amp; netbanking via Razorpay</span></div>
     </div>
@@ -59,7 +59,7 @@ export function footerMarkup(c,categoryLinks='') {
       <div class="footer-brand-col">
         <a href="#home" class="brand"><img class="brand-logo" src="${e(c.brand.logo)}" alt="${e(brandName)}" width="48" height="48" ${hasCustomLogo ? '' : 'hidden'}><span class="brand-wordmark">${e(brandName)}</span></a>
         <p>${e(f.description)}</p>
-        <span class="footer-location-pill">Artist-direct · Vagamon, Kerala</span>
+        <span class="footer-location-pill">Vagamon, Kerala</span>
       </div>
       <div class="footer-links"><h3>${e(f.heading1)}</h3>${links(1)}</div>
       <div class="footer-links"><h3>${e(f.heading2)}</h3>${links(5)}</div>
@@ -72,7 +72,7 @@ export function footerMarkup(c,categoryLinks='') {
       </div>
     </div>
     <div class="footer-bottom">
-      <span>${e(f.copyright.replaceAll('{year}',String(new Date().getFullYear()))).replace(e(c.brand.name),`<a href="#home" class="footer-brand-link">${e(brandName)}</a>`)} · Operated by Abhishek Reddy</span>
+      <span>${e(f.copyright.replaceAll('{year}',String(new Date().getFullYear()))).replace(e(c.brand.name),`<a href="#home" class="footer-brand-link">${e(brandName)}</a>`)}</span>
       <div class="footer-bottom-links"><a href="#info/refunds">${e(c.pages?.refundsTitle||'Cancellation & returns')}</a><a href="#info/privacy">${e(f.privacyLabel)}</a><a href="#info/terms">${e(f.termsLabel)}</a><span class="footer-locale-pill">${e(f.locale)}</span></div>
     </div>
   </div>`;
