@@ -1,0 +1,54 @@
+import {csvCell,salesCSV,downloadFile} from './downloads.js';
+import {money,escapeHTML as e} from './commerce.js';
+import {skeletonMarkup} from './skeletons.js';
+const time=v=>v?.seconds?v.seconds*1000:typeof v==='number'?v:Date.parse(v);
+const day=t=>new Date(t+19800000).toISOString().slice(0,10);
+export function summarizeSales(rows,{from='',to='',mode='live',products:catalog=[]}={}){
+  const valid=rows.filter(r=>r.verified===true&&r.voided!==true&&r.currency==='INR'&&r.mode===mode&&Number.isSafeInteger(r.amount)&&r.amount>0&&Number.isFinite(time(r.paidAt)));
+  const filtered=valid.filter(r=>{const d=day(time(r.paidAt));return (!from||d>=from)&&(!to||d<=to);});
+  const gross=filtered.reduce((n,r)=>n+r.amount,0),refunded=filtered.reduce((n,r)=>n+Math.min(r.amount,Math.max(0,Number.isSafeInteger(r.refundedAmount)?r.refundedAmount:0)),0);
+  const catalogMap=new Map((Array.isArray(catalog)?catalog:[]).filter(Boolean).map(p=>[p.id,p]));
+  const daily=new Map(),products=new Map(),artists=new Map();
+  let totalItemRevenuePaise=0;
+  for(const r of filtered){
+    const d=day(time(r.paidAt));daily.set(d,(daily.get(d)||0)+r.amount);
+    const seenArtistsInOrder=new Set();
+    for(const item of r.items||[]){
+      const catProduct=catalogMap.get(item.productId);
+      const artistName=String(item.artist||catProduct?.artist||'Suprita Chatterjee').trim()||'Suprita Chatterjee';
+      const unitPaise=Math.round((Number(item.unitPrice??catProduct?.price)||0)*100);
+      const linePaise=unitPaise*(item.quantity||1);
+      totalItemRevenuePaise+=linePaise;
+      const p=products.get(item.productId)||{title:item.title,artist:artistName,quantity:0,revenuePaise:0};
+      p.quantity+=(item.quantity||0);
+      p.revenuePaise+=linePaise;
+      products.set(item.productId,p);
+      const a=artists.get(artistName)||{artist:artistName,units:0,orders:0,revenuePaise:0};
+      a.units+=(item.quantity||0);
+      a.revenuePaise+=linePaise;
+      if(!seenArtistsInOrder.has(artistName)){a.orders+=1;seenArtistsInOrder.add(artistName);}
+      artists.set(artistName,a);
+    }
+  }
+  const artistList=[...artists.values()].sort((a,b)=>b.revenuePaise-a.revenuePaise||b.units-a.units).map(a=>({...a,sharePct:totalItemRevenuePaise>0?Math.round((a.revenuePaise/totalItemRevenuePaise)*1000)/10:0}));
+  return {gross,refunded,net:gross-refunded,count:filtered.length,average:filtered.length?Math.round(gross/filtered.length):0,daily:[...daily].sort(([a],[b])=>a.localeCompare(b)),products:[...products.values()].sort((a,b)=>b.quantity-a.quantity||b.revenuePaise-a.revenuePaise),artists:artistList,rows:filtered};
+}
+function artistSalesCSV(artistRows){
+  const header=['Artist','Paid orders','Units sold','Gross artwork revenue (INR)','Revenue share (%)'];
+  const lines=artistRows.map(a=>[a.artist,a.orders,a.units,(a.revenuePaise/100).toFixed(2),a.sharePct]);
+  return '\uFEFF'+[header,...lines].map(r=>r.map(csvCell).join(',')).join('\r\n')+'\r\n';
+}
+export async function mountSalesDashboard(root,{load,getProducts=()=>[]}){
+  root.innerHTML=skeletonMarkup('sales','Loading verified payment records…');
+  try{const rows=await load();if(!root.isConnected)return;const today=day(Date.now()),start=day(Date.now()-29*86400000);
+    root.innerHTML=`<div class="admin-title"><div><p class="eyebrow">The business side</p><h1>Sales & revenue</h1><p>Verified Razorpay payments, recorded offline payments and per-artist breakdowns.</p></div></div><form class="sales-toolbar"><label class="field">From<input name="from" type="date" value="${start}"></label><label class="field">To<input name="to" type="date" value="${today}"></label><label class="field">Payment type<select name="mode"><option value="live">Live payments</option><option value="test">Test payments</option><option value="manual">Offline/manual</option></select></label><button class="button outline small" type="button" data-sales-export>Export sales CSV</button><button class="button outline small" type="button" data-artist-sales-export>Export artist breakdown CSV</button><button class="button outline small" type="button" data-sales-refresh>Refresh</button></form><div id="sales-results"></div>`;
+    const form=root.querySelector('form'),output=root.querySelector('#sales-results');form.onsubmit=event=>event.preventDefault();
+    const runSummary=()=>{const query=Object.fromEntries(new FormData(form));return {query,s:summarizeSales(rows,{...query,products:getProducts()})};};
+    function paint(){const query=Object.fromEntries(new FormData(form));if(query.from&&query.to&&query.from>query.to){output.innerHTML='<p class="notice">Choose an end date after the start date.</p>';return;}const s=summarizeSales(rows,{...query,products:getProducts()}),max=Math.max(1,...s.daily.map(([,amount])=>amount)),maxArtist=Math.max(1,...s.artists.map(a=>a.revenuePaise));
+      output.innerHTML=`<div class="revenue-grid">${[['Collected',s.gross,'Captured payments'],['Refunded',s.refunded,'Refunds against these payments'],['Net collected',s.net,'Before gateway fees and expenses'],['Paid orders',s.count,`Average ${money(s.average/100)}`]].map(([title,value,note],i)=>`<article><span>${title}</span><strong>${i===3?value:money(value/100)}</strong><small>${note}</small></article>`).join('')}</div><p class="small muted">Dates use India time. Refunds are attributed to the original payment date. Unpaid and voided manual records are excluded. These figures are collections, not accounting profit or bank settlements.</p>${!s.count?`<div class="dashboard-panel"><h2>No ${query.mode==='test'?'test':query.mode==='manual'?'offline/manual':'live'} payments in this period</h2><p>Paid sales appear after the backend verifies a captured Razorpay payment or an admin records an offline payment. Checkout requests remain in the Orders & requests tab.</p></div>`:`<section class="sales-chart"><h2>Daily collections</h2>${s.daily.map(([date,value])=>`<div class="sales-bar-row"><span>${e(date.slice(5))}</span><div class="sales-bar-track"><div class="sales-bar" style="width:${value/max*100}%"></div></div><strong>${money(value/100)}</strong></div>`).join('')}</section><section class="dashboard-panel sales-breakdown artist-sales-breakdown"><h2>Artist sales breakdown</h2>${s.artists.length?`<table><thead><tr><th scope="col">Artist</th><th scope="col">Paid orders</th><th scope="col">Units</th><th scope="col">Artwork revenue</th><th scope="col">Share</th></tr></thead><tbody>${s.artists.map(a=>`<tr><td><strong>${e(a.artist)}</strong></td><td>${a.orders}</td><td>${a.units}</td><td>${money(a.revenuePaise/100)}</td><td><div class="artist-sales-share"><div class="artist-sales-bar-track"><div class="artist-sales-bar" style="width:${a.revenuePaise/maxArtist*100}%"></div></div><span>${a.sharePct}%</span></div></td></tr>`).join('')}</tbody></table>`:'<p class="small muted">No item-level artist data in this range.</p>'}<p class="small muted">Gross artwork revenue excludes flat India Post shipping and includes orders that were later refunded.</p></section><section class="dashboard-panel sales-breakdown"><h2>Products sold</h2><table><thead><tr><th scope="col">Product</th><th scope="col">Artist</th><th scope="col">Units in paid orders</th><th scope="col">Artwork revenue</th></tr></thead><tbody>${s.products.map(p=>`<tr><td>${e(p.title)}</td><td>${e(p.artist)}</td><td>${p.quantity}</td><td>${money(p.revenuePaise/100)}</td></tr>`).join('')}</tbody></table><p class="small muted">Units include orders that were later refunded.</p></section>`}`;
+    }
+    root.querySelector('[data-sales-export]').onclick=()=>{const {query,s}=runSummary();if(query.from&&query.to&&query.from>query.to){paint();return;}downloadFile(salesCSV(s.rows),'hehe-cafe-sales-'+query.mode+'-'+(query.from||'all')+'-'+(query.to||'all')+'.csv','text/csv;charset=utf-8');};
+    root.querySelector('[data-artist-sales-export]').onclick=()=>{const {query,s}=runSummary();if(query.from&&query.to&&query.from>query.to){paint();return;}downloadFile(artistSalesCSV(s.artists),'hehe-cafe-artist-sales-'+query.mode+'-'+(query.from||'all')+'-'+(query.to||'all')+'.csv','text/csv;charset=utf-8');};
+    form.onchange=paint;root.querySelector('[data-sales-refresh]').onclick=()=>mountSalesDashboard(root,{load,getProducts});paint();
+  }catch{if(root.isConnected)root.innerHTML='<h1>Sales & revenue</h1><p class="notice" role="alert">Payment records could not load. Check your connection and deploy the current Firestore rules, then refresh. Totals are unavailable.</p>';}
+}

@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#faf8f5">
+  <meta name="description" content="Collect original artworks, paintings and tactile studio pieces at hehe.cafe. Shipped via India Post.">
+  <title>hehe.cafe · Art &amp; prints</title>
+  <link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,500;0,9..144,600;0,9..144,700;1,9..144,400&family=JetBrains+Mono:wght@500;600&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="shop.css">
+  <link rel="stylesheet" href="brand.css">
+  <link rel="stylesheet" href="checkout-progress.css">
+  <link rel="stylesheet" href="assets/vendor/leaflet.css">
+  <link rel="stylesheet" href="features.css">
+  <link rel="stylesheet" href="animations.css">
+  <link rel="stylesheet" href="animation-integration.css">
+  <link rel="stylesheet" href="logout.css">
+  <link rel="stylesheet" href="account-features.css">
+  <link rel="stylesheet" href="dashboard.css">
+  <link rel="stylesheet" href="content-editor.css"><link rel="stylesheet" href="studio-updates.css">
+  <link rel="stylesheet" href="skeletons.css">
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <div class="announcement" hidden><a href="#home">hehe.cafe · Original artworks &amp; prints · ₹40 India Post shipping <span aria-hidden="true">→</span></a></div>
+  <header class="site-header"><div class="header-inner">
+    <button class="icon-button mobile-menu-button" data-action="menu" aria-label="Open menu" aria-expanded="false"><svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/></svg></button>
+    <a href="#home" class="brand" aria-label="hehe.cafe home"><img class="brand-logo" src="assets/brand-logo.webp" alt="hehe.cafe" width="44" height="44" hidden><span class="brand-wordmark">hehe.cafe</span></a>
+    <nav class="desktop-nav" aria-label="Main navigation"><a href="#home">Home</a><a href="#shop">All artworks</a><a href="#artists">Artists</a><div class="nav-dropdown" hidden><button aria-expanded="false" data-action="collections">Artworks</button><div class="dropdown-content" id="collection-menu" hidden></div></div><a href="#about">About hehe.cafe</a></nav>
+    <div class="header-actions"><button class="icon-button" data-action="search" aria-label="Search artworks"><svg viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 5 5"/></svg></button><a href="#account" class="icon-button" aria-label="Your account"><svg viewBox="0 0 24 24"><circle cx="12" cy="7" r="3.5"/><path d="M4 21v-2a8 8 0 0 1 16 0v2Z"/></svg></a><button class="icon-button bag-button" data-action="cart" aria-label="Open art bag"><svg viewBox="0 0 24 24"><path d="M5 6h14l1 15H4L5 6Z"/><path d="M9 6V4a3 3 0 0 1 6 0v2M9 9a3 3 0 0 0 6 0"/></svg><span id="cart-count" class="cart-count" hidden>0</span></button></div>
+  </div><nav id="mobile-menu" class="mobile-menu" aria-label="Mobile navigation" hidden></nav></header>
+  <div id="connection-banner" class="connection-banner" hidden></div>
+  <main id="main" tabindex="-1" data-loading><div class="loading-skeleton" role="status" aria-label="Loading hehe.cafe…"><span class="sr-only">Loading hehe.cafe…</span><div class="hehe-hamster-boot" aria-hidden="true"><div class="hehe-hamster-loader is-md"><div class="hehe-wheel-and-hamster"><div class="hehe-wheel"></div><div class="hehe-hamster"><div class="hehe-hamster__body"><div class="hehe-hamster__head"><div class="hehe-hamster__ear"></div><div class="hehe-hamster__eye"></div><div class="hehe-hamster__nose"></div></div><div class="hehe-hamster__limb hehe-hamster__limb--fr"></div><div class="hehe-hamster__limb hehe-hamster__limb--fl"></div><div class="hehe-hamster__limb hehe-hamster__limb--br"></div><div class="hehe-hamster__limb hehe-hamster__limb--bl"></div><div class="hehe-hamster__tail"></div></div></div><div class="hehe-spoke"></div></div><span class="hehe-hamster-caption">Loading hehe.cafe…</span></div></div></div></main>
+  <footer id="footer" class="site-footer"></footer>
+  <dialog id="cart-dialog" class="cart-drawer" aria-labelledby="cart-title"><div class="drawer-header"><div class="cart-header-title-wrap"><h2 id="cart-title">Your art bag</h2><span id="cart-header-count" class="cart-header-count" hidden>0</span></div><button class="icon-button" data-action="close-dialog" aria-label="Close art bag"><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button></div><div id="cart-content"></div></dialog>
+  <dialog id="search-dialog" class="search-dialog" aria-labelledby="search-title"><div class="drawer-header"><h2 id="search-title">Search artworks</h2><button class="icon-button" data-action="close-dialog" aria-label="Close search"><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button></div><form id="search-form"><label for="search-input" class="sr-only">Search artworks</label><div class="search-field"><input id="search-input" name="q" placeholder="Search by artwork name, artist, medium…" type="search" autocomplete="off"><button class="icon-button" type="submit" aria-label="Submit search"><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg></button></div></form><div id="search-results"></div></dialog>
+  <dialog id="image-dialog" class="image-dialog" aria-label="Artwork image preview"><button class="icon-button" data-action="close-dialog" aria-label="Close image preview"><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button><img id="zoom-image" alt=""></dialog>
+  <dialog id="editor-dialog" class="editor-dialog" aria-labelledby="editor-title"></dialog>
+  <dialog id="site-preview-dialog" class="site-preview-dialog" aria-labelledby="site-preview-title"></dialog>
+  <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+  <noscript><style>.loading-skeleton{display:none}</style><p class="empty-state">Please enable JavaScript to browse artworks and use the bag.</p></noscript>
+  <script defer src="assets/vendor/gsap.min.js"></script>
+  <script defer src="assets/vendor/jquery.min.js"></script>
+  <script type="module" src="page-loading.js"></script>
+  <script id="shop-app" type="module" src="shop.js"></script>
+</body></html>

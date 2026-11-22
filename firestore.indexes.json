@@ -1,0 +1,75 @@
+{
+  "indexes": [
+    {
+      "collectionGroup": "checkoutRequests",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "uid",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "createdAt",
+          "order": "DESCENDING"
+        }
+      ]
+    }
+  ],
+  "fieldOverrides": [
+    {
+      "collectionGroup": "referenceTransfers",
+      "fieldPath": "extra.images",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "products",
+      "fieldPath": "images",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "customizations",
+      "fieldPath": "images",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "settings",
+      "fieldPath": "bannerImage",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "storeContent",
+      "fieldPath": "logo",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "storeContent",
+      "fieldPath": "mascot",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "storeContent",
+      "fieldPath": "paintingsImage",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "storeContent",
+      "fieldPath": "clayImage",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "storeContent",
+      "fieldPath": "moldsImage",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "storeContent",
+      "fieldPath": "rocksImage",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "settings",
+      "fieldPath": "reviewImages",
+      "indexes": []
+    }
+  ]
+}

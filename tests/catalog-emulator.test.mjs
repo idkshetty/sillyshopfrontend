@@ -1,0 +1,35 @@
+import test,{after} from 'node:test';
+import assert from 'node:assert/strict';
+process.env.GCLOUD_PROJECT='demo-silly-catalog';process.env.FIRESTORE_EMULATOR_HOST='127.0.0.1:8080';process.env.FIREBASE_DATABASE_EMULATOR_HOST='127.0.0.1:9005';process.env.FIREBASE_DB_URL='https://demo-silly-catalog.firebaseio.com';process.env.EMAIL_ENABLED='true';process.env.EMAIL_PROVIDER='gmail';
+process.env.PAYMENTS_ENABLED='true';
+const catalog=await import('../backend/catalog.js'),service=await import('../backend/service.js'),{db,realtime}=service;
+await fetch('http://127.0.0.1:8080/emulator/v1/projects/demo-silly-catalog/databases/(default)/documents',{method:'DELETE'});await realtime.ref().set(null);
+const admin={uid:'admin',token:{uid:'admin',admin:true,email_verified:true}},owner={uid:'owner',token:{uid:'owner',email_verified:true}},other={uid:'other',token:{uid:'other',email_verified:true}};
+const invoke=(name,auth,data={})=>catalog[name]({auth,data});
+const product={title:'Art',description:'A painting',category:'paintings',price:100,stock:3,images:['assets/paintings.svg'],visible:true};
+const customer={firstName:'Buyer',lastName:'Test',email:'buyer@example.com',phone:'9000000000',address:'Street',city:'City',state:'State',postalCode:'560001',country:'India',consent:true,location:{latitude:12,longitude:77,source:'pin',accuracy:0,formattedAddress:'',confirmed:true}};
+after(async()=>{await db.terminate();realtime.goOffline();});
+test('catalogue writes authorize admins, protect concurrent stock updates, and create private checkout once',async()=>{
+ await assert.rejects(invoke('saveProduct',owner,{product}));const {id}=await invoke('saveProduct',admin,{product});
+ await assert.rejects(invoke('saveProduct',admin,{id,product}));
+ const data={requestId:'order-test',customer,cart:[{id,quantity:2,unitPrice:100}],customizations:[{productId:id,note:'Please wrap',images:['data:image/webp;base64,AAAA']}]};
+ await assert.rejects(invoke('createRequest',owner,{...data,requestId:'bad-price',cart:[{id,quantity:2,unitPrice:1}]}));
+ const result=await invoke('createRequest',owner,data);assert.equal(result.estimatedSubtotal,200);
+ await invoke('createRequest',owner,data);assert.equal((await db.collection('mailOutbox').get()).size,1);
+ const checkout={...data,requestId:'pay-at-checkout',cart:[{id,quantity:1,unitPrice:100}],customizations:[],payAtCheckout:true,shipping:4000};
+ const payable=await invoke('createRequest',owner,checkout);assert.equal(payable.quote.amount,10000);assert.equal(payable.quote.shipping,0);assert.equal(payable.inventoryReserved,true);assert.equal(payable.status,'details_received');
+ await invoke('createRequest',owner,checkout);assert.equal((await db.doc('products/'+id).get()).data().stock,2);
+ await realtime.ref('publicStore/promos').set({codes:[{code:'FREESHIP',type:'free_shipping',active:true}]});
+ const free=await invoke('createRequest',owner,{...checkout,requestId:'free-shipping-checkout',promoCode:'FREESHIP'});
+ assert.equal(free.quote.amount,10000);assert.equal(free.quote.shipping,0);assert.equal(free.quote.freeShipping,true);
+ await assert.rejects(service.approveQuote({auth:admin,data:{requestId:free.id,shipping:4000}}),/free shipping promotion/);
+ assert.equal((await service.approveQuote({auth:admin,data:{requestId:free.id,shipping:0}})).amount,0);
+ await assert.rejects(invoke('loadCustomizations',other,{requestId:data.requestId}));
+ assert.equal((await invoke('loadCustomizations',owner,{requestId:data.requestId}))[0].note,'Please wrap');
+ const stop=catalog.startProjectionWorker();try{for(let i=0;i<50;i++){if((await realtime.ref('publicStore/products/'+id).get()).exists())break;await new Promise(r=>setTimeout(r,100));}assert.equal((await realtime.ref('publicStore/products/'+id).get()).val().title,'Art');}finally{await stop();}
+ assert.equal((await invoke('loadCustomerRequests',owner)).requests.length,3);assert.equal((await invoke('loadCustomerRequests',other)).requests.length,0);
+ const savedPin={latitude:12,longitude:77,source:'pin',accuracy:0,formattedAddress:'Test address',confirmed:true};
+ await invoke('saveProfile',owner,{profile:{firstName:'Buyer',lastName:'Test',location:savedPin}});
+ await invoke('saveProfile',owner,{profile:{firstName:'Buyer',lastName:'Test'}});
+ const profile=await invoke('getProfile',owner);assert.equal(profile.firstName,'Buyer');assert.deepEqual(profile.location,savedPin);
+});

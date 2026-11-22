@@ -1,0 +1,33 @@
+services:
+  - type: web
+    name: silly-sensei-api
+    runtime: node
+    rootDir: backend
+    buildCommand: npm ci --omit=dev
+    startCommand: npm start
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: NODE_ENV
+        value: production
+      - key: ENFORCE_APP_CHECK
+        value: "true"
+      - key: FIREBASE_SERVICE_ACCOUNT
+        sync: false
+      - key: FIREBASE_PROJECT_ID
+        value: shopatsillysensei
+      - key: FIREBASE_DB_URL
+        sync: false
+      - key: EMAIL_PROVIDER
+        value: gmail
+      - key: STORE_URL
+        sync: false
+      - key: ALLOWED_ORIGINS
+        sync: false
+      - key: PAYMENTS_ENABLED
+        value: "false"
+      - key: PAYMENT_PREVIEW_ENABLED
+        sync: false
+      - key: EMAIL_ENABLED
+        value: "false"

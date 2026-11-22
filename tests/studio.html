@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><base href="/">
+  <title>Studio component checks</title>
+  <link rel="stylesheet" href="shop.css"><link rel="stylesheet" href="brand.css">
+  <link rel="stylesheet" href="features.css"><link rel="stylesheet" href="logout.css">
+  <link rel="stylesheet" href="account-features.css">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;900&family=Quicksand:wght@500&display=swap">
+  <link rel="stylesheet" href="dashboard.css"><link rel="stylesheet" href="content-editor.css">
+  <link rel="stylesheet" href="studio-updates.css">
+</head>
+<body>
+  <p style="margin:0;padding:8px;text-align:center;background:#ffda00">Local component check · fictional data · no Firebase connection</p>
+  <main id="main"><div class="wide-container admin-layout">
+    <aside class="admin-sidebar"><p class="eyebrow">Studio components</p><nav class="admin-nav"><a class="admin-tab" href="#labels">Label template</a><a class="admin-tab" href="#reviews">Review cards</a><a class="admin-tab" href="#privacy">Privacy editor</a><a class="admin-tab" href="#sales">Sales dashboard</a></nav><div class="admin-account-actions" id="fixture-logout"></div></aside>
+    <section class="admin-main" id="studio-fixture"></section>
+  </div></main>
+  <script type="module" src="tests/studio-harness.js"></script>
+</body></html>
