@@ -72,3 +72,40 @@ test('invoice PDF embeds the rendered page image instead of an empty image strea
     if(oldDocument===undefined)delete globalThis.document;else globalThis.document=oldDocument;
   }
 });
+test('invoices support promo/bundle discounts without throwing and grow PDF height for 12+ items',async()=>{
+  const discountedOrder={...order,quote:{amount:12000,subtotal:10000,discount:2000,shipping:4000,promoCode:'HEHE20',currency:'INR'}};
+  const discountedSale={...sale,amount:12000,discount:2000,promoCode:'HEHE20',refundedAmount:0};
+  const inv=invoiceData('req_disc',discountedOrder,discountedSale);
+  assert.equal(inv.subtotal,10000);
+  assert.equal(inv.discount,2000);
+  assert.equal(inv.promoCode,'HEHE20');
+  assert.equal(inv.shipping,4000);
+  assert.equal(inv.amount,12000);
+  const freeShipInv=invoiceData('req_free',discountedOrder,{...discountedSale,amount:8000});
+  assert.equal(freeShipInv.shipping,0);
+  assert.throws(()=>invoiceData('req_bad',discountedOrder,{...discountedSale,amount:7999}));
+
+  const oldImage=globalThis.Image,oldDocument=globalThis.document;
+  const createdCanvases=[];
+  class FakeImage {
+    constructor(){this.width=640;this.height=240;}
+    set src(_value){queueMicrotask(()=>this.onload?.());}
+  }
+  class FakeCanvas {
+    constructor(){this.width=0;this.height=0;this.context=new Proxy({measureText:value=>({width:String(value).length*10})},{get:(target,key)=>key in target?target[key]:()=>{},set:()=>true});createdCanvases.push(this);}
+    getContext(){return this.context;}
+    toBlob(callback){callback(new Blob([Uint8Array.of(0xff,0xd8,0xff,0xd9)],{type:'image/jpeg'}));}
+  }
+  globalThis.Image=FakeImage;globalThis.document={createElement:()=>new FakeCanvas()};
+  try{
+    const manyItems=Array.from({length:12},(_,i)=>({title:`Artwork ${i+1}`,quantity:1,unitAmount:10000}));
+    const pdf=await invoicePDF({...inv,items:manyItems,subtotal:120000,discount:2000,shipping:48000,amount:166000,refundedAmount:0});
+    assert.equal(pdf.type,'application/pdf');
+    assert(createdCanvases[0].height>1754);
+    const text=new TextDecoder('latin1').decode(new Uint8Array(await pdf.arrayBuffer()));
+    assert.match(text,/\/Height \d{4}/);
+  }finally{
+    if(oldImage===undefined)delete globalThis.Image;else globalThis.Image=oldImage;
+    if(oldDocument===undefined)delete globalThis.document;else globalThis.document=oldDocument;
+  }
+});

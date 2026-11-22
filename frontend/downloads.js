@@ -33,11 +33,34 @@ function loadInvoiceLogo() {
 }
 
 function drawInvoicePage(invoice, logo) {
-  const canvas = document.createElement('canvas');
-  canvas.width = PAGE.width; canvas.height = PAGE.height;
-  const ctx = canvas.getContext('2d');
-  ctx.fillStyle = '#fff'; ctx.fillRect(0,0,PAGE.width,PAGE.height);
+  const measureCanvas = document.createElement('canvas');
+  const measureCtx = measureCanvas.getContext('2d');
   const left = 92, right = PAGE.width - 92;
+  measureCtx.font = '23px "Plus Jakarta Sans", Arial, sans-serif';
+  const addressLines = wrapCanvasTextAll(measureCtx, invoice.customer?.address || '', 680);
+  let preContactY = 523 + addressLines.length * 35;
+  if (invoice.customer?.phone) preContactY += 31;
+  const customerInfoBottom = preContactY + (invoice.customer?.email ? 28 : 0);
+  const tableTop = Math.max(690, customerInfoBottom + 45), rowHeight = 82;
+  const items = Array.isArray(invoice.items) ? invoice.items : [];
+  const totalRows = [['Sub total', invoice.subtotal]];
+  if (Number.isSafeInteger(invoice.discount) && invoice.discount > 0) {
+    totalRows.push([invoice.promoCode ? `Discount (${invoice.promoCode})` : 'Discount', -invoice.discount]);
+  }
+  totalRows.push(
+    ['Delivery', invoice.shipping],
+    ['Paid total', invoice.amount],
+    ['Refunded to date', invoice.refundedAmount],
+    ['Net collected', invoice.amount - invoice.refundedAmount]
+  );
+  const preTotalsTop = tableTop + 58 + items.length * rowHeight + 54;
+  const totalsBottom = preTotalsTop + Math.max(totalRows.length * 43, 140);
+  const pageHeight = Math.max(PAGE.height, totalsBottom + 230);
+
+  const canvas = measureCanvas;
+  canvas.width = PAGE.width; canvas.height = pageHeight;
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#fff'; ctx.fillRect(0,0,PAGE.width,pageHeight);
   if (logo) {
     const scale = Math.min(260 / logo.width, 105 / logo.height);
     ctx.drawImage(logo,left,62,logo.width*scale,logo.height*scale);
@@ -55,7 +78,6 @@ function drawInvoicePage(invoice, logo) {
 
   ctx.textAlign='left';ctx.fillStyle=INK;ctx.font='700 30px "Plus Jakarta Sans", Arial, sans-serif';ctx.fillText(`TO : ${(invoice.customer?.name||'Customer').toLocaleUpperCase('en-IN')}`,left,478);
   ctx.fillStyle=INK;ctx.font='23px "Plus Jakarta Sans", Arial, sans-serif';
-  const addressLines = wrapCanvasTextAll(ctx,invoice.customer?.address||'',680);
   addressLines.forEach((line,i)=>ctx.fillText(line,left,523+i*35));
   ctx.fillStyle=MUTED;ctx.font='20px "Plus Jakarta Sans", Arial, sans-serif';
   let contactY=523+addressLines.length*35;
@@ -70,8 +92,6 @@ function drawInvoicePage(invoice, logo) {
   if(invoice.mode==='test'){ctx.fillStyle='#9c5c00';ctx.font='700 18px "Plus Jakarta Sans", Arial, sans-serif';ctx.fillText('TEST PAYMENT',metaX,611);}
   ctx.textAlign='left';
 
-  const customerInfoBottom=contactY+(invoice.customer?.email?28:0);
-  const tableTop=Math.max(690,customerInfoBottom+45), rowHeight=82;
   drawInvoiceCloud(ctx,left-22,tableTop+178,1.45);
   drawInvoiceCloud(ctx,right+15,tableTop+205,1.48);
   ctx.fillStyle=INK;ctx.font='700 24px "Plus Jakarta Sans", Arial, sans-serif';
@@ -79,8 +99,7 @@ function drawInvoicePage(invoice, logo) {
   ctx.textAlign='right';ctx.fillText('Qty',right-320,tableTop+39);ctx.fillText('Price',right-18,tableTop+39);
   ctx.strokeStyle=INK;ctx.lineWidth=3;ctx.beginPath();ctx.moveTo(left,tableTop+54);ctx.lineTo(right,tableTop+54);ctx.stroke();
   let y=tableTop+58;
-  const items=Array.isArray(invoice.items)?invoice.items:[];
-  items.forEach((item,index)=>{
+  items.forEach((item)=>{
     const top=y;
     ctx.strokeStyle=LINE;ctx.lineWidth=1.5;ctx.beginPath();ctx.moveTo(left,top+rowHeight);ctx.lineTo(right,top+rowHeight);ctx.stroke();
     ctx.textAlign='left';ctx.fillStyle=INK;ctx.font='23px "Plus Jakarta Sans", Arial, sans-serif';
@@ -100,16 +119,16 @@ function drawInvoicePage(invoice, logo) {
   if(paidLabel){ctx.fillStyle=MUTED;ctx.font='19px "Plus Jakarta Sans", Arial, sans-serif';ctx.fillText('Paid '+paidLabel,paymentX+183,totalsTop+101);}
 
   ctx.textAlign='right';ctx.font='22px "Plus Jakarta Sans", Arial, sans-serif';ctx.fillStyle=MUTED;
-  const totalRows=[['Sub total',invoice.subtotal],['Delivery',invoice.shipping],['Paid total',invoice.amount],['Refunded to date',invoice.refundedAmount],['Net collected',invoice.amount-invoice.refundedAmount]];
   totalRows.forEach(([label,value],index)=>{
     const rowY=totalsTop+index*43;
     const isPaid=label==='Paid total';
-    ctx.fillStyle=isPaid?INK:MUTED;ctx.font=`${isPaid?'700 ':'400 '}22px "Plus Jakarta Sans", Arial, sans-serif`;
-    ctx.fillText(label,labelX,rowY);ctx.fillText(amountText(value),valueX,rowY);
+    const isDiscount=value<0;
+    ctx.fillStyle=isPaid?INK:isDiscount?GREEN:MUTED;ctx.font=`${isPaid?'700 ':'400 '}22px "Plus Jakarta Sans", Arial, sans-serif`;
+    ctx.fillText(label,labelX,rowY);ctx.fillText(value<0?`-${amountText(-value)}`:amountText(value),valueX,rowY);
   });
 
-  const footerY=1578;
-  drawInvoiceCloud(ctx,(left+right)/2,1455,2.45);
+  const footerY=pageHeight-176;
+  drawInvoiceCloud(ctx,(left+right)/2,footerY-123,2.45);
   ctx.textAlign='left';ctx.fillStyle=INK;ctx.font='22px "Plus Jakarta Sans", Arial, sans-serif';ctx.fillText('Visit Our Gallery Online',left,footerY+2);
   ctx.font='700 28px "Fraunces", Georgia, serif';ctx.fillText('hehe.cafe',left,footerY+44);
   ctx.textAlign='right';ctx.fillStyle=INK;ctx.font='700 22px "Plus Jakarta Sans", Arial, sans-serif';ctx.fillText('Thank you for your order',right,footerY+2);
@@ -175,14 +194,17 @@ async function canvasJPEG(canvas) {
 export async function invoicePDF(invoice) {
   if(document.fonts?.ready)await document.fonts.ready;
   const logo=await loadInvoiceLogo();
-  const jpeg=await canvasJPEG(drawInvoicePage(invoice,logo));
+  const canvas=drawInvoicePage(invoice,logo);
+  const jpeg=await canvasJPEG(canvas);
+  const pdfW=595.28;
+  const pdfH=canvas.height===PAGE.height?841.89:Number((pdfW*(canvas.height/canvas.width)).toFixed(2));
   const encoder=new TextEncoder();
   const objects=[
     encoder.encode('<< /Type /Catalog /Pages 2 0 R >>'),
     encoder.encode('<< /Type /Pages /Kids [3 0 R] /Count 1 >>'),
-    encoder.encode('<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595.28 841.89] /Resources << /XObject << /Im0 4 0 R >> >> /Contents 5 0 R >>'),
-    [encoder.encode(`<< /Type /XObject /Subtype /Image /Width ${PAGE.width} /Height ${PAGE.height} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${jpeg.length} >>\nstream\n`),jpeg,encoder.encode('\nendstream')],
-    (()=>{const content=encoder.encode('q\n595.28 0 0 841.89 0 0 cm\n/Im0 Do\nQ');return [encoder.encode(`<< /Length ${content.length} >>\nstream\n`),content,encoder.encode('\nendstream')];})()
+    encoder.encode(`<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${pdfW} ${pdfH}] /Resources << /XObject << /Im0 4 0 R >> >> /Contents 5 0 R >>`),
+    [encoder.encode(`<< /Type /XObject /Subtype /Image /Width ${canvas.width} /Height ${canvas.height} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${jpeg.length} >>\nstream\n`),jpeg,encoder.encode('\nendstream')],
+    (()=>{const content=encoder.encode(`q\n${pdfW} 0 0 ${pdfH} 0 0 cm\n/Im0 Do\nQ`);return [encoder.encode(`<< /Length ${content.length} >>\nstream\n`),content,encoder.encode('\nendstream')];})()
   ];
   const chunks=[encoder.encode('%PDF-1.4\n%Invoice\n')], offsets=[0];let byteLength=chunks[0].length;
   for(let i=0;i<objects.length;i++){

@@ -33,6 +33,16 @@ test('sign-in mascot is editable, can be hidden, and legacy policy copy becomes 
  const c=normalizeContent({brand:{accountLogo:'assets/custom-studio.webp',showAccountMascot:false},pages:{refundsBody:LEGACY_POLICY_DEFAULTS.refundsBody}});
  assert.equal(c.pages.refundsBody,DEFAULT_CONTENT.pages.refundsBody);
  assert.match(c.pages.refundsBody,/consumer law/);
+ assert.match(c.pages.refundsBody,/48 hours/);
+ assert.match(DEFAULT_CONTENT.pages.contactBody,/Abhishek Reddy/);
+ assert.match(DEFAULT_CONTENT.pages.contactBody,/Vagamon/);
+ assert.match(DEFAULT_CONTENT.pages.contactBody,/8073 263 514/);
+ assert.match(DEFAULT_CONTENT.pages.shippingBody,/40 per item/);
+ assert.match(DEFAULT_CONTENT.pages.shippingBody,/central warehouse/);
+ assert.match(DEFAULT_CONTENT.pages.privacyBody,/DPDP Act/);
+ assert.match(DEFAULT_CONTENT.pages.termsBody,/Idukki District, Kerala/);
+ assert.equal(normalizeContent({pages:{contactBody:LEGACY_POLICY_DEFAULTS.contactBody.replace(/(?:hello|orders)@hehe\.cafe/gi,'abhishekreddy2499@gmail.com')}}).pages.contactBody,DEFAULT_CONTENT.pages.contactBody);
+ assert.equal(normalizeContent({pages:{shippingBody:'Custom shipping note'}}).pages.shippingBody,'Custom shipping note');
  const dom=parseHTML('<html><body><main></main></body></html>');
  dom.document.querySelector('main').innerHTML=accountMarkup(null,false);
  applyStoreContent(c,'account',dom.document);

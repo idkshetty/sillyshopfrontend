@@ -1,4 +1,4 @@
-import {escapeHTML as e,safeImage,money,SHIPPING_CHARGE,artworkColorFor,artworkThemeStyle,contrastColorFor,sortArtworks,filterProducts} from './commerce.js';
+import {escapeHTML as e,safeImage,cardImage,money,SHIPPING_CHARGE,artworkColorFor,artworkThemeStyle,contrastColorFor,sortArtworks,filterProducts} from './commerce.js';
 import {artistSlug,mergeArtistsWithProducts} from './artists.js';
 import {contentCategories,DEFAULT_CONTENT} from './store-content.js';
 import {bannerMarkup,FALLBACK_BANNER_ARTWORKS,DEFAULT_HOME_SECTIONS,safeStoreLink} from './store-settings.js';
@@ -15,7 +15,7 @@ export function storyMarkup(){
       <p class="eyebrow">The space behind the art</p>
       <h2>Welcome to hehe.cafe</h2>
       <p>hehe.cafe is an independent art café and online gallery built around original, human-made artworks. We keep the walls pale and quiet so every brushstroke, clay frame and pigment study stands out on its own terms.</p>
-      <p>Every piece lists the artwork name, artist, medium and story upfront — shipped via India Post for ₹${SHIPPING_CHARGE}.</p>
+      <p>Every piece lists the artwork name, artist, medium and story upfront — shipped via India Post at ₹${SHIPPING_CHARGE} per item.</p>
       <a class="text-link" href="#shop"><span class="story-cta-label">Explore all artworks</span> <span aria-hidden="true">→</span></a>
     </div>
   </section>`;
@@ -24,7 +24,7 @@ export function storyMarkup(){
 export function productCardMarkup(p,content=DEFAULT_CONTENT){
   const CATEGORIES=contentCategories(content);
   const categoryOf=id=>CATEGORIES.find(c=>c.id===id);
-  const imageOf=item=>safeImage(item.images?.[0],categoryOf(item.category)?.image || 'assets/artwork-1.jpg');
+  const imageOf=item=>cardImage(item.images?.[0],categoryOf(item.category)?.image || 'assets/artwork-1.jpg');
   const artist=p.artist||'Suprita Chatterjee';
   const slug=artistSlug(artist);
   const productType=p.productType||'Fridge Magnet';
@@ -57,7 +57,7 @@ export function productCardMarkup(p,content=DEFAULT_CONTENT){
         ${soldOut
           ? `<button type="button" class="button artwork-cart-btn is-sold-out" disabled>Sold out</button>`
           : `<button class="button artwork-cart-btn" data-action="add" data-id="${e(p.id)}" data-artwork-btn style="${themeStyle}">Add to cart</button>
-             <button type="button" class="quick-buy-btn" data-action="quick-buy" data-id="${e(p.id)}" title="Buy now with ₹${SHIPPING_CHARGE} flat shipping">Buy now →</button>`}
+             <button type="button" class="quick-buy-btn" data-action="quick-buy" data-id="${e(p.id)}" title="Buy now (₹${SHIPPING_CHARGE} per item India Post shipping)">Buy now →</button>`}
       </div>
     </div>
   </article>`;

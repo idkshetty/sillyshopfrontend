@@ -181,6 +181,61 @@ export function ordersListMarkup(requests=[],{filter='all',query='',products=[],
   const productImages=productImageMap(products);
   return list.map((req,idx)=>requestCard(req,{productImages,open:openFirst&&idx===0})).join('');
 }
+function emailVerificationBannerMarkup(user,state={}) {
+  if(!user||user.isAnonymous||user.emailVerified!==false)return '';
+  const cooldown=Math.max(0,Number(state.verifyCooldownSec)||0);
+  const busy=Boolean(state.verifyBusy);
+  return `<section class="email-verify-banner" role="status" aria-live="polite">
+    <div class="email-verify-copy">
+      <strong>Verify your email address</strong>
+      <p>We sent a verification link to <strong>${e(user.email||'')}</strong>. Open the link in your inbox (or spam folder) so you can recover your account and receive verified notices.</p>
+      <p id="verify-email-notice" class="notice">${e(state.verifyNotice||'')}</p>
+    </div>
+    <div class="email-verify-actions">
+      <button type="button" class="button small" data-action="resend-verification" ${busy||cooldown>0?'disabled':''}>${busy?'Sending…':cooldown>0?`Resend in ${cooldown}s`:'Resend verification email'}</button>
+      <button type="button" class="button outline small" data-action="refresh-verification" ${busy?'disabled':''}>I’ve verified — refresh</button>
+    </div>
+  </section>`;
+}
+function privacyControlsPanelMarkup(state={}) {
+  return `<section class="dashboard-panel privacy-data-panel" aria-labelledby="privacy-controls-heading">
+    <div class="panel-heading">
+      <div>
+        <p class="eyebrow">Privacy &amp; your data (DPDP Act)</p>
+        <h2 id="privacy-controls-heading">Manage or delete your data</h2>
+        <p class="small muted">Export your saved profile and order history, clear saved address/reference uploads, or permanently close your account.</p>
+      </div>
+      <span class="secure-badge">Your rights</span>
+    </div>
+    <div class="privacy-actions-grid">
+      <div class="privacy-action-card">
+        <div>
+          <strong>Download a copy of your data</strong>
+          <p class="small muted">Downloads a JSON file with your account details, saved delivery pin, order history, and verified invoices.</p>
+        </div>
+        <button type="button" class="button outline small" data-action="export-my-data" ${state.privacyBusy?'disabled':''}>Download my data (JSON)</button>
+      </div>
+      <div class="privacy-action-card">
+        <div>
+          <strong>Delete my saved address &amp; uploads</strong>
+          <p class="small muted">Erases your saved address, map pin, browser cache, and uploaded order reference images while keeping your account and order history.</p>
+        </div>
+        <button type="button" class="button outline small" data-action="delete-saved-data" ${state.privacyBusy?'disabled':''}>Delete my saved data</button>
+      </div>
+      <div class="privacy-action-card is-danger">
+        <div>
+          <strong>Permanently delete my account &amp; data</strong>
+          <p class="small muted">Deletes your login, saved address, reference uploads, and unpaid/cancelled orders. Any past paid orders have personal details removed (anonymized) while keeping non-PII financial invoice records as required under Indian tax law. Blocked while a paid order is in transit.</p>
+        </div>
+        <div class="delete-account-controls">
+          <label class="field">Type <code>DELETE MY ACCOUNT</code> to confirm<input id="delete-account-confirm" type="text" autocomplete="off" spellcheck="false" placeholder="DELETE MY ACCOUNT" ${state.privacyBusy?'disabled':''}></label>
+          <button type="button" class="button outline small danger-button" data-action="delete-my-account" ${state.privacyBusy?'disabled':''}>Permanently delete my account</button>
+        </div>
+      </div>
+    </div>
+    <p id="privacy-notice" class="notice" role="status">${e(state.privacyNotice||'')}</p>
+  </section>`;
+}
 function profileForm(user,profile,states) {
   const names=(user.displayName||'').trim().split(/\s+/),p={firstName:names[0]||'',lastName:names.slice(1).join(' '),...profile};
   const emailHint=(user.providerData||[]).some(pr=>pr?.providerId==='google.com')?'Managed by your Google account':'Managed by your account login';
@@ -198,15 +253,16 @@ export function accountMarkup(user,admin,state={}) {
   const subtitle=tab==='requests'
     ?`You have <strong>${requests.length} ${requests.length===1?'order':'orders'}</strong> in total`
     :tab==='profile'
-      ?'Manage your personal contact information and default delivery pin.'
+      ?'Manage your personal contact information, default delivery pin, and privacy controls.'
       :'Track recent artwork orders, saved address and studio updates.';
+  const verifyBanner=emailVerificationBannerMarkup(user,state);
   const loadState=state.loading?skeletonMarkup('rows','Loading your requests…'):state.error?`<div class="dashboard-error" role="alert"><p>${e(state.error)}</p><button class="text-link" data-action="account-refresh">Try again →</button></div>`:'';
   const ordersHtml=loadState||ordersListMarkup(requests,{filter:orderFilter,query:orderQuery,products,openFirst:true});
   const recentHtml=loadState||ordersListMarkup(requests.slice(0,3),{filter:'all',query:'',products,openFirst:false});
   const address=profile.address?`<p>${e(profile.address)}${profile.apartment?`, ${e(profile.apartment)}`:''}<br>${e(profile.city)}${profile.state?`, ${e(profile.state)}`:''} ${e(profile.postalCode)}</p>`:'<p>Add your delivery address for a quicker checkout next time.</p>';
   const filterTabs=[['all','View all'],['delivered','Delivered'],['in_progress','In progress'],['refunded','Cancelled']];
   const content=tab==='profile'
-    ?`${state.profileError?`<p class="notice" role="alert">${e(state.profileError)}</p>`:''}${profileForm(user,profile,state.states||[])}`
+    ?`${state.profileError?`<p class="notice" role="alert">${e(state.profileError)}</p>`:''}${profileForm(user,profile,state.states||[])}${privacyControlsPanelMarkup(state)}`
     :tab==='requests'
       ?`<div class="order-history-toolbar">
           <div class="order-filter-pills" role="tablist" aria-label="Filter orders">
@@ -220,5 +276,5 @@ export function accountMarkup(user,admin,state={}) {
         <div id="account-orders-list">${ordersHtml}</div>
         ${state.hasMore?'<button class="button outline" data-action="account-more">Load older orders</button>':''}`
       :`<div class="dashboard-stats"><article>${icons.requests}<span>Latest request</span><strong>${requests[0]?`#${e(requests[0].id.slice(0,8).toUpperCase())}`:'No requests yet'}</strong><small>${requests[0]?e(statuses[requests[0].status]):'Your requests will appear here'}</small></article><article>${icons.profile}<span>Your details</span><strong>${profile.address?'Ready for next time':'Make checkout easier'}</strong><a href="#account/profile">${profile.address?'Manage your address':'Add delivery details'} →</a></article><article class="dashboard-studio"><img src="assets/silly-sensei-loading.webp" alt=""><span>hehe.cafe</span><strong>Browse the<br>gallery</strong><a href="#home">View artworks →</a></article></div><div class="section-heading"><h2>Recent orders</h2><a class="text-link" href="#account/requests">View all →</a></div><div id="account-recent-list">${recentHtml}</div><div class="dashboard-bottom"><section class="dashboard-panel"><p class="eyebrow">Delivery, made easier</p><h2>Your saved address</h2>${address}<a class="text-link" href="#account/profile">Manage details →</a></section><section class="dashboard-panel"><p class="eyebrow">Support</p><h2>Need help?</h2><p>Have a question about a piece or your request? The studio is here to help.</p><a class="text-link" href="#info/contact">Get in touch →</a></section></div>`;
-  return `<div class="wide-container customer-dashboard"><aside class="customer-sidebar"><a class="dashboard-identity" href="#account"><span class="customer-avatar">${e(initials)}</span><div><strong class="sidebar-greeting">Hey, ${e(name)}</strong><small class="sidebar-email">${e(user.email||'')}</small></div></a><nav aria-label="Account navigation">${[['overview','Account overview'],['requests','Order history'],['profile','My details']].map(([key,label])=>`<a href="#account${key==='overview'?'':'/'+key}" ${tab===key?'aria-current="page"':''}>${icons[key]}<span>${label}</span>${key==='requests'&&requests.length?`<span class="sidebar-nav-count">${requests.length}</span>`:''}</a>`).join('')}</nav><div class="customer-sidebar-bottom"><div class="customer-sidebar-links">${admin?'<a class="text-link" href="#admin">Open studio dashboard ↗</a>':''}<a class="text-link" href="#shop">Back to gallery ↗</a></div>${logoutMarkup()}</div></aside><section class="customer-main"><header class="dashboard-heading"><div><h1>${title}</h1><p>${subtitle}</p></div>${tab==='requests'?'<div class="dashboard-heading-actions"><span class="live-tracking-pill"><span class="live-dot" aria-hidden="true"></span>Live updates</span><button type="button" class="button outline small" data-action="account-refresh">Refresh ↻</button></div>':'<a class="button outline small" href="#shop">Continue shopping ↗</a>'}</header>${content}</section></div>`;
+  return `<div class="wide-container customer-dashboard"><aside class="customer-sidebar"><a class="dashboard-identity" href="#account"><span class="customer-avatar">${e(initials)}</span><div><strong class="sidebar-greeting">Hey, ${e(name)}</strong><small class="sidebar-email">${e(user.email||'')}</small></div></a><nav aria-label="Account navigation">${[['overview','Account overview'],['requests','Order history'],['profile','My details']].map(([key,label])=>`<a href="#account${key==='overview'?'':'/'+key}" ${tab===key?'aria-current="page"':''}>${icons[key]}<span>${label}</span>${key==='requests'&&requests.length?`<span class="sidebar-nav-count">${requests.length}</span>`:''}</a>`).join('')}</nav><div class="customer-sidebar-bottom"><div class="customer-sidebar-links">${admin?'<a class="text-link" href="#admin">Open studio dashboard ↗</a>':''}<a class="text-link" href="#shop">Back to gallery ↗</a></div>${logoutMarkup()}</div></aside><section class="customer-main"><header class="dashboard-heading"><div><h1>${title}</h1><p>${subtitle}</p></div>${tab==='requests'?'<div class="dashboard-heading-actions"><span class="live-tracking-pill"><span class="live-dot" aria-hidden="true"></span>Live updates</span><button type="button" class="button outline small" data-action="account-refresh">Refresh ↻</button></div>':'<a class="button outline small" href="#shop">Continue shopping ↗</a>'}</header>${verifyBanner}${content}</section></div>`;
 }

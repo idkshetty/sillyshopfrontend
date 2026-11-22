@@ -8,7 +8,7 @@ import {deferPageRender} from './page-loading.js';
 import {mountSalesDashboard} from './sales-dashboard.js';
 import {payRequest,preloadRazorpay} from './payments.js';
 import {mountReviewEditor,collectReviews} from './review-editor.js';
-import {MAX_ITEM_QUANTITY,CATEGORIES,categoryOf,money,SHIPPING_CHARGE,shippingPaiseForQuantity,totalWithShipping,artworkColorFor,artworkThemeStyle,contrastColorFor,normalizeProduct,sortArtworks,ARTWORK_SORT_MODES,escapeHTML as e,safeImage,cartLines,subtotal,filterProducts,validateCustomer} from './commerce.js';
+import {MAX_ITEM_QUANTITY,CATEGORIES,categoryOf,money,SHIPPING_CHARGE,shippingPaiseForQuantity,totalWithShipping,artworkColorFor,artworkThemeStyle,contrastColorFor,normalizeProduct,sortArtworks,ARTWORK_SORT_MODES,escapeHTML as e,safeImage,cardImage,cartLines,subtotal,filterProducts,validateCustomer} from './commerce.js';
 import {DEFAULT_ARTISTS,artistSlug,normalizeArtists,mergeArtistsWithProducts} from './artists.js';
 import * as store from './store.js';
 import {mapPanel,mountDeliveryMap} from './delivery-location.js';
@@ -51,7 +51,7 @@ const pendingCheckoutKey='silly-shop-pending-payment-v1';
 const STARTER_PRODUCTS = FALLBACK_BANNER_ARTWORKS.map((item, idx) => normalizeProduct({...item, displayOrder: idx + 1, stock: 1, visible: true}));
 let products = [...STARTER_PRODUCTS], artists = [...DEFAULT_ARTISTS], cart = [], user = null, isAdmin = false, isMasterAdmin = false, catalogReady = true, catalogSynced = false, catalogError = '', unsubscribeProducts, catalogGeneration = 0;
 let filter = {sort:'',available:false,discounted:false,productType:'',search:''}, adminTab = 'products', adminSearch = '', adminCategory = '';
-let requestList = [], requestsLoaded = false, requestsError = '', editingId = null, editingImages = [], editingArtistId = null, artistPromptDismissed = false;
+let requestList = [], requestsLoaded = false, requestsError = '', requestsCursor = null, requestsHasMore = false, requestsLoadingMore = false, editingId = null, editingImages = [], editingArtistId = null, artistPromptDismissed = false;
 const selectedLabelOrders = new Set();
 let cartCleanupNotes = [], smoothCheckoutNav = false;
 let ordersMapController = null, labelTemplateController = null, settingsDirty = false;
@@ -73,9 +73,10 @@ const checkoutTouched=new Set();
 let checkoutStepMotionToken=0,checkoutStepAnimations=[];
 let toastTimer, orderNote = '';
 let authLoading=true,authError='',authMode='signin',authNotice='',accountState={requests:[],profile:{},loaded:false,loading:false,orderFilter:'all',orderQuery:''},profileDraftLocation=undefined;
+let verifyCooldownUntil=0,verifyCooldownTimer=null,verifyBusy=false,verifyNotice='',privacyBusy=false,privacyNotice='';
 try {const saved = JSON.parse(localStorage.getItem(cartKey)); if (Array.isArray(saved)) {const seen=new Set(); cart = saved.filter(c=>c && typeof c.id==='string' && !seen.has(c.id) && Number.isInteger(c.quantity) && c.quantity>0 && seen.add(c.id)).map(c=>({id:c.id,quantity:Math.min(c.quantity,MAX_ITEM_QUANTITY)}));}} catch {}
 const visible = () => sortArtworks(products.filter(p=>p.visible && !p.archived), storeSettings.artworkSort || 'manual');
-const imageOf = p => safeImage(p.images?.[0],categoryOf(p.category)?.image);
+const imageOf = p => cardImage(p.images?.[0],categoryOf(p.category)?.image);
 const route = () => {const parts=location.hash.slice(1).split('/');return {page:parts[0] || 'home',id:parts.slice(1).join('/')};};
 let categoryLinks = `<a href="#home">Home &amp; Banner</a><a href="#shop">All Artworks</a><a href="#artists">Artists</a><a href="#about"${storeSettings.aboutVisible?'':' hidden'}>About hehe.cafe</a>`;
 $('collection-menu').innerHTML=categoryLinks;
@@ -375,7 +376,7 @@ function renderProduct(){
       <div class="product-immersive-grid" data-product-card style="${themeStyle}">
         <div class="product-stage-column">
           <button class="product-blended-stage" data-action="zoom" aria-label="Zoom ${e(p.title)} image">
-            <img id="product-main-image" src="${e(imageOf(p))}" alt="${e(p.title)} by ${e(artist)}" data-artwork-img>
+            <img id="product-main-image" src="${e(safeImage(p.images?.[0],categoryOf(p.category)?.image))}" alt="${e(p.title)} by ${e(artist)}" data-artwork-img>
           </button>
           ${p.images.length>1?`<div class="product-gallery-dots thumbs">${p.images.map((img,i)=>`<button type="button" data-action="thumbnail" data-index="${i}" class="${i===0?'active is-active':''}" aria-label="View image ${i+1}"></button>`).join('')}</div>`:''}
         </div>
@@ -609,7 +610,7 @@ async function checkoutFingerprint(customer){
   for(let i=0;i<value.length;i++){const ch=value.charCodeAt(i);h1=Math.imul(h1^ch,2654435761);h2=Math.imul(h2^ch,1597334677);}
   return `${(h1>>>0).toString(16).padStart(8,'0')}${(h2>>>0).toString(16).padStart(8,'0')}`;
 }
-function renderSuccess(){$('main').innerHTML=`<div class="container"><section class="success-card">${checkoutProgress(4)}<span class="success-icon"><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 13l4 4L19 7"/></svg></span><p class="eyebrow">Payment successful · hehe.cafe</p><h1>Thanks, ${e(completedRequest.customer.firstName)}.</h1><p>Your order is confirmed and will ship via India Post.</p><p>Order Reference: <strong>${e(completedRequest.id.slice(0,8).toUpperCase())}</strong></p><div class="checkout-info"><strong>Total paid: ${money(completedRequest.quote.amount/100)}</strong>${completedRequest.quote?.freeShipping?'<p style="margin:6px 0 0">Includes free India Post shipping.</p>':completedRequest.quote?.shipping>0?`<p style="margin:6px 0 0">Includes India Post shipping (${money(completedRequest.quote.shipping/100)}).</p>`:''}</div><section id="save-address-prompt" class="save-address-prompt"><h2>Save this address for next time?</h2><p>Your delivery details stay with this order either way.</p><div class="save-address-actions"><button class="button" data-action="save-checkout-address">${user&&!user.isAnonymous?'Save address':'Sign in & save address'}</button><button class="text-link" data-action="skip-save-address">Not now</button></div><p class="notice" role="status"></p></section><a class="button" href="#home">Keep exploring hehe.cafe →</a><p style="margin-top:20px"><a href="#account/requests" class="text-link">View my orders →</a></p></section></div>`;}
+function renderSuccess(){const canInvoice=['captured','refunded'].includes(completedRequest?.paymentStatus);$('main').innerHTML=`<div class="container"><section class="success-card">${checkoutProgress(4)}<span class="success-icon"><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 13l4 4L19 7"/></svg></span><p class="eyebrow">Payment successful · hehe.cafe</p><h1>Thanks, ${e(completedRequest.customer.firstName)}.</h1><p>Your order is confirmed and will ship via India Post.</p><p>Order Reference: <strong>${e(completedRequest.id.slice(0,8).toUpperCase())}</strong></p><div class="checkout-info"><strong>Total paid: ${money(completedRequest.quote.amount/100)}</strong>${completedRequest.quote?.freeShipping?'<p style="margin:6px 0 0">Includes free India Post shipping.</p>':completedRequest.quote?.shipping>0?`<p style="margin:6px 0 0">Includes India Post shipping (${money(completedRequest.quote.shipping/100)}).</p>`:''}<p style="margin:6px 0 0">You can download your PDF invoice below or anytime from My account.</p></div><section id="save-address-prompt" class="save-address-prompt"><h2>Save this address for next time?</h2><p>Your delivery details stay with this order either way.</p><div class="save-address-actions"><button class="button" data-action="save-checkout-address">${user&&!user.isAnonymous?'Save address':'Sign in & save address'}</button><button class="text-link" data-action="skip-save-address">Not now</button></div><p class="notice" role="status"></p></section><div class="success-card-actions">${canInvoice?`<button type="button" class="button outline" data-action="download-invoice" data-id="${e(completedRequest.id)}">Download PDF invoice</button>`:''}<a class="button" href="#home">Keep exploring hehe.cafe →</a></div><p style="margin-top:20px"><a href="#account/requests" class="text-link">View my orders →</a></p></section></div>`;}
 function showPaymentPreviewChoice(){
   let dialog=$('payment-preview-dialog');
   if(!dialog){
@@ -636,7 +637,7 @@ async function submitCheckout(event){
   if(checkoutStep<3){if(checkoutStepValid())setCheckoutStep(checkoutStep+1);return;}
   captureCheckout();updateCheckoutAvailability();
   if(!catalogReady||catalogError||cartIssues(cart,products,checkoutProducts).length)return;
-  if(!user||user.isAnonymous){$('checkout-notice').textContent='Sign in with Google above to save and pay for your request.';return;}
+  if(!user||user.isAnonymous){$('checkout-notice').textContent='Sign in above to save and pay for your request.';return;}
   if(deliveryMap?.needsConfirmation()){$('checkout-notice').textContent='Choose and confirm your delivery pin on the map before paying.';setCheckoutStep(2);deliveryMap.focus();return;}
   const customer=Object.fromEntries(Object.entries(checkoutDraft).map(([k,v])=>[k,typeof v==='string'?v.trim():v]));
   const error=validateCustomer(customer);if(error){$('checkout-notice').textContent=error;if(!customer.consent)$('checkout-form').elements.consent.focus();return;}
@@ -666,7 +667,7 @@ async function submitCheckout(event){
     if(pending?.uid===user.uid){
       let oldRequest=accountState.requests.find(request=>request.id===pending.id);
       if(!oldRequest){const history=await store.loadCustomerRequests();oldRequest=history.requests.find(request=>request.id===pending.id);}
-      if(['cancelled','closed'].includes(oldRequest?.status)||(oldRequest?.paymentStatus==='captured'&&oldRequest.status!=='cancel_requested')){clearPendingCheckout();pending=null;checkoutId=randomId();}
+      if(!oldRequest||['cancelled','closed'].includes(oldRequest.status)||(oldRequest.paymentStatus==='captured'&&oldRequest.status!=='cancel_requested')){clearPendingCheckout();pending=null;checkoutId=randomId();}
       else if(pending.fingerprint!==fingerprint)throw new Error('An unpaid checkout already exists for this account. Finish or cancel it under My account before starting a different checkout.');
       else checkoutId=pending.id;
     }
@@ -768,7 +769,8 @@ function mountProfileMap(){
 function renderAccount(){
   if(deferPageRender(render))return;
   deliveryMap?.destroy();deliveryMap=null;
-  $('main').innerHTML=accountMarkup(user,isAdmin,{...accountState,products,tab:route().id,states,authLoading,authError,authMode,authNotice});applyStoreContent(siteContent,'account');mountLogout();
+  const verifyCooldownSec=Math.max(0,Math.ceil((verifyCooldownUntil-Date.now())/1000));
+  $('main').innerHTML=accountMarkup(user,isAdmin,{...accountState,products,tab:route().id,states,authLoading,authError,authMode,authNotice,verifyBusy,verifyNotice,verifyCooldownSec,privacyBusy,privacyNotice});applyStoreContent(siteContent,'account');mountLogout();
   mountProfileMap();
   if(user&&!user.isAnonymous&&!accountState.loaded&&!accountState.loading)fetchCustomerAccount();
 }
@@ -1202,6 +1204,9 @@ function renderAdminContent(){
     const bannerLimit=Number.isInteger(storeSettings.bannerLimit)?storeSettings.bannerLimit:8;
     const limitOptions=[[3,'3 artworks'],[5,'5 artworks'],[8,'8 artworks (default)'],[10,'10 artworks'],[12,'12 artworks'],[15,'15 artworks'],[20,'20 artworks'],[0,'No limit (all banner pieces)']];
     $('admin-content').innerHTML=`<div class="admin-title"><div><h1>Your artworks</h1><p>Manage your artworks, homepage &amp; banner visibility, stock, pricing and display order.</p></div><div class="admin-title-actions"><button type="button" class="button outline small" data-action="toggle-products-preview">${productsPreviewOpen?'Hide storefront preview':'Preview storefront 👁'}</button><button class="button" data-action="new-product">+ Add artwork</button></div></div><div class="stats-grid"><div class="stat"><span>Total artworks</span><strong id="admin-total-count">${products.length}</strong></div><div class="stat"><span>Published</span><strong id="admin-published-count">${products.filter(p=>p.visible).length}</strong></div><div class="stat"><span>Sold out</span><strong id="admin-sold-count">${products.filter(p=>!p.stock).length}</strong></div></div><div id="admin-products-preview" class="products-preview-panel" ${productsPreviewOpen?'':'hidden'}></div><div class="admin-filters"><input id="admin-search" aria-label="Search admin products" placeholder="Search artworks by title, artist or SKU…" value="${e(adminSearch)}"><label class="admin-sort-control"><span>Storefront order</span><select id="admin-artwork-sort" aria-label="Storefront artwork display order">${ARTWORK_SORT_MODES.map(([val,label])=>`<option value="${e(val)}" ${activeSort===val?'selected':''}>${e(label)}</option>`).join('')}</select></label><label class="admin-sort-control"><span>Add to cart buttons</span><select id="admin-cart-btn-mode" aria-label="Add to cart button style"><option value="black" ${btnMode==='black'?'selected':''}>Black buttons (default)</option><option value="artwork" ${btnMode==='artwork'?'selected':''}>Match artwork color</option></select></label><label class="admin-sort-control"><span>Banner limit</span><select id="admin-banner-limit" aria-label="Maximum artworks shown in banner">${limitOptions.map(([val,label])=>`<option value="${val}" ${bannerLimit===val?'selected':''}>${e(label)}</option>`).join('')}</select></label></div><div id="admin-product-table"></div>`;renderAdminTable();syncProductsPreview();
+    if(isMasterAdmin){
+      $('admin-product-table').insertAdjacentHTML('beforebegin',`<section class="master-storage-panel"><div><span class="master-admin-pill">Master Admin</span><h2>Artwork image storage</h2><p>Firebase inline storage remains active until you switch to Freeimage.host (configure FREEIMAGE_API_KEY on the Worker first). Existing photos keep their links.</p></div><label class="admin-sort-control"><span>New artwork photos</span><select id="admin-image-storage" aria-label="Artwork image storage provider"><option value="firebase" ${storeSettings.productImageStorage==='firebase'?'selected':''}>Firebase (current)</option><option value="freeimage" ${storeSettings.productImageStorage==='freeimage'?'selected':''}>Freeimage.host</option></select></label></section>`);
+    }
   }else if(adminTab==='requests'){
     $('admin-content').innerHTML=`<div class="admin-title"><div><h1>Orders & requests</h1><p>Search, filter, update fulfilment, print thermal/A4 labels, and monitor live orders. Shipping is ₹${SHIPPING_CHARGE} per item.</p></div><div class="admin-title-actions">${isMasterAdmin?'<span class="master-admin-pill">Master Admin</span><button type="button" class="button outline small danger-button" data-action="delete-all-orders">Delete all orders</button>':''}<button class="button outline small" data-action="refresh-requests">Refresh</button></div></div><div id="requests-shell">${requestsLoaded?'':skeletonMarkup('rows','Loading requests…')}</div>`;
     if(requestsLoaded)renderRequests();else fetchRequests();
@@ -1579,30 +1584,50 @@ function syncAdminOrdersLivePoll(){
   if(!shouldPoll){stopAdminOrdersLivePoll();return;}
   if(adminOrdersPollTimer)return;
   adminOrdersPollTimer=setInterval(()=>{
-    if(document.visibilityState==='visible')void fetchRequests({silent:true});
+    if(document.visibilityState==='visible'||thermalPrinter.getState().autoPrint)void fetchRequests({silent:true});
   },5000);
 }
-async function fetchRequests({silent=false}={}){
-  if(!isAdmin)return;
+async function fetchRequests({silent=false,more=false}={}){
+  if(!isAdmin||(more&&requestsLoadingMore))return;
+  if(more)requestsLoadingMore=true;
   try{
-    const fresh=await store.loadRequests();
+    const res=await store.loadRequests(more?requestsCursor:null,{paginated:true});
+    const pageRequests=Array.isArray(res)?res:(res?.requests||[]);
+    const nextCursor=Array.isArray(res)?null:(res?.cursor||null);
+    const hasMore=Array.isArray(res)?false:Boolean(res?.hasMore);
     requestsError='';
     requestsLoaded=true;
+    if(more){
+      const existingIds=new Set(requestList.map(r=>r.id));
+      requestList=[...requestList,...pageRequests.filter(r=>!existingIds.has(r.id))];
+      requestsCursor=nextCursor;
+      requestsHasMore=hasMore;
+      updateAdminOrdersBadge();
+      if($('orders-cards-wrap'))renderOrdersCards();
+      else if($('requests-shell'))renderRequests();
+      return;
+    }
+    const freshIds=new Set(pageRequests.map(r=>r.id));
+    const merged=requestsCursor?[...pageRequests,...requestList.filter(r=>!freshIds.has(r.id))]:pageRequests;
+    if(!requestsCursor){requestsCursor=nextCursor;requestsHasMore=hasMore;}
     if(silent){
-      if(JSON.stringify(fresh)===JSON.stringify(requestList)){
+      if(JSON.stringify(merged)===JSON.stringify(requestList)){
         void runContinuousAutoPrint();
         return;
       }
-      requestList=fresh;
+      requestList=merged;
       updateAdminOrdersBadge();
       if($('orders-cards-wrap'))renderOrdersCards();
       else if($('requests-shell'))renderRequests();
       void runContinuousAutoPrint();
       return;
     }
-    requestList=fresh;
+    requestList=merged;
   }catch(error){
-    if(!silent){requestsError=store.friendlyError(error);requestsLoaded=true;}
+    if(!silent&&!more){requestsError=store.friendlyError(error);requestsLoaded=true;}
+    else if(more)toast(store.friendlyError(error));
+  }finally{
+    if(more)requestsLoadingMore=false;
   }
   updateAdminOrdersBadge();
   if($('requests-shell'))renderRequests();
@@ -1687,7 +1712,7 @@ function renderOrdersCards(){
       isMasterAdmin,
       refByProductId:Object.fromEntries(products.map(p=>[p.id,p.refNumber]))
     });
-  }).join(''):'<div class="empty-state"><h2>No matching orders</h2><p>Try another search term or status filter.</p></div>';
+  }).join('')+(requestsHasMore?'<div class="admin-orders-more-wrap"><button type="button" class="button outline" data-action="admin-load-more-orders">Load older orders</button></div>':''):'<div class="empty-state"><h2>No matching orders</h2><p>Try another search term or status filter.</p></div>';
   if(highlightedOrderId){
     const targetId=highlightedOrderId;
     const card=wrap.querySelector(`[data-order-id="${CSS.escape(targetId)}"]`);
@@ -1702,6 +1727,8 @@ function openEditor(id){
   const orderVal=Number.isInteger(p.displayOrder)&&p.displayOrder<1000?p.displayOrder:defaultOrder;
   const artistChoices=mergeArtistsWithProducts(artists,products,{includeHidden:true});
   $('editor-dialog').innerHTML=`<div class="drawer-header"><div><p class="eyebrow">hehe.cafe / Artworks</p><h2 id="editor-title">${id?'Edit artwork':'Add artwork'}</h2></div><button class="icon-button" data-action="close-dialog" aria-label="Close artwork editor"><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button></div><form id="product-form"><input type="hidden" name="category" value="${e(p.category||'paintings')}"><input type="hidden" id="product-bg-color" name="bgColor" value="${e(p.bgColor||'')}"><datalist id="artist-name-options">${artistChoices.map(a=>`<option value="${e(a.name)}">`).join('')}</datalist><div class="form-grid"><label class="field">Artwork name<input name="title" required maxlength="120" value="${e(p.title)}" placeholder="e.g. Monsoon Window II"></label><label class="field">Artist name<input name="artist" list="artist-name-options" required maxlength="120" value="${e(p.artist||'Suprita Chatterjee')}" placeholder="e.g. Suprita Chatterjee"></label><label class="field">Category (shown on card)<input name="productType" list="product-type-options" required maxlength="60" value="${e(p.productType||'Fridge Magnet')}" placeholder="e.g. Fridge Magnet"><datalist id="product-type-options"><option value="Fridge Magnet"><option value="Clay Frame"><option value="Original Painting"><option value="Coaster"><option value="Keychain"></datalist></label><label class="field">Product tag / badge (optional)<input name="tag" maxlength="60" value="${e(p.tag||'')}" placeholder="e.g. Special edition (leave blank for none)"></label><label class="field wide">Artwork description &amp; story<textarea name="description" maxlength="3000" placeholder="Describe the artwork, inspiration, texture and story…">${e(p.description)}</textarea></label><label class="field">Display order (1 = shown first)<input name="displayOrder" type="number" min="1" max="10000" step="1" value="${e(orderVal)}"></label><label class="field">Price (₹)<input name="price" type="number" required min="0.01" max="10000000" step="0.01" value="${e(p.price)}"></label><label class="field">Compare-at price (₹, optional)<input name="comparePrice" type="number" min="0" max="10000000" step="0.01" value="${p.comparePrice||''}"></label><label class="field">Available quantity (0 = Sold out, 1 = In stock)<input name="stock" type="number" required min="0" max="100000" step="1" value="${p.stock}"></label><label class="field">Artwork reference<input value="${e(p.refNumber||'Assigned after save')}" readonly aria-label="Artwork reference"></label><label class="field">Catalogue ref / SKU (optional)<input name="sku" maxlength="80" value="${e(p.sku)}"></label><label class="field">Medium / Material (optional)<input name="material" maxlength="150" value="${e(p.material)}" placeholder="e.g. Gouache on 300gsm cotton paper"></label><label class="field">Dimensions (optional)<input name="dimensions" maxlength="150" value="${e(p.dimensions)}" placeholder="e.g. 12 × 16 inches"></label><label class="field wide">Care &amp; framing notes (optional)<input name="care" maxlength="500" value="${e(p.care)}"></label><label class="field wide">Additional image URLs (one per line)<textarea id="product-image-urls" name="imageUrls" placeholder="https://…"></textarea></label><label class="field wide">Or upload artwork photos · JPG, PNG, WebP · up to 6 MB each<input id="product-files" name="images" type="file" accept="image/jpeg,image/png,image/webp" multiple ></label></div><div id="editor-saved-images" class="image-preview-grid"></div><div id="editor-image-preview" class="image-preview-grid"></div><section class="editor-card-preview-wrap" aria-label="Live artwork card preview"><p class="eyebrow">Live storefront card preview</p><div id="editor-card-preview" class="editor-card-preview"></div></section><p class="small muted" style="margin-top:12px">Up to 8 images. The first image is your cover — its background color is detected automatically when Artwork Color button mode is enabled.</p><label class="checkbox"><input type="checkbox" name="visible" ${p.visible?'checked':''}>Show on homepage</label><label class="checkbox"><input type="checkbox" name="inBanner" ${p.inBanner!==false?'checked':''}>Show in homepage banner</label><label class="checkbox"><input type="checkbox" name="featured" ${p.featured?'checked':''}>Feature on homepage</label><div class="editor-actions">${id?`<div class="admin-title-actions"><button type="button" class="danger-link" data-action="archive-product" data-id="${e(id)}">Archive artwork</button><button type="button" class="danger-link" data-action="delete-product" data-id="${e(id)}">Remove artwork</button></div>`:'<span></span>'}<button id="save-product" class="button" type="submit">${id?'Save changes':'Add artwork'} →</button></div><p id="product-notice" class="notice" role="alert"></p></form>`;renderSavedProductImages();renderEditorCardPreview();openDialog('editor-dialog');
+  const fileLabel=$('product-files').closest('label');
+  fileLabel.firstChild.textContent=storeSettings.productImageStorage==='firebase'?'Upload artwork photos · JPG, PNG, WebP · up to 6 MB each':'Upload artwork photos · JPG, PNG, WebP · up to 20 MB each (Freeimage.host)';
 }
 function renderEditorCardPreview(){
   const host=$('editor-card-preview'),form=$('product-form');
@@ -1743,7 +1770,7 @@ async function submitProduct(event){event.preventDefault();if(!isAdmin)return;co
   const button=$('save-product');button.disabled=true;button.textContent='Saving…';fail('');
   try{
     await withSavingOverlay('Saving artwork…',async()=>{
-      const id=editingId||randomId();const uploaded=[];for(const file of files)uploaded.push(await store.uploadImage(file,id));
+      const id=editingId||randomId();const uploaded=[];for(const file of files)uploaded.push(await (storeSettings.productImageStorage==='freeimage'?store.uploadProductImage(file,'freeimage'):store.uploadImage(file)));
       const existing=editingId?products.find(item=>item.id===editingId):null;
       const rawOrder=Number(data.get('displayOrder'));
       const displayOrder=Number.isInteger(rawOrder)&&rawOrder>=1&&rawOrder<=100000?rawOrder:(existing?.displayOrder??products.length+1);
@@ -2151,6 +2178,121 @@ document.addEventListener('click',async event=>{
     else if(action==='manual-refund'){if(!window.confirm('Confirm that you have already returned the offline payment to the customer.'))return;target.disabled=true;await withSavingOverlay('Recording offline refund…',()=>store.callBackend('setManualPaymentStatus',{requestId:id,status:'refunded'}));requestsLoaded=false;renderAdminContent();toast('Offline refund recorded.');}
     else if(action==='review-checkout-cart'){captureCheckout();renderCheckout();renderCart();openDialog('cart-dialog');}
     else if(action==='account-refresh'||action==='account-more'){await fetchCustomerAccount(action==='account-more');}
+    else if(action==='resend-verification'){
+      if(verifyBusy||Date.now()<verifyCooldownUntil)return;
+      verifyBusy=true;verifyNotice='';renderAccount();
+      try{
+        const res=await store.resendVerificationEmail();
+        if(res?.alreadyVerified){
+          const refreshed=await store.refreshAuthUser();
+          user=refreshed.user||user;
+          verifyNotice='Your email is already verified.';
+          toast('Email verified!');
+        }else{
+          verifyCooldownUntil=Date.now()+60000;
+          clearInterval(verifyCooldownTimer);
+          verifyCooldownTimer=setInterval(()=>{
+            if(Date.now()>=verifyCooldownUntil){clearInterval(verifyCooldownTimer);verifyCooldownTimer=null;}
+            if(route().page==='account'&&user&&!user.isAnonymous&&user.emailVerified===false)renderAccount();
+          },1000);
+          verifyNotice='Verification email sent! Check your inbox and spam folder.';
+          toast('Verification email sent.');
+        }
+      }catch(error){
+        verifyNotice=store.friendlyError(error);
+      }finally{
+        verifyBusy=false;
+        if(route().page==='account')renderAccount();
+      }
+    }
+    else if(action==='refresh-verification'){
+      if(verifyBusy)return;
+      verifyBusy=true;verifyNotice='Checking verification status…';renderAccount();
+      try{
+        const refreshed=await store.refreshAuthUser();
+        user=refreshed.user||user;
+        if(refreshed.emailVerified){
+          try{const me=await store.callBackend('currentUser');isAdmin=Boolean(me?.admin);isMasterAdmin=Boolean(me?.masterAdmin);}catch{}
+          verifyNotice='';verifyCooldownUntil=0;clearInterval(verifyCooldownTimer);verifyCooldownTimer=null;
+          toast('Email verified! Thank you.');
+        }else{
+          verifyNotice='Not verified yet — click the link in your email inbox first, then tap refresh again.';
+          toast('Email not verified yet.');
+        }
+      }catch(error){
+        verifyNotice=store.friendlyError(error);
+      }finally{
+        verifyBusy=false;
+        if(route().page==='account')renderAccount();
+      }
+    }
+    else if(action==='export-my-data'){
+      if(privacyBusy)return;
+      privacyBusy=true;privacyNotice='Preparing your data export…';renderAccount();
+      try{
+        const exported=await store.exportMyData();
+        const stamp=new Date().toISOString().slice(0,10);
+        downloadFile(JSON.stringify(exported,null,2),`hehe-cafe-my-data-${stamp}.json`,'application/json');
+        privacyNotice='Your data export (JSON) has been downloaded.';
+        toast('Data export downloaded.');
+      }catch(error){
+        privacyNotice=store.friendlyError(error);
+      }finally{
+        privacyBusy=false;
+        if(route().page==='account')renderAccount();
+      }
+    }
+    else if(action==='delete-saved-data'){
+      if(privacyBusy)return;
+      if(!window.confirm('Delete your saved profile details, delivery pin, and uploaded reference photos? Your account login and order history stay intact.'))return;
+      privacyBusy=true;privacyNotice='Deleting saved profile and uploads…';renderAccount();
+      try{
+        await store.deleteMySavedData();
+        accountState.profile={};
+        accountState.profileError='';
+        profileDraftLocation=undefined;
+        checkoutDraft={};
+        checkoutTouched.clear();
+        clearPendingCheckout();
+        privacyNotice='Your saved address, delivery pin, and uploaded reference photos have been deleted.';
+        toast('Saved personal data deleted.');
+      }catch(error){
+        privacyNotice=store.friendlyError(error);
+      }finally{
+        privacyBusy=false;
+        if(route().page==='account')renderAccount();
+      }
+    }
+    else if(action==='delete-my-account'){
+      if(privacyBusy)return;
+      const typed=String($('delete-account-confirm')?.value||'').trim();
+      if(typed!=='DELETE MY ACCOUNT'){
+        privacyNotice='Type DELETE MY ACCOUNT in the box above before tapping delete.';
+        if($('privacy-notice'))$('privacy-notice').textContent=privacyNotice;
+        $('delete-account-confirm')?.focus();
+        return;
+      }
+      if(!window.confirm('Permanently delete your hehe.cafe account and personal data? This cannot be undone.'))return;
+      privacyBusy=true;privacyNotice='Deleting your account…';renderAccount();
+      try{
+        await store.deleteMyAccount('DELETE MY ACCOUNT');
+        cart=[];persistCart();clearPendingCheckout();clearCustomizations();
+        checkoutDraft={};checkoutTouched.clear();completedRequest=null;orderNote='';profileDraftLocation=undefined;
+        stopCustomerOrdersRealtime();stopAdminOrdersLivePoll();
+        clearInterval(verifyCooldownTimer);verifyCooldownTimer=null;verifyCooldownUntil=0;verifyNotice='';privacyNotice='';
+        accountState={requests:[],profile:{},loaded:false,loading:false,orderFilter:'all',orderQuery:''};
+        try{await store.signOut();}catch{}
+        user=null;isAdmin=false;isMasterAdmin=false;
+        privacyBusy=false;
+        location.hash='home';
+        render();
+        toast('Your account and personal data have been permanently deleted.');
+      }catch(error){
+        privacyBusy=false;
+        privacyNotice=store.friendlyError(error);
+        if(route().page==='account')renderAccount();
+      }
+    }
     else if(action==='account-order-filter'){accountState.orderFilter=target.dataset.filter||'all';refreshAccountOrdersList();}
     else if(action==='order-card-tab'){
       const card=target.closest('.customer-request'),nextTab=target.dataset.orderTab||'overview';
@@ -2283,8 +2425,9 @@ document.addEventListener('click',async event=>{
     else if(action==='new-artist')openArtistEditor();
     else if(action==='edit-artist')openArtistEditor(id);
     else if(action==='delete-artist'){if(window.confirm('Remove this artist profile?')){const next=normalizeArtists(artists.filter(a=>a.id!==id));await withSavingOverlay('Removing artist…',()=>store.saveArtists(next));artists=next;$('editor-dialog').close();if(adminTab==='artists')renderAdminArtists();toast('Artist profile removed.');}}
-    else if(action==='refresh-requests'){requestsLoaded=false;renderAdminContent();}
-    else if(action==='view-requests'){adminTab='requests';requestsLoaded=false;location.hash='admin/requests';}
+    else if(action==='refresh-requests'){requestsCursor=null;requestsHasMore=false;requestsLoaded=false;renderAdminContent();}
+    else if(action==='admin-load-more-orders'&&isAdmin){await fetchRequests({more:true});}
+    else if(action==='view-requests'){adminTab='requests';requestsCursor=null;requestsHasMore=false;requestsLoaded=false;location.hash='admin/requests';}
     else if(action==='select-labels-four'&&isAdmin){
       selectedLabelOrders.clear();
       const visibleOrders=filterOrders(requestList,{query:orderSearch,status:orderStatusFilter});
@@ -2343,7 +2486,7 @@ async function submitEmailAuth(event){
     if(mode==='signup'){
       await store.signUpWithEmail({name,email,password});
       authError='';authNotice='';
-      toast('Account created! Welcome to hehe.cafe.');
+      toast('Account created! Check your email to verify your address.');
     }else{
       await store.signInWithEmail(email,password);
       authError='';authNotice='';
@@ -2371,6 +2514,15 @@ document.addEventListener('change',async event=>{const t=event.target;if(t.close
     }catch(error){
       toast(store.friendlyError(error));
     }
+  }
+  if(t.id==='admin-image-storage'&&isMasterAdmin){
+    const mode=t.value;t.disabled=true;
+    try{
+      await withSavingOverlay('Updating artwork image storage.',()=>store.setProductImageStorage(mode));
+      storeSettings=normalizeSettings({...storeSettings,productImageStorage:mode});
+      toast(`${mode==='freeimage'?'Freeimage.host':'Firebase'} is active for new artwork uploads.`);
+    }catch(error){t.value=storeSettings.productImageStorage;toast(store.friendlyError(error));}
+    finally{t.disabled=false;}
   }
   if(t.id==='admin-cart-btn-mode'&&isAdmin){
     const nextMode=t.value==='artwork'?'artwork':'black';
@@ -2491,10 +2643,11 @@ store.observeAuth((nextUser,nextAdmin,nextMasterAdmin=false)=>{
   const changed=isAdmin!==nextAdmin||isMasterAdmin!==Boolean(nextMasterAdmin),identityChanged=user?.uid!==nextUser?.uid;
   if(identityChanged){
     contentDraft=null;
+    clearInterval(verifyCooldownTimer);verifyCooldownTimer=null;verifyCooldownUntil=0;verifyNotice='';verifyBusy=false;privacyNotice='';privacyBusy=false;
     if(user&&!user.isAnonymous){checkoutDraft={};checkoutTouched.clear();completedRequest=null;orderNote='';clearCustomizations();closeDialogs();}
     accountState={requests:[],profile:{},loaded:false,loading:false,orderFilter:'all',orderQuery:''};
   }
-  user=nextUser;isAdmin=nextAdmin;isMasterAdmin=Boolean(nextMasterAdmin);authLoading=false;authError='';authNotice='';requestList=[];requestsLoaded=false;
+  user=nextUser;isAdmin=nextAdmin;isMasterAdmin=Boolean(nextMasterAdmin);authLoading=false;authError='';authNotice='';requestList=[];requestsLoaded=false;requestsCursor=null;requestsHasMore=false;
   if(changed)startCatalog();
   if(['account','admin'].includes(route().page)){
     if(nextAdmin&&identityChanged){location.hash=requestedAdminPage;requestedAdminPage='admin';render();}

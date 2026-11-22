@@ -65,3 +65,14 @@ test('checkout payment separates the paid item subtotal from a later shipping pa
   const inclusiveHtml=accountMarkup({uid:'buyer',displayName:'Test Buyer',email:'buyer@example.com'},false,{tab:'requests',requests:[inclusiveOrder]});
   assert.match(inclusiveHtml,/Total paid/);assert.match(inclusiveHtml,/330\.00/);assert.match(inclusiveHtml,/Includes India Post shipping.*80\.00/);
 });
+test('unverified email/password user sees verification banner and profile tab exposes DPDP privacy controls',()=>{
+  const unverifiedHtml=accountMarkup({uid:'pw-user',displayName:'Buyer',email:'buyer@example.com',emailVerified:false},false,{tab:'overview',requests:[]});
+  assert.match(unverifiedHtml,/email-verify-banner/);
+  assert.match(unverifiedHtml,/data-action="resend-verification"/);
+  assert.match(unverifiedHtml,/data-action="refresh-verification"/);
+  const verifiedHtml=accountMarkup({uid:'pw-user',displayName:'Buyer',email:'buyer@example.com',emailVerified:true},false,{tab:'profile',profile:{},requests:[],states:['Kerala']});
+  assert.doesNotMatch(verifiedHtml,/email-verify-banner/);
+  assert.match(verifiedHtml,/data-action="export-my-data"/);
+  assert.match(verifiedHtml,/data-action="delete-saved-data"/);
+  assert.match(verifiedHtml,/data-action="delete-my-account"/);
+});

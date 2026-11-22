@@ -17,6 +17,9 @@ export const escapeHTML = value => String(value ?? '').replace(/[&<>"']/g, c => 
 export function safeImage(value, fallback = 'assets/paintings.svg') {
   return validImageSource(value)?value:fallback;
 }
+export function cardImage(value, fallback = 'assets/paintings.svg') {
+  return safeImage(value,fallback);
+}
 
 const ASSET_BG_COLORS = {
   'assets/artwork-1.jpg': '#3b5d20',

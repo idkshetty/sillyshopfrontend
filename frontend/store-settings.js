@@ -31,7 +31,7 @@ export const PROMO_THEMES = [
 
 export const DEFAULT_SETTINGS = {
   announcementVisible: false,
-  announcementText: 'welcome to hehe.cafe · handmade clay frames & paintings · ₹40 India Post shipping',
+  announcementText: 'welcome to hehe.cafe · handmade clay frames & paintings · ₹40/item India Post shipping',
   announcementLink: '#home',
   bannerVisible: true,
   bannerEyebrow: '',
@@ -56,7 +56,8 @@ export const DEFAULT_SETTINGS = {
   cartButtonMode: 'black',
   bannerLimit: 8,
   aboutVisible: false,
-  storyVisible: true
+  storyVisible: true,
+  productImageStorage: 'firebase'
 };
 
 export const FALLBACK_BANNER_ARTWORKS = [
@@ -264,6 +265,7 @@ export function normalizeSettings(value = {}) {
   result.bannerLimit = Number.isInteger(rawLimit) && rawLimit >= 0 && rawLimit <= 50 ? rawLimit : 8;
   result.aboutVisible = value.aboutVisible === true;
   result.storyVisible = value.storyVisible !== false;
+  result.productImageStorage = value.productImageStorage === 'freeimage' ? 'freeimage' : 'firebase';
   return result;
 }
 export function bannerSlidesFor(products = [], settings = DEFAULT_SETTINGS) {

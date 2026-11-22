@@ -102,6 +102,10 @@ export async function signInWithEmail(email='',password=''){
   if(guestToken){try{await callBackend('claimGuestRequests',{guestToken});}catch{}}
   return result;
 }
+function verificationActionSettings(){
+  if(typeof location==='undefined'||!/^https?:$/.test(location.protocol))return undefined;
+  return {url:`${location.origin}${location.pathname}#account`,handleCodeInApp:false};
+}
 export async function signUpWithEmail({name='',email='',password=''}={}){
   const cleanName=String(name||'').trim().slice(0,80);
   const cleanEmail=String(email||'').trim().toLowerCase();
@@ -118,9 +122,38 @@ export async function signUpWithEmail({name='',email='',password=''}={}){
     await a.updateProfile(result.user,{displayName:cleanName}).catch(()=>{});
   }
   if(result?.user&&typeof a.sendEmailVerification==='function'){
-    a.sendEmailVerification(result.user).catch(()=>{});
+    const settings=verificationActionSettings();
+    (settings?a.sendEmailVerification(result.user,settings):a.sendEmailVerification(result.user))
+      .catch(()=>settings?a.sendEmailVerification(result.user).catch(()=>{}):undefined);
   }
   return result;
+}
+export async function resendVerificationEmail(){
+  const {a,auth}=await backend();
+  await auth.authStateReady();
+  const user=auth.currentUser;
+  if(!user||user.isAnonymous)throw new Error('Sign in to verify your email address.');
+  if(user.emailVerified)return {alreadyVerified:true};
+  const settings=verificationActionSettings();
+  try{
+    await (settings?a.sendEmailVerification(user,settings):a.sendEmailVerification(user));
+  }catch(error){
+    if(settings&&/continue-uri|unauthorized/i.test(String(error?.code||''))){
+      await a.sendEmailVerification(user);
+    }else{
+      throw error;
+    }
+  }
+  return {sent:true};
+}
+export async function refreshAuthUser(){
+  const {auth}=await backend();
+  await auth.authStateReady();
+  const user=auth.currentUser;
+  if(!user||user.isAnonymous)throw new Error('Sign in to continue.');
+  await user.reload();
+  await user.getIdToken(true);
+  return {emailVerified:Boolean(auth.currentUser?.emailVerified),user:auth.currentUser};
 }
 export async function resetPassword(email=''){
   const cleanEmail=String(email||'').trim().toLowerCase();
@@ -161,7 +194,7 @@ export async function observeProducts(admin,onData,onError){
  };
  productListeners.add(refresh);
  void refresh();
- const timer=setInterval(refresh,30000);
+ const timer=setInterval(()=>{if(typeof document==='undefined'||document.visibilityState==='visible')void refresh();},30000);
  return async()=>{active=false;clearInterval(timer);productListeners.delete(refresh);const stopPub=await stopPublicPromise;stopPub?.();};
 }
 export async function saveProduct(product,id){
@@ -182,6 +215,21 @@ export async function deleteProduct(id){
   for(const refresh of productListeners)await refresh();
 }
 export async function uploadImage(file){return encodeImage(file);}
+export async function setProductImageStorage(mode){return callBackend('setProductImageStorage',{mode});}
+export async function uploadProductImage(file,provider='freeimage'){
+  if(!file||!['image/jpeg','image/png','image/webp'].includes(file.type)||file.size>20*1024*1024||!file.size)throw new Error('Choose a JPG, PNG or WebP artwork photo under 20 MB.');
+  if(provider!=='freeimage')throw new Error('Invalid artwork image storage option.');
+  const {auth,app}=await backend();await auth.authStateReady();
+  if(!auth.currentUser||auth.currentUser.isAnonymous)throw new Error('Sign in as an administrator to upload artwork.');
+  for(let attempt=0;attempt<2;attempt++){
+    const headers={'Content-Type':file.type,'X-Firebase-Project':firebaseConfig.projectId,Authorization:'Bearer '+await auth.currentUser.getIdToken(attempt===1)};
+    if(APP_CHECK_SITE_KEY){const check=await import('https://www.gstatic.com/firebasejs/12.3.0/firebase-app-check.js');let instance;try{instance=check.getAppCheck(app);}catch{instance=check.initializeAppCheck(app,{provider:new check.ReCaptchaEnterpriseProvider(APP_CHECK_SITE_KEY),isTokenAutoRefreshEnabled:true});}headers['X-Firebase-AppCheck']=(await check.getToken(instance)).token;}
+    const response=await fetch(`${backendURL()}/api/uploadFreeimageImage`,{method:'POST',headers,body:file,signal:AbortSignal.timeout(120000)});
+    const result=await response.json();if(response.status===401&&attempt===0)continue;
+    if(!response.ok){const error=new Error(result.error?.message||'Artwork image upload failed.');error.code=result.error?.code;throw error;}
+    return result.data.url;
+  }
+}
 export async function saveCheckout(id,customer,cart,displayedProducts,customizations=[],payAtCheckout=false,promoCode=''){
  const invalid=validateCustomer(customer);if(invalid)throw new Error(invalid);const {auth}=await backend();await auth.authStateReady();if(!auth.currentUser||auth.currentUser.isAnonymous)throw new Error('Sign in before checkout.');
  const extras=await prepareCustomizations(id,auth.currentUser.uid,customizations);
@@ -201,7 +249,7 @@ async function prepareCustomizations(requestId,uid,customizations) {
 }
 export async function loadCustomizations(id){return callBackend('loadCustomizations',{requestId:id});}
 export async function referenceImageURL(value){if(!isInlineImage(value))throw new Error('This older image needs migration by the studio.');return value;}
-export async function loadRequests(){return callBackend('loadRequests');}
+export async function loadRequests(cursor=null,{paginated=false}={}){return callBackend('loadRequests',paginated?{paginated:true,cursor}:{});}
 export async function updateRequest(id,status){return callBackend('updateOrderStatus',{requestId:id,status});}
 export async function deleteOrder(id){return callBackend('deleteOrder',{requestId:id});}
 export async function deleteAllOrders(confirm){return callBackend('deleteAllOrders',{confirm});}
@@ -214,6 +262,9 @@ export async function observeCustomerOrdersSignal(uid,onSignal,onError){
 export async function loadCustomerRequests(cursor=null){return callBackend('loadCustomerRequests',{cursor});}
 export async function loadProfile(){return callBackend('getProfile');}
 export async function saveProfile(profile){return callBackend('saveProfile',{profile});}
+export async function exportMyData(){return callBackend('exportMyData',{});}
+export async function deleteMySavedData(){return callBackend('deleteMySavedData',{});}
+export async function deleteMyAccount(confirm){return callBackend('deleteMyAccount',{confirm});}
 export async function loadLabel(){return callBackend('getLabels');}
 export async function saveLabel(text){return callBackend('saveStoreData',{kind:'labels',value:text});}
 export async function loadSales(){return callBackend('loadSales');}

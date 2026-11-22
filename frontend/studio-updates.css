@@ -1241,3 +1241,28 @@ button,a,.button,.cart-button,.quick-buy-btn,.home-filter-btn,.hero-banner-cta,.
 .artwork-ref{font:600 10px/1.4 'JetBrains Mono',monospace;color:#817668;white-space:nowrap}
 .table-product .artwork-ref{display:block;margin-top:3px}
 .order-lines .artwork-ref{margin-left:6px}
+.master-storage-panel{display:flex;align-items:center;justify-content:space-between;gap:18px;margin:18px 0;padding:20px;border:1px solid #dfd6c7;border-radius:16px;background:#fbf8f1}
+.master-storage-panel h2{margin:9px 0 4px;font-size:18px}
+.master-storage-panel p{margin:0;max-width:620px;color:#655e53;line-height:1.5}
+@media(max-width:700px){.master-storage-panel{align-items:flex-start;flex-direction:column}}
+
+.email-verify-banner{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;margin:0 0 18px;padding:16px 20px;border-radius:16px;border:1.5px solid #e7c896;background:#fffaf0}
+.email-verify-copy{display:grid;gap:4px;max-width:620px}
+.email-verify-copy strong{font-size:14.5px;color:#181715}
+.email-verify-copy p{margin:0;font-size:13px;color:#5a544c;line-height:1.5}
+.email-verify-copy .notice:empty{display:none}
+.email-verify-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+
+.privacy-data-panel{margin-top:22px}
+.privacy-actions-grid{display:grid;gap:14px;margin-top:14px}
+.privacy-action-card{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;padding:16px 18px;border-radius:14px;border:1.5px solid #e7e0d4;background:#fffefb}
+.privacy-action-card>div:first-child{max-width:580px;display:grid;gap:4px}
+.privacy-action-card strong{font-size:14.5px;color:#181715}
+.privacy-action-card p{margin:0}
+.privacy-action-card.is-danger{flex-direction:column;align-items:stretch;border-color:#ebc5c0;background:#fff9f8}
+.privacy-action-card.is-danger>div:first-child{max-width:none}
+.delete-account-controls{display:flex;align-items:flex-end;gap:12px;flex-wrap:wrap}
+.delete-account-controls .field{flex:1 1 240px;margin:0}
+.privacy-data-panel .notice:empty{display:none}
+.admin-orders-more-wrap{display:flex;justify-content:center;padding:16px 0 4px}
+.success-card-actions{display:flex;align-items:center;justify-content:center;gap:10px;flex-wrap:wrap;margin:18px 0 6px}
