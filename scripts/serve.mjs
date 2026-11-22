@@ -35,6 +35,7 @@ http.createServer(async(req,res)=>{
     }
     if(!['GET','HEAD'].includes(req.method)){res.writeHead(405,{'Allow':'GET, HEAD'});res.end();return;}
     if(relative==='/')relative='/index.html';
+    else if(['/shop','/admin','/checkout','/auction'].includes(relative.toLowerCase()))relative+='.html';
     const filename=path.resolve(root,'.'+relative);
     const lower=relative.toLowerCase(),segments=lower.split('/');
     const ext=path.extname(lower);
@@ -49,4 +50,4 @@ http.createServer(async(req,res)=>{
     if(req.method==='HEAD'){res.writeHead(200,headers);res.end();return;}
     res.writeHead(200,headers);res.end(data);
   }catch{res.writeHead(404);res.end('Not found');}
-}).listen(port,()=>console.log(`hehe.cafe: http://localhost:${port}/shop.html (and http://127.0.0.1:${port}/shop.html)`));
+}).listen(port,()=>console.log(`hehe.cafe: http://localhost:${port}/ (and http://127.0.0.1:${port}/)`));
