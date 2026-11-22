@@ -95,19 +95,19 @@
 .payment-outcome-pill{display:inline-flex;align-items:center;justify-content:center;padding:6px 14px;margin:0 auto 6px;border-radius:999px;font:700 11px/1 'Plus Jakarta Sans',Arial,sans-serif;letter-spacing:.08em;text-transform:uppercase}
 .payment-outcome-scene.is-success .payment-outcome-pill{background:#e9f6ee;color:#166534}
 .payment-outcome-scene.is-failure .payment-outcome-pill{background:#fceceb;color:#9b392f}
-.payment-truck-stage{position:relative;width:min(100%,440px);aspect-ratio:1;margin:0 auto;overflow:hidden;border:0;border-radius:0;background:transparent}
+.payment-truck-stage{position:relative;width:min(100%,440px);aspect-ratio:1;margin:6px auto 4px;overflow:hidden;border:1.5px solid #e7e0d4;border-radius:22px;background:#f8f5ec url('assets/payment-truck-bg.webp') center bottom/cover no-repeat;box-shadow:inset 0 0 0 1px rgba(255,255,255,.55)}
 /* Keep the payment animation centered inside its clean stage. */
 .payment-truck-stage #ship-it{position:absolute;z-index:1;top:50%;left:50%;display:block;width:100%;max-width:540px;height:auto;overflow:visible;transform:translate(-50%,-50%)}
 .payment-truck-stage #ship-it .hidden{visibility:hidden}
 .payment-truck-stage #ship-it .wip{opacity:.5}
 .payment-truck-stage #ship-it .clickable{cursor:pointer;opacity:.01;pointer-events:none}
-.payment-road{position:absolute;z-index:0;right:10%;bottom:12%;left:10%;height:4px;border-radius:999px;background:#e7e2d8}
+.payment-road{position:absolute;z-index:0;right:12%;bottom:9.2%;left:12%;height:4px;border-radius:999px;background:rgba(52,54,48,.16);filter:blur(1px)}
 .payment-outcome-copy{min-height:84px;padding-top:8px}
 .payment-outcome-copy h1{margin:0 0 8px;font-size:clamp(24px,4vw,32px);letter-spacing:-.02em}
 .payment-outcome-copy p{max-width:440px;margin:0 auto 18px;font-size:14.5px;line-height:1.6;color:#625c54}
 .payment-outcome-copy button{margin:4px auto 0;border-radius:999px;padding:13px 26px}
-@media(max-width:600px){.payment-outcome-scene{margin:24px 12px;padding:22px 16px 26px;border-radius:22px}.payment-truck-stage{width:min(100%,86vw,380px)}.payment-road{height:4px}.payment-outcome-copy{min-height:0;padding-top:6px}}
-@media(max-width:380px){.payment-outcome-scene{margin:18px 8px;padding:18px 12px 22px;border-radius:18px}.payment-truck-stage{width:min(100%,84vw,300px)}.payment-road{height:3px}.payment-outcome-copy h1{font-size:23px}.payment-outcome-copy p{font-size:13.5px}}
+@media(max-width:600px){.payment-outcome-scene{margin:24px 12px;padding:22px 16px 26px;border-radius:22px}.payment-truck-stage{width:min(100%,86vw,380px);border-radius:18px}.payment-road{height:4px}.payment-outcome-copy{min-height:0;padding-top:6px}}
+@media(max-width:380px){.payment-outcome-scene{margin:18px 8px;padding:18px 12px 22px;border-radius:18px}.payment-truck-stage{width:min(100%,84vw,300px);border-radius:16px}.payment-road{height:3px}.payment-outcome-copy h1{font-size:23px}.payment-outcome-copy p{font-size:13.5px}}
 .request-order-progress{margin:20px 0 24px;padding:18px 18px 14px;border:1px solid var(--line);border-radius:14px;background:#fffefb}
 .request-order-progress .checkout-progress{margin:0;padding:0}
 .request-progress-note{margin:0;padding:12px 14px;border:1px solid #e2ddd2;border-radius:10px;background:#f6f2e8;color:var(--ink);font-size:12px;line-height:1.6}

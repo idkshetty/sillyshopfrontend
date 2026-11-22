@@ -254,8 +254,9 @@ export function mountHeroBanner(root = document) {
   };
 }
 
-let cachedPaymentSvgSource=null,paymentSvgPromise=null;
+let cachedPaymentSvgSource=null,paymentSvgPromise=null,paymentBgPreloaded=false;
 export function preloadPaymentOutcomeSvg(){
+  if(!paymentBgPreloaded&&typeof Image==='function'){paymentBgPreloaded=true;const img=new Image();img.src=new URL('./assets/payment-truck-bg.webp',import.meta.url).href;}
   if(cachedPaymentSvgSource)return Promise.resolve(cachedPaymentSvgSource);
   if(!paymentSvgPromise){
     paymentSvgPromise=fetch(new URL('./assets/payment-shipping.svg?v=red-truck-2',import.meta.url),{cache:'force-cache'})
