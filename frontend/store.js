@@ -11,7 +11,7 @@ let sdkPromise, sdk,realtimePromise,publicConfigPromise;
 const productListeners=new Set();
 let adminProducts=[];
 export async function backend(){
- if(!sdkPromise)sdkPromise=Promise.all([import('https://www.gstatic.com/firebasejs/12.3.0/firebase-app.js'),import('https://www.gstatic.com/firebasejs/12.3.0/firebase-auth.js')]).then(([appAPI,a])=>{const app=appAPI.getApps().length?appAPI.getApp():appAPI.initializeApp(firebaseConfig);sdk={app,auth:a.getAuth(app),a};return sdk;}).catch(error=>{sdkPromise=null;throw error;});return sdkPromise;
+ if(!sdkPromise)sdkPromise=Promise.all([import('https://www.gstatic.com/firebasejs/12.3.0/firebase-app.js'),import('https://www.gstatic.com/firebasejs/12.3.0/firebase-auth.js')]).then(async([appAPI,a])=>{const app=appAPI.getApps().length?appAPI.getApp():appAPI.initializeApp(firebaseConfig);const auth=a.getAuth(app);if(a.browserLocalPersistence&&typeof a.setPersistence==='function')await a.setPersistence(auth,a.browserLocalPersistence).catch(()=>{});sdk={app,auth,a};return sdk;}).catch(error=>{sdkPromise=null;throw error;});return sdkPromise;
 }
 async function loadPublicConfig(){
  if(!publicConfigPromise)publicConfigPromise=(async()=>{const response=await fetch(backendURL()+'/config',{signal:AbortSignal.timeout(15000)});if(!response.ok)throw new Error('The backend configuration is unavailable.');const config=await response.json();if(config.projectId!==firebaseConfig.projectId)throw new Error('Frontend and backend Firebase projects do not match.');return config;})().catch(error=>{publicConfigPromise=null;throw error;});return publicConfigPromise;

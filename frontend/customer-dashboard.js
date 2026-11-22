@@ -37,9 +37,10 @@ function requestCard(request,{productImages=new Map(),open=false}={}) {
   const stepLabels=paid?['Confirmed','Preparing','Packed','Shipped','Out for delivery','Delivered']:['Received','Reviewed','Contacted','Closed'];
   const step=Math.max(0,stepIds.indexOf(request.status));
   const refunded=request.paymentStatus==='refunded';
-  const terminal=['cancelled','cancel_requested'].includes(request.status)||(paid&&request.status==='closed')||refunded;
-  const terminalLabel=refunded?'Payment refunded':statuses[request.status]||'Request closed';
-  const terminalText=refunded?' · This order is no longer in fulfilment.':request.status==='cancel_requested'?' · The studio is reviewing your cancellation request.':request.status==='cancelled'?' · This request has been cancelled.':' · This order is closed.';
+  const failed=request.paymentStatus==='failed';
+  const terminal=['cancelled','cancel_requested'].includes(request.status)||(paid&&request.status==='closed')||refunded||failed;
+  const terminalLabel=refunded?'Payment refunded':failed?'Payment failed':statuses[request.status]||'Request closed';
+  const terminalText=refunded?' · This order is no longer in fulfilment.':failed?' · This order was cancelled because payment failed.':request.status==='cancel_requested'?' · The studio is reviewing your cancellation request.':request.status==='cancelled'?' · This request has been cancelled.':' · This order is closed.';
   const progress=terminal?`<p class="request-progress-note" role="status"><strong>${e(terminalLabel)}</strong>${terminalText}</p>`:steppedProgress(stepLabels,step+1,paid?'Order status progress':'Request status progress');
   const totalQty=(request.items||[]).reduce((n,i)=>n+i.quantity,0);
   const displayTotal=Number.isFinite(Number(request.estimatedSubtotal))?Number(request.estimatedSubtotal):(request.quote?.amount?request.quote.amount/100:0);
@@ -49,14 +50,18 @@ function requestCard(request,{productImages=new Map(),open=false}={}) {
     ?(request.paymentStatus!=='captured'&&request.paymentStatus!=='refunded'&&!['cancelled','cancel_requested','closed'].includes(request.status)
       ?`<div class="payment-info">Pay for items now: <strong>${money(request.quote.amount/100)}</strong><p>Shipping will be confirmed and billed separately by the studio.</p><button class="button small" data-action="pay-request" data-id="${e(request.id)}" data-purpose="items">Pay item subtotal</button></div>`
       :request.paymentStatus==='captured'
-        ?`<div class="payment-info">Item subtotal paid: <strong>${money(request.quote.amount/100)}</strong>${request.shippingQuote?.amount>0?request.shippingPaymentStatus==='captured'?`<p>Shipping paid: ${money(request.shippingQuote.amount/100)}</p>`:`<p>Shipping charge due: <strong>${money(request.shippingQuote.amount/100)}</strong></p><button class="button small" data-action="pay-request" data-id="${e(request.id)}" data-purpose="shipping">Pay shipping</button>`:request.shippingQuote?.amount===0?'<p>Shipping confirmed: no additional charge.</p>':'<p>Shipping will be confirmed and billed separately by the studio.</p>'}</div>`
+        ?`<div class="payment-info">Payment successful · Item subtotal paid: <strong>${money(request.quote.amount/100)}</strong>${request.shippingQuote?.amount>0?request.shippingPaymentStatus==='captured'?`<p>Shipping paid: ${money(request.shippingQuote.amount/100)}</p>`:`<p>Shipping charge due: <strong>${money(request.shippingQuote.amount/100)}</strong></p><button class="button small" data-action="pay-request" data-id="${e(request.id)}" data-purpose="shipping">Pay shipping</button>`:request.shippingQuote?.amount===0?'<p>Shipping confirmed: no additional charge.</p>':'<p>Shipping will be confirmed and billed separately by the studio.</p>'}</div>`
         :'')
     :request.quote&&!['captured','refunded'].includes(request.paymentStatus)&&!['cancelled','cancel_requested','closed'].includes(request.status)
       ?`<div class="payment-info">Studio-confirmed total: <strong>${money(request.quote.amount/100)}</strong><p>Includes the agreed delivery charges. Read the <a class="text-link" href="#info/refunds">cancellation policy</a> before paying.</p><button class="button small" data-action="pay-request" data-id="${e(request.id)}" data-purpose="items">Pay with Razorpay</button></div>`
       :'';
-  const statusHint=request.checkoutPayment
-    ?(request.paymentStatus==='captured'?'Item subtotal paid':request.paymentStatus==='refunded'?'Payment refunded':'Item payment pending')
-    :request.paymentStatus==='captured'?'Payment received':request.paymentStatus==='refunded'?'Payment refunded':'Checkout request / awaiting studio quote';
+  const statusHint=request.paymentStatus==='captured'
+    ?'Payment successful'
+    :request.paymentStatus==='refunded'
+      ?'Payment refunded'
+      :(failed||request.status==='cancelled'||request.checkoutPayment)
+        ?'Payment failed'
+        :'Awaiting studio quote';
   const cancelBlock=!['cancelled','cancel_requested','closed','packed','shipped','out_for_delivery','delivered'].includes(request.status)
     ?`<div class="cancel-form"><h3>Need to cancel this order?</h3><p class="small muted">Unpaid requests without a confirmed quote are cancelled immediately. Confirmed orders go to the studio for review.</p><label class="field">Reason (optional)<textarea maxlength="500" placeholder="Let the studio know why"></textarea></label><button class="button outline small" data-action="cancel-request" data-id="${e(request.id)}">Confirm cancellation request</button></div>`
     :'<p class="small muted">This order can no longer be cancelled online. Reach out to the studio directly if you need assistance.</p>';
@@ -101,7 +106,7 @@ function requestCard(request,{productImages=new Map(),open=false}={}) {
         <button type="button" class="text-link order-notes-trigger" data-action="request-customizations" data-id="${e(request.id)}">View product notes &amp; images</button>
         <div id="request-custom-${e(request.id)}" class="request-customizations"></div>
         <div class="order-card-footer">
-          <div class="order-invoice-slot">${paid?`<button class="button outline small" data-action="download-invoice" data-id="${e(request.id)}">Download invoice</button>`:'<span class="small muted">Invoice ready once payment is verified</span>'}</div>
+          <div class="order-invoice-slot">${paid?`<button class="button outline small" data-action="download-invoice" data-id="${e(request.id)}">Download invoice</button>`:`<span class="small muted">${failed||request.status==='cancelled'?'Order cancelled · Payment failed':'Invoice ready once payment is successful'}</span>`}</div>
           <div class="order-footer-total"><span>${totalQty} ${totalQty===1?'item':'items'}</span><strong>${money(displayTotal)}</strong></div>
         </div>
       </section>

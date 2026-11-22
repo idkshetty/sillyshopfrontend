@@ -49,5 +49,8 @@ test('customer order history uses the shared stepped progress bar for fulfilment
 test('checkout payment separates the paid item subtotal from a later shipping payment',()=>{
   const order={...request,id:'split-payment-order',status:'processing',paymentStatus:'captured',checkoutPayment:true,quote:{amount:12000},shippingQuote:{amount:1800},shippingPaymentStatus:'not_started',estimatedSubtotal:120,createdAt:Date.now(),items:[{title:'Painted cup',quantity:1,unitPrice:120}]};
   const html=accountMarkup({uid:'buyer',displayName:'Test Buyer',email:'buyer@example.com'},false,{tab:'requests',requests:[order]});
-  assert.match(html,/Item subtotal paid/);assert.match(html,/Shipping charge due/);assert.match(html,/data-purpose="shipping"/);assert.match(html,/Pay shipping/);
+  assert.match(html,/Payment successful/);assert.match(html,/Item subtotal paid/);assert.match(html,/Shipping charge due/);assert.match(html,/data-purpose="shipping"/);assert.match(html,/Pay shipping/);
+  const failedOrder={...request,id:'failed-payment-order',status:'cancelled',paymentStatus:'failed',checkoutPayment:true,quote:{amount:12000},estimatedSubtotal:120,createdAt:Date.now(),items:[{title:'Painted cup',quantity:1,unitPrice:120}]};
+  const failedHtml=accountMarkup({uid:'buyer',displayName:'Test Buyer',email:'buyer@example.com'},false,{tab:'requests',requests:[failedOrder]});
+  assert.match(failedHtml,/Payment failed/);assert(!/Payment pending/i.test(failedHtml));
 });

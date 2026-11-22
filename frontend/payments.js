@@ -4,9 +4,36 @@ export async function payRequest(id,purpose='items'){
   const order=await callBackend('createRazorpayOrder',{requestId:id,purpose});
   await loadScript('https://checkout.razorpay.com/v1/checkout.js');
   return new Promise((resolve,reject)=>{
+    let settled=false;
+    const fail=(message='Payment failed or was cancelled.')=>{
+      if(settled)return;
+      settled=true;
+      const err=new Error(message);
+      err.paymentFailed=true;
+      reject(err);
+    };
     const checkout=new window.Razorpay({key:order.keyId,order_id:order.orderId,amount:order.amount,currency:'INR',name:'hehe.cafe',description:'hehe.cafe artwork order',theme:{color:'#181715'},prefill:order.prefill,
-      modal:{ondismiss:()=>reject(new Error('Payment window closed. You can try again from your requests.'))},
-      handler:async response=>{try{const result=await callBackend('verifyRazorpayPayment',{requestId:id,purpose,paymentId:response.razorpay_payment_id,signature:response.razorpay_signature});if(!result.paid)throw new Error('Payment is being verified. Refresh your requests shortly; do not pay again.');resolve(result);}catch(error){reject(error);}}
-    });checkout.open();
+      modal:{ondismiss:()=>fail('Payment failed or was cancelled.')},
+      handler:async response=>{
+        if(settled)return;
+        try{
+          const result=await callBackend('verifyRazorpayPayment',{requestId:id,purpose,paymentId:response.razorpay_payment_id,signature:response.razorpay_signature});
+          if(!result.paid){fail('Payment failed or was not completed.');return;}
+          settled=true;
+          resolve(result);
+        }catch(error){
+          if(settled)return;
+          settled=true;
+          error.paymentFailed=true;
+          reject(error);
+        }
+      }
+    });
+    checkout.on?.('payment.failed',response=>{
+      const reason=response?.error?.description||response?.error?.reason||'Payment failed or was cancelled.';
+      fail(reason);
+      try{checkout.close?.();}catch{}
+    });
+    checkout.open();
   });
 }

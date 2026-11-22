@@ -543,7 +543,7 @@ function mountCheckoutMap(){
 
 function captureCheckout(){const form=$('checkout-form');if(!form)return;const data=new FormData(form);const point=checkoutDraft.location;checkoutDraft=Object.fromEntries(data);if(point)checkoutDraft.location=point;checkoutDraft.consent=data.get('consent')==='on';}
 async function checkoutFingerprint(customer){const value=JSON.stringify({uid:user.uid,customer,promoCode:appliedPromoCode||'',cart:cart.map(item=>({id:item.id,quantity:item.quantity})).sort((a,b)=>a.id.localeCompare(b.id))});const digest=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(value));return [...new Uint8Array(digest)].map(byte=>byte.toString(16).padStart(2,'0')).join('');}
-function renderSuccess(){$('main').innerHTML=`<div class="container"><section class="success-card">${checkoutProgress(4)}<span class="success-icon"><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 13l4 4L19 7"/></svg></span><p class="eyebrow">Payment verified · hehe.cafe</p><h1>Thanks, ${e(completedRequest.customer.firstName)}.</h1><p>Your order is confirmed and will ship via India Post.</p><p>Order Reference: <strong>${e(completedRequest.id.slice(0,8).toUpperCase())}</strong></p><div class="checkout-info"><strong>Total paid: ${money(completedRequest.quote.amount/100)}</strong></div><section id="save-address-prompt" class="save-address-prompt"><h2>Save this address for next time?</h2><p>Your delivery details stay with this order either way.</p><div class="save-address-actions"><button class="button" data-action="save-checkout-address">${user&&!user.isAnonymous?'Save address':'Sign in & save address'}</button><button class="text-link" data-action="skip-save-address">Not now</button></div><p class="notice" role="status"></p></section><a class="button" href="#home">Keep exploring hehe.cafe →</a><p style="margin-top:20px"><a href="#account/requests" class="text-link">View my orders →</a></p></section></div>`;}
+function renderSuccess(){$('main').innerHTML=`<div class="container"><section class="success-card">${checkoutProgress(4)}<span class="success-icon"><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 13l4 4L19 7"/></svg></span><p class="eyebrow">Payment successful · hehe.cafe</p><h1>Thanks, ${e(completedRequest.customer.firstName)}.</h1><p>Your order is confirmed and will ship via India Post.</p><p>Order Reference: <strong>${e(completedRequest.id.slice(0,8).toUpperCase())}</strong></p><div class="checkout-info"><strong>Total paid: ${money(completedRequest.quote.amount/100)}</strong></div><section id="save-address-prompt" class="save-address-prompt"><h2>Save this address for next time?</h2><p>Your delivery details stay with this order either way.</p><div class="save-address-actions"><button class="button" data-action="save-checkout-address">${user&&!user.isAnonymous?'Save address':'Sign in & save address'}</button><button class="text-link" data-action="skip-save-address">Not now</button></div><p class="notice" role="status"></p></section><a class="button" href="#home">Keep exploring hehe.cafe →</a><p style="margin-top:20px"><a href="#account/requests" class="text-link">View my orders →</a></p></section></div>`;}
 function showPaymentPreviewChoice(){
   let dialog=$('payment-preview-dialog');
   if(!dialog){
@@ -614,9 +614,20 @@ async function submitCheckout(event){
     try{
       await payRequest(saved.id,'items');
     }catch(paymentError){
+      const cancelResult=await store.callBackend('cancelFailedPayment',{requestId:saved.id,purpose:'items',reason:paymentError?.message||'Payment failed'}).catch(()=>null);
+      if(cancelResult?.paid===true){
+        deliveryMap?.destroy();deliveryMap=null;
+        paymentSceneActive=true;
+        try{await playPaymentOutcome('success',{items:animationItems});}finally{paymentSceneActive=false;}
+        clearPendingCheckout();cart=[];persistCart();clearCustomizations();checkoutDraft={};checkoutTouched.clear();orderNote='';appliedPromoCode='';promoFeedback='';checkoutId=crypto.randomUUID();
+        if(route().page==='checkout'){renderSuccess();window.scrollTo({top:0,behavior:'smooth'});$('main').focus({preventScroll:true});}
+        else{render();toast('Payment successful. Thank you!');}
+        return;
+      }
+      clearPendingCheckout();completedRequest=null;checkoutId=crypto.randomUUID();requestsLoaded=false;accountState.loaded=false;
       deliveryMap?.destroy();deliveryMap=null;
       paymentSceneActive=true;
-      try{await playPaymentOutcome('failure',{message:store.friendlyError(paymentError),items:animationItems});}finally{paymentSceneActive=false;}
+      try{await playPaymentOutcome('failure',{message:'Payment failed. This order was cancelled and your items are still in your cart if you want to try again.',items:animationItems});}finally{paymentSceneActive=false;}
       return;
     }
     deliveryMap?.destroy();deliveryMap=null;
@@ -624,7 +635,7 @@ async function submitCheckout(event){
     try{await playPaymentOutcome('success',{items:animationItems});}finally{paymentSceneActive=false;}
     clearPendingCheckout();cart=[];persistCart();clearCustomizations();checkoutDraft={};checkoutTouched.clear();orderNote='';appliedPromoCode='';promoFeedback='';checkoutId=crypto.randomUUID();
     if(route().page==='checkout'){renderSuccess();window.scrollTo({top:0,behavior:'smooth'});$('main').focus({preventScroll:true});}
-    else{render();toast('Payment verified. Thank you!');}
+    else{render();toast('Payment successful. Thank you!');}
   }catch(error){
     if($('checkout-notice'))$('checkout-notice').textContent=store.friendlyError(error);else toast(store.friendlyError(error));
   }finally{
@@ -1288,14 +1299,15 @@ function manualPaymentControls(o){
   const manual=o.paymentMethod==='manual',captured=o.paymentStatus==='captured',refunded=o.paymentStatus==='refunded';
   const canPaid=o.status==='contacted'&&!!o.quote&&o.inventoryReserved&&!['pending','captured','refunded'].includes(o.paymentStatus)&&!o.razorpayOrderId;
   const canUnpaid=manual&&captured&&['contacted','processing'].includes(o.status);
-  const help=canPaid?'Only record money already received.':o.paymentStatus==='pending'?'A Razorpay payment is pending; verify its result before recording an offline payment.':!o.quote||!o.inventoryReserved?'Confirm the total and reserve stock first.':o.status!=='contacted'?'This request must be contacted before payment can be recorded.': 'Payment status is controlled by the verified Razorpay record.';
+  const help=canPaid?'Only record money already received.':o.razorpayOrderId||o.paymentStatus==='failed'||o.paymentStatus==='pending'?'A Razorpay session already exists; verify its result in Razorpay before recording an offline payment.':!o.quote||!o.inventoryReserved?'Confirm the total and reserve stock first.':o.status!=='contacted'?'This request must be contacted before payment can be recorded.': 'Payment status is controlled by the verified Razorpay record.';
   let controls='';
   if(manual&&captured&&o.status==='cancelled'&&o.refundStatus==='required')controls='<button class="button outline small" data-action="manual-refund" data-id="'+e(o.id)+'">Mark offline refund complete</button><p class="small muted">Return the funds first.</p>';
   else if(canUnpaid)controls='<button class="button outline small" data-action="manual-unpaid" data-id="'+e(o.id)+'">Mark unpaid</button>';
   else if(!captured&&!refunded)controls='<button type="button" class="button small" data-action="manual-paid" data-id="'+e(o.id)+'" '+(canPaid?'':'disabled')+'>Mark paid</button><button type="button" class="button outline small" disabled>Mark unpaid</button><p class="small muted">'+e(help)+'</p>';
   else controls='<p class="small muted">'+(manual?'Offline payment recorded · '+e(o.manualPayment?.method||'Payment')+' · Reference '+e(o.manualPayment?.reference||''):'Razorpay payment is verified. Use Razorpay refund controls for any reversal.')+'</p>';
-  if(!captured&&!refunded)return '<section class="manual-payment-controls"><h3>Payment status · '+(o.paymentStatus==='pending'?'Payment pending':'Unpaid')+'</h3><label class="field">Offline method<select name="manual-method"><option value="upi">UPI</option><option value="cash">Cash</option><option value="bank_transfer">Bank transfer</option><option value="other">Other</option></select></label><label class="field">Receipt / transaction reference<input name="manual-reference" minlength="3" maxlength="100" autocomplete="off" placeholder="UPI UTR or receipt number"></label>'+controls+'</section>';
-  return '<section class="manual-payment-controls"><h3>Payment status · '+(refunded?'Refunded':'Paid')+(manual?' · Offline':'')+'</h3>'+controls+'</section>';
+  const paymentTitle=captured?'Payment successful':refunded?'Payment refunded':(o.paymentStatus==='failed'||o.status==='cancelled'||o.razorpayOrderId)?'Payment failed':'Unpaid';
+  if(!captured&&!refunded)return '<section class="manual-payment-controls"><h3>Payment status · '+paymentTitle+'</h3><label class="field">Offline method<select name="manual-method"><option value="upi">UPI</option><option value="cash">Cash</option><option value="bank_transfer">Bank transfer</option><option value="other">Other</option></select></label><label class="field">Receipt / transaction reference<input name="manual-reference" minlength="3" maxlength="100" autocomplete="off" placeholder="UPI UTR or receipt number"></label>'+controls+'</section>';
+  return '<section class="manual-payment-controls"><h3>Payment status · '+paymentTitle+(manual?' · Offline':'')+'</h3>'+controls+'</section>';
 }
 function updateBatchLabelBar(){
   const validIds=new Set(requestList.map(o=>o.id));
@@ -1628,7 +1640,7 @@ document.addEventListener('click',async event=>{
       }
       $('main').focus({preventScroll:true});
     }
-    else if(action==='payment-preview-return'){const preview=target.dataset.preview==='true';renderCheckout();const notice=$('checkout-notice');notice.textContent=preview?'Preview only: no payment, order or stock reservation was recorded.':'Payment was not verified. Your cart and checkout request are saved so you can retry.';notice.scrollIntoView({behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth',block:'center'});}
+    else if(action==='payment-preview-return'){const preview=target.dataset.preview==='true';renderCheckout();const notice=$('checkout-notice');notice.textContent=preview?'Preview only: no payment, order or stock reservation was recorded.':'Payment failed and the order was cancelled. Your cart is saved so you can try again.';notice.scrollIntoView({behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth',block:'center'});}
     else if(action==='cancel-payment-preview'){$('payment-preview-dialog')?.close();$('payment-preview-dialog')?.removeAttribute('open');}
      else if(action==='preview-payment-outcome'){if(!(await store.paymentPreviewEnabled()))return;$('payment-preview-dialog')?.close();$('payment-preview-dialog')?.removeAttribute('open');deliveryMap?.destroy();deliveryMap=null;paymentSceneActive=true;try{await playPaymentOutcome(target.dataset.outcome==='success'?'success':'failure',{preview:true,items:paymentAnimationItems()});}finally{paymentSceneActive=false;}}
     else if(action==='toggle-summary'){const collapsed=target.closest('.checkout-summary').classList.toggle('summary-collapsed');target.setAttribute('aria-expanded',String(!collapsed));target.querySelector('.summary-toggle-label').innerHTML=`${collapsed?'View order summary':'Hide summary'} <svg viewBox="0 0 24 24" class="ui-chevron" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>`;}
@@ -1755,7 +1767,22 @@ document.addEventListener('click',async event=>{
     else if(action==='save-checkout-address'){target.disabled=true;if(!user||user.isAnonymous)await store.signIn();const profile=normalizeProfile(completedRequest.customer);await store.saveProfile(profile);accountState.profile=profile;if($('save-address-prompt'))$('save-address-prompt').innerHTML='<p role="status">Your address and confirmed pin are saved for next time.</p>';}
     else if(action==='cancel-request'){target.disabled=true;const form=target.closest('.cancel-form');await store.cancelRequest(id,form.querySelector('textarea').value);await fetchCustomerAccount();toast('Your cancellation has been saved.');}
     else if(action==='download-invoice'){target.disabled=true;try{const invoice=await store.callBackend('getInvoice',{requestId:id});const pdf=await invoicePDF(invoice);downloadFile(pdf,'invoice-'+String(invoice.number||id).replace(/[^a-zA-Z0-9_-]/g,'')+'.pdf','application/pdf');toast('PDF invoice downloaded.');}finally{target.disabled=false;}}
-    else if(action==='pay-request'){target.disabled=true;await payRequest(id,target.dataset.purpose||'items');await fetchCustomerAccount();toast(target.dataset.purpose==='shipping'?'Shipping payment verified. Thank you!':'Payment verified. Thank you!');}
+    else if(action==='pay-request'){
+      target.disabled=true;
+      const purpose=target.dataset.purpose||'items';
+      try{
+        await payRequest(id,purpose);
+        await fetchCustomerAccount();
+        toast(purpose==='shipping'?'Shipping payment successful. Thank you!':'Payment successful. Thank you!');
+      }catch(err){
+        const cancelResult=await store.callBackend('cancelFailedPayment',{requestId:id,purpose,reason:err?.message||'Payment failed'}).catch(()=>null);
+        await fetchCustomerAccount();
+        if(cancelResult?.paid===true)toast(purpose==='shipping'?'Shipping payment successful. Thank you!':'Payment successful. Thank you!');
+        else toast(purpose==='shipping'?'Shipping payment failed.':'Payment failed. Order cancelled.');
+      }finally{
+        if(target.isConnected)target.disabled=false;
+      }
+    }
     else if(action==='approve-quote'){const request=requestList.find(r=>r.id===id);if(request)openQuoteEditor(request,{approve:data=>store.callBackend('approveQuote',data),onSaved:()=>{requestsLoaded=false;renderAdminContent();}});}
     else if(action==='resolve-cancellation'){target.disabled=true;await withSavingOverlay('Updating order…',()=>store.callBackend('resolveCancellation',{requestId:id,approve:target.dataset.approve==='true'}));requestsLoaded=false;renderAdminContent();}
     else if(action==='manual-paid'){const box=target.closest('.manual-payment-controls'),method=box.querySelector('[name=manual-method]').value,reference=box.querySelector('[name=manual-reference]').value.trim();if(!reference)return toast('Enter the offline payment reference.');target.disabled=true;await withSavingOverlay('Recording offline payment…',()=>store.callBackend('setManualPaymentStatus',{requestId:id,status:'paid',method,reference}));requestsLoaded=false;renderAdminContent();toast('Offline payment recorded.');}

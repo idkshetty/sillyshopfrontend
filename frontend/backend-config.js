@@ -1,6 +1,6 @@
 // Public API URLs only. Never put server credentials in this file.
-// Set this to your actual Render service URL before deploying the frontend.
-export const PRODUCTION_API_URL = 'https://sillyshop.onrender.com/';
+// Production / public tunnel backend URL used by the hosted frontend.
+export const PRODUCTION_API_URL = 'https://g600wrgq-3000.inc1.devtunnels.ms';
 export const LOCAL_API_PORT = 3000;
 export function backendURL() {
   if (typeof globalThis.location === 'object' && globalThis.location.origin && globalThis.location.origin !== 'null') {

@@ -482,14 +482,14 @@ async function animateOutcomeTruck(scene,success,orderedItems=[]){
 export async function playPaymentOutcome(outcome,{preview=false,message='',items=[]}={}){
   const main=document.getElementById('main');if(!main)return;
   const success=outcome==='success';
-  main.innerHTML=`<section class="payment-outcome-scene ${success?'is-success':'is-failure'}" aria-live="polite" aria-label="Payment ${success?'successful':'not confirmed'}"><div class="payment-truck-stage"><div class="payment-road" aria-hidden="true"></div></div><div class="payment-outcome-copy"><h1>${success?'Payment complete':'Payment not confirmed'}</h1><p></p><button type="button" class="button" data-action="payment-preview-return" hidden>Return to checkout</button></div></section>`;
+  main.innerHTML=`<section class="payment-outcome-scene ${success?'is-success':'is-failure'}" aria-live="polite" aria-label="Payment ${success?'successful':'failed'}"><div class="payment-truck-stage"><div class="payment-road" aria-hidden="true"></div></div><div class="payment-outcome-copy"><h1>${success?'Payment successful':'Payment failed'}</h1><p></p><button type="button" class="button" data-action="payment-preview-return" hidden>Return to checkout</button></div></section>`;
   const scene=main.querySelector('.payment-outcome-scene'),copy=scene.querySelector('.payment-outcome-copy p'),button=scene.querySelector('button');
   try{scene.querySelector('.payment-truck-stage').append(await loadPaymentShippingSvg());}
   catch(error){console.error('Payment animation could not load:',error);}
   button.dataset.preview=String(preview);
   scene.scrollIntoView?.({behavior:reduced()?'auto':'smooth',block:'start'});
   await animateOutcomeTruck(scene,success,items);
-  copy.textContent=preview?(success?'Success preview: this is how a verified payment will look. No payment, order or stock reservation was recorded.':'Failure preview: the cart is unchanged and you can retry. No payment, order or stock reservation was recorded.'):success?'Your order is confirmed and will ship via India Post.':message||'Your payment was not verified. Your cart is saved so you can retry.';
+  copy.textContent=preview?(success?'Success preview: this is how a verified payment will look. No payment, order or stock reservation was recorded.':'Failure preview: the cart is unchanged and you can retry. No payment, order or stock reservation was recorded.'):success?'Your order is confirmed and will ship via India Post.':message||'Payment failed. This order was cancelled and your cart is saved so you can try again.';
   if(preview||!success){button.hidden=false;await new Promise(resolve=>button.addEventListener('click',resolve,{once:true}));}
   else await new Promise(resolve=>setTimeout(resolve,reduced()?400:1800));
 }
