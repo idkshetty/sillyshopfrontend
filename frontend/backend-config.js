@@ -1,6 +1,6 @@
 // Public API URLs only. Never put server credentials in this file.
 // Production / public tunnel backend URL used by the hosted frontend.
-export const PRODUCTION_API_URL = 'https://g600wrgq-3000.inc1.devtunnels.ms';
+export const PRODUCTION_API_URL = 'https://sillyshopbackend.idkshetty26.workers.dev';
 export const LOCAL_API_PORT = 3000;
 export function backendURL() {
   if (typeof globalThis.location === 'object' && globalThis.location.origin && globalThis.location.origin !== 'null') {
