@@ -15,7 +15,7 @@ export const CONTENT_SCHEMA={
   artists:{label:'Artists page',fields:{navLabel:field('Artists nav link label','Artists'),eyebrow:field('Artists page eyebrow','hehe.cafe · independent makers'),heading:field('Artists page heading','Meet our artists'),description:field('Artists page intro','Choose an artist to explore their signature style and every handmade piece they’ve crafted for hehe.cafe.','textarea',400)}},
   collections:{label:'Fallback artwork images',fields:{paintingsImage:picture('Fallback image · Paintings (used when an artwork has no photo)','assets/paintings.svg'),clayImage:picture('Fallback image · Clay models','assets/clay-models.svg'),moldsImage:picture('Fallback image · Molds','assets/molds.svg'),rocksImage:picture('Fallback image · Rock paints','assets/rock-paints.svg')}},
   story:{label:'Story & studio section',fields:{pageTitle:field('Our story page heading','About hehe.cafe'),eyebrow:field('Story eyebrow','The space behind the art'),heading:field('Story heading','Welcome to hehe.cafe'),text1:body('Story paragraph one','hehe.cafe is an independent art café and online gallery built around original, human-made artworks. We keep the walls pale and quiet so every brushstroke, glaze and pigment study stands out on its own terms.'),text2:body('Story paragraph two','Every piece lists the artwork name, artist, medium and story upfront — shipped via India Post at ₹40 per item.'),caption:field('Mascot caption','hehe.cafe'),button:field('Story link label','Explore all artworks'),destination:link('Story link destination','#shop')}},
-  footer:{label:'Footer',fields:{description:field('Footer description','hehe.cafe · An independent art gallery & café storefront for original artworks.','textarea',500),heading1:field('First column heading','Explore hehe.cafe'),heading2:field('Second column heading','Information'),copyright:field('Copyright line ({year} inserts current year)','© {year} hehe.cafe.','text',300),locale:field('Region & currency label','INR ₹ · India Post'),privacyLabel:field('Privacy link label','Privacy'),termsLabel:field('Terms link label','Terms'),link1Label:field('Link 1 label','Home & banner'),link1Url:link('Link 1 destination','#home'),link2Label:field('Link 2 label','All artworks'),link2Url:link('Link 2 destination','#shop'),link3Label:field('Link 3 label','About hehe.cafe'),link3Url:link('Link 3 destination','#about'),link4Label:field('Link 4 label','Shipping (₹40/item)'),link4Url:link('Link 4 destination','#info/shipping'),link5Label:field('Link 5 label','About hehe.cafe'),link5Url:link('Link 5 destination','#about'),link6Label:field('Link 6 label','Shipping & delivery'),link6Url:link('Link 6 destination','#info/shipping'),link7Label:field('Link 7 label','Get in touch'),link7Url:link('Link 7 destination','#info/contact'),link8Label:field('Link 8 label','My account'),link8Url:link('Link 8 destination','#account')}},
+  footer:{label:'Footer',fields:{description:field('Footer description','hehe.cafe · An independent art gallery & café storefront for original handmade artworks crafted by independent artists.','textarea',500),heading1:field('First column heading','Explore hehe.cafe'),heading2:field('Second column heading','Policies & help'),copyright:field('Copyright line ({year} inserts current year)','© {year} hehe.cafe.','text',300),locale:field('Region & currency label','INR ₹ · India Post'),privacyLabel:field('Privacy link label','Privacy'),termsLabel:field('Terms link label','Terms'),link1Label:field('Link 1 label','Home'),link1Url:link('Link 1 destination','#home'),link2Label:field('Link 2 label','All artworks'),link2Url:link('Link 2 destination','#shop'),link3Label:field('Link 3 label','Meet our artists'),link3Url:link('Link 3 destination','#artists'),link4Label:field('Link 4 label','My account'),link4Url:link('Link 4 destination','#account'),link5Label:field('Link 5 label','Shipping (₹40/item)'),link5Url:link('Link 5 destination','#info/shipping'),link6Label:field('Link 6 label','Cancellation & returns'),link6Url:link('Link 6 destination','#info/refunds'),link7Label:field('Link 7 label','Contact & grievance'),link7Url:link('Link 7 destination','#info/contact'),link8Label:field('Link 8 label','Privacy policy'),link8Url:link('Link 8 destination','#info/privacy')}},
   pages:{label:'Contact & policy pages',fields:Object.fromEntries(Object.entries(POLICY_DEFAULTS).map(([key,value])=>[key,key.endsWith('Body')?body(key.replace('Body','')+' page text',value):field(key.replace('Title','')+' page title',value)]))},
   sections:{label:'Section visibility',fields:{collections:toggle('Show artwork catalogue on homepage'),story:toggle('Show homepage story'),footer:toggle('Show footer')}}
 };
@@ -49,7 +49,33 @@ export function footerMarkup(c,categoryLinks='') {
   const f=c.footer,links=start=>Array.from({length:4},(_,i)=>{const n=start+i;return `<a href="${e(f[`link${n}Url`])}">${e(f[`link${n}Label`])}</a>`;}).join('');
   const brandName = (!c.brand.name || c.brand.name === 'Silly Sensei') ? 'hehe.cafe' : c.brand.name;
   const hasCustomLogo = c.brand.logo && !/^assets\/brand-logo\.(?:webp|png)$/.test(c.brand.logo);
-  return `<div class="container"><div class="footer-top"><div><a href="#home" class="brand"><img class="brand-logo" src="${e(c.brand.logo)}" alt="${e(brandName)}" width="48" height="48" ${hasCustomLogo ? '' : 'hidden'}><span class="brand-wordmark">${e(brandName)}</span></a><p>${e(f.description)}</p></div><div class="footer-links"><h3>${e(f.heading1)}</h3>${links(1)}</div><div class="footer-links"><h3>${e(f.heading2)}</h3>${links(5)}</div></div><div class="footer-bottom"><span>${e(f.copyright.replaceAll('{year}',String(new Date().getFullYear()))).replace(e(c.brand.name),`<a href="#home" class="footer-brand-link">${e(brandName)}</a>`)}</span><div><a href="#info/refunds">${e(c.pages?.refundsTitle||'Cancellation & returns')}</a><a href="#info/privacy">${e(f.privacyLabel)}</a><a href="#info/terms">${e(f.termsLabel)}</a><span>${e(f.locale)}</span></div></div></div>`;
+  return `<div class="container">
+    <div class="footer-trust-strip" aria-label="Gallery highlights">
+      <div class="footer-trust-item"><strong>Original handmade art</strong><span>Packaged &amp; dispatched directly by the artist</span></div>
+      <div class="footer-trust-item"><strong>India Post tracked delivery</strong><span>₹40 per item across India</span></div>
+      <div class="footer-trust-item"><strong>Protected checkout</strong><span>Verified UPI, cards &amp; netbanking via Razorpay</span></div>
+    </div>
+    <div class="footer-top">
+      <div class="footer-brand-col">
+        <a href="#home" class="brand"><img class="brand-logo" src="${e(c.brand.logo)}" alt="${e(brandName)}" width="48" height="48" ${hasCustomLogo ? '' : 'hidden'}><span class="brand-wordmark">${e(brandName)}</span></a>
+        <p>${e(f.description)}</p>
+        <span class="footer-location-pill">Artist-direct · Vagamon, Kerala</span>
+      </div>
+      <div class="footer-links"><h3>${e(f.heading1)}</h3>${links(1)}</div>
+      <div class="footer-links"><h3>${e(f.heading2)}</h3>${links(5)}</div>
+      <div class="footer-links footer-support-col">
+        <h3>Support &amp; care</h3>
+        <a href="mailto:abhishekreddy2499@gmail.com">abhishekreddy2499@gmail.com</a>
+        <a href="tel:+918073263514">+91 8073 263 514</a>
+        <span class="footer-support-hours">Mon–Sat · 10 AM – 7 PM IST</span>
+        <a href="#info/contact">Grievance &amp; contact →</a>
+      </div>
+    </div>
+    <div class="footer-bottom">
+      <span>${e(f.copyright.replaceAll('{year}',String(new Date().getFullYear()))).replace(e(c.brand.name),`<a href="#home" class="footer-brand-link">${e(brandName)}</a>`)} · Operated by Abhishek Reddy</span>
+      <div class="footer-bottom-links"><a href="#info/refunds">${e(c.pages?.refundsTitle||'Cancellation & returns')}</a><a href="#info/privacy">${e(f.privacyLabel)}</a><a href="#info/terms">${e(f.termsLabel)}</a><span class="footer-locale-pill">${e(f.locale)}</span></div>
+    </div>
+  </div>`;
 }
 export function applyStoreContent(c,page,root=document) {
   const set=(selector,text)=>root.querySelectorAll(selector).forEach(el=>{el.textContent=text;});

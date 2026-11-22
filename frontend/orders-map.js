@@ -3,6 +3,9 @@ import { escapeHTML as e, money } from './commerce.js';
 import { validLocation, locationLink } from './location-utils.js';
 import { loadScript } from './browser-library.js';
 import { skeletonMarkup } from './skeletons.js';
+import { canPrintOrderLabel } from './admin-ui.js';
+
+const orderTotal = o => (o?.quote?.amount ? o.quote.amount / 100 : o?.estimatedSubtotal || 0);
 
 function pinMeta(order) {
   if (['cancelled', 'closed'].includes(order.status) || order.paymentStatus === 'refunded') {
@@ -77,6 +80,7 @@ export function mountOrdersMap(root, { getOrders, onPrintLabel, onViewOrder }) {
   function popupElementFor(order, meta) {
     const c = order.customer || {};
     const ref = order.id.slice(0, 8).toUpperCase();
+    const printable = canPrintOrderLabel(order);
     const wrap = document.createElement('div');
     wrap.className = 'order-map-popup';
     wrap.innerHTML = `<div class="order-map-popup-head">
@@ -85,13 +89,14 @@ export function mountOrdersMap(root, { getOrders, onPrintLabel, onViewOrder }) {
       </div>
       <p class="order-map-popup-name">${e(`${c.firstName || ''} ${c.lastName || ''}`.trim())} · ${e(c.phone || '')}</p>
       <p class="order-map-popup-addr">${e(c.address || '')}${c.apartment ? `, ${e(c.apartment)}` : ''}<br>${e(c.city || '')}, ${e(c.state || '')} ${e(c.postalCode || '')}</p>
-      <p class="order-map-popup-items">${(order.items || []).map(i => `${e(i.quantity)} × ${e(i.title)}`).join(', ')} · <strong>${money(order.estimatedSubtotal)}</strong></p>
+      <p class="order-map-popup-items">${(order.items || []).map(i => `${e(i.quantity)} × ${e(i.title)}`).join(', ')} · <strong>${money(orderTotal(order))}</strong></p>
       <div class="order-map-popup-actions">
-        <button type="button" class="button small" data-popup-print>Print label ↗</button>
+        ${printable ? '<button type="button" class="button small" data-popup-print>Print label ↗</button>' : ''}
         <button type="button" class="button outline small" data-popup-open>Open order</button>
         <a class="text-link" href="${e(locationLink(c))}" target="_blank" rel="noopener">Google Maps ↗</a>
       </div>`;
-    wrap.querySelector('[data-popup-print]').onclick = () => onPrintLabel?.(order);
+    const printBtn = wrap.querySelector('[data-popup-print]');
+    if (printBtn) printBtn.onclick = () => onPrintLabel?.(order);
     wrap.querySelector('[data-popup-open]').onclick = () => onViewOrder?.(order.id);
     return wrap;
   }
@@ -162,7 +167,7 @@ export function mountOrdersMap(root, { getOrders, onPrintLabel, onViewOrder }) {
               <span class="order-map-popup-badge ${meta.cls}">${e(meta.label)}</span>
             </div>
             <p class="orders-map-card-name">${e(`${c.firstName || ''} ${c.lastName || ''}`.trim())}</p>
-            <p class="orders-map-card-addr">${e(c.city || '')}, ${e(c.state || '')} ${e(c.postalCode || '')} · <strong>${money(o.estimatedSubtotal)}</strong></p>
+            <p class="orders-map-card-addr">${e(c.city || '')}, ${e(c.state || '')} ${e(c.postalCode || '')} · <strong>${money(orderTotal(o))}</strong></p>
             <div class="orders-map-card-actions">
               <button type="button" class="button outline small" data-focus-order="${e(o.id)}">Focus pin</button>
               <button type="button" class="text-link" data-open-order="${e(o.id)}">Open order →</button>
@@ -177,7 +182,7 @@ export function mountOrdersMap(root, { getOrders, onPrintLabel, onViewOrder }) {
           <div class="orders-map-cards">${unpinned.map(o => {
             const c = o.customer || {};
             return `<article class="orders-map-card is-unpinned">
-              <div class="orders-map-card-top"><strong>#${e(o.id.slice(0, 8).toUpperCase())}</strong><span class="small muted">${money(o.estimatedSubtotal)}</span></div>
+              <div class="orders-map-card-top"><strong>#${e(o.id.slice(0, 8).toUpperCase())}</strong><span class="small muted">${money(orderTotal(o))}</span></div>
               <p class="orders-map-card-name">${e(`${c.firstName || ''} ${c.lastName || ''}`.trim())}</p>
               <p class="orders-map-card-addr">${e(c.address || '')}, ${e(c.city || '')} ${e(c.postalCode || '')}</p>
               <div class="orders-map-card-actions">

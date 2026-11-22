@@ -269,6 +269,14 @@ export async function loadLabel(){return callBackend('getLabels');}
 export async function saveLabel(text){return callBackend('saveStoreData',{kind:'labels',value:text});}
 export async function loadSales(){return callBackend('loadSales');}
 export async function cancelRequest(id,reason){return callBackend('cancelRequest',{requestId:id,reason});}
+export async function observePublicReviews(onData,onError){return observePublic('reviews',v=>onData(Array.isArray(v)?v:(v&&typeof v==='object'?Object.values(v):[])),onError);}
+export async function saveOrderTracking(requestId,tracking={}){return callBackend('saveOrderTracking',{requestId,...tracking});}
+export async function issueRazorpayRefund(payload){return callBackend('issueRazorpayRefund',payload);}
+export async function submitCustomerReview(payload){return callBackend('submitCustomerReview',payload);}
+export async function loadMyReviews(){return callBackend('loadMyReviews',{});}
+export async function loadCustomerReviewsAdmin(){return callBackend('loadCustomerReviewsAdmin',{});}
+export async function moderateCustomerReview(reviewId,decision){return callBackend('moderateCustomerReview',{reviewId,decision});}
+export async function loadAdminAudit(){return callBackend('loadAdminAudit',{});}
 export async function callBackend(name,data={}){
  const {auth,app}=await backend();await auth.authStateReady();if(!auth.currentUser)throw new Error('Sign in to continue.');
  const url=backendURL()+'/api/'+encodeURIComponent(name);

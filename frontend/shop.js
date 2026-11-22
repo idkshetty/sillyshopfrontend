@@ -16,7 +16,7 @@ import {validLocation,locationLink} from './location-utils.js';
 import {openLabel,openBatchLabels,mountLabelTemplate} from './labels.js';
 import {createThermalPrinterController,getUnprintedOrders} from './thermal-printer.js';
 import {mountOrdersMap} from './orders-map.js';
-import {POLICY_TABS,normalizeAdminTab,countActionableOrders,adminSidebarMarkup,policySubnavMarkup,filterOrders,orderFilterCounts,ordersToolbarMarkup,orderCardMarkup,thermalPrinterDockMarkup} from './admin-ui.js';
+import {POLICY_TABS,normalizeAdminTab,countActionableOrders,canPrintOrderLabel,adminSidebarMarkup,policySubnavMarkup,filterOrders,orderFilterCounts,ordersToolbarMarkup,orderCardMarkup,thermalPrinterDockMarkup} from './admin-ui.js';
 import {decorateCartButtons,animateCart,animateCartCheckout,playPaymentOutcome,preloadPaymentOutcomeSvg,reviewSection,mountReviews,mountHeroBanner,mountArtistScrollPrompt,sampleArtworkBgFromImage} from './shop-effects.js';
 import {accountMarkup,ordersListMarkup,emailAuthCardMarkup} from './customer-dashboard.js';
 import {steppedProgress} from './stepped-progress.js';
@@ -36,6 +36,7 @@ import {mountBackupExport} from './backup-export.js';
 import {hamsterLoaderMarkup} from './hamster-loader.js';
 import {mountLiveSiteEditor} from './live-site-editor.js';
 import {flashControl} from './inline-edit.js';
+import {applyRouteSEO} from './seo.js';
 let storeSettings={...DEFAULT_SETTINGS};
 let settingsReady=true,settingsError='';
 let siteContent=normalizeContent(DEFAULT_CONTENT),contentDraft=null,contentEditor=null,contentReady=true,contentError='';
@@ -59,6 +60,7 @@ let artistStudioController = null, settingsPreviewController = null, productsPre
 let promosAdminController = null, homeLayoutController = null;
 let activePolicyTab = 'contact', orderSearch = '', orderStatusFilter = 'all';
 let highlightedOrderId = null, inlinePriceEditId = null;
+let publicReviews = [], adminReviewsList = [], adminReviewsLoaded = false, adminReviewFilter = 'pending', adminAuditList = [], adminAuditLoaded = false, adminAuditQuery = '', thermalDockExpanded = false;
 const expandedOrderIds = new Set();
 const previousPositiveStock = new Map();
 const rememberedProducts=new Map();
@@ -142,7 +144,7 @@ function createLoaderController(){
     }
   };
 }
-function persistCart(){try{localStorage.setItem(cartKey,JSON.stringify(cart));}catch{toast('Your browser could not save the cart. Keep this tab open.');}updateCartBadge();}
+function persistCart(){try{localStorage.setItem(cartKey,JSON.stringify(cart));}catch{toast('Your browser could not save your bag. Keep this tab open.');}updateCartBadge();}
 function clearPendingCheckout(){try{localStorage.removeItem(pendingCheckoutKey);}catch{}}
 function lines(){return selectedCartLines(cart,products,[...rememberedProducts.values()]);}
 function bagPricing(entries=lines()){
@@ -194,7 +196,23 @@ function cartCleanupBannerMarkup(){
   if(!cartCleanupNotes.length)return '';
   return `<div class="cart-cleanup-note" role="status"><div class="cart-cleanup-note-body"><strong>Bag updated</strong><ul>${cartCleanupNotes.map(note=>`<li>${e(note)}</li>`).join('')}</ul></div><button type="button" class="icon-button cart-cleanup-dismiss" data-action="dismiss-cart-notice" aria-label="Dismiss bag notice"><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button></div>`;
 }
-function updateCartBadge(){const count=cart.reduce((n,c)=>n+c.quantity,0);$('cart-count').textContent=count;$('cart-count').hidden=!count;if($('cart-header-count')){$('cart-header-count').textContent=count;$('cart-header-count').hidden=!count;}}
+function syncInBagButtons(root=document){
+  const inBag=new Set(cart.map(c=>c.id));
+  root.querySelectorAll('[data-action="add"],[data-action="add-detail"]').forEach(button=>{
+    if(!button||button.hasAttribute('disabled')&&!button.getAttribute('aria-busy'))return;
+    const id=button.dataset.id;
+    const has=Boolean(id&&inBag.has(id));
+    button.dataset.inBag=has?'true':'';
+    if(button.getAttribute('aria-busy')==='true')return;
+    button.classList.toggle('is-in-bag',has);
+    const labelSpan=button.querySelector('.add-to-cart');
+    const nextText=has?'In your bag ✓':'Add to bag';
+    if(labelSpan)labelSpan.textContent=nextText;
+    else if(!button.querySelector('span'))button.textContent=nextText;
+    button.setAttribute('aria-label',has?'Already in your bag — view bag':'Add artwork to bag');
+  });
+}
+function updateCartBadge(){const count=cart.reduce((n,c)=>n+c.quantity,0);$('cart-count').textContent=count;$('cart-count').hidden=!count;if($('cart-header-count')){$('cart-header-count').textContent=count;$('cart-header-count').hidden=!count;}syncInBagButtons();}
 function reconcileCart(){
   if(submitting||paymentSceneActive){updateCartBadge();return;}
   if(catalogSynced&&catalogReady&&!catalogError&&products.length&&cart.length){
@@ -213,7 +231,7 @@ function reconcileCart(){
 function updateCheckoutAvailability(){
   if(!$('checkout-form')||submitting||paymentSceneActive)return;
   const issues=cartIssues(cart,products,checkoutProducts),notice=$('checkout-availability');
-  const messages=catalogError?['Availability could not refresh. Your cart and delivery details are saved. Retry before submitting.']:!catalogReady?['Checking current availability…']:issues;
+  const messages=catalogError?['Availability could not refresh. Your bag and delivery details are saved. Retry before submitting.']:!catalogReady?['Checking current availability…']:issues;
   if(notice){notice.textContent=messages.join(' ');notice.hidden=!messages.length;}
   const review=$('review-checkout-cart');if(review)review.hidden=!messages.length;
   const submit=$('checkout-submit');if(submit)submit.disabled=submitting||messages.length>0;
@@ -225,6 +243,7 @@ function openDialog(id){
   if(!dialog.open){
     dialog.classList.remove('is-open');
     dialog.showModal();
+    void dialog.offsetWidth;
     requestAnimationFrame(()=>requestAnimationFrame(()=>{if(dialog.open)dialog.classList.add('is-open');}));
   }else{
     dialog.classList.add('is-open');
@@ -251,7 +270,7 @@ function closeDialog(dialog,{immediate=false}={}){
     };
     const onEnd=ev=>{if(ev.target===dialog&&ev.propertyName==='transform')finish();};
     dialog.addEventListener('transitionend',onEnd);
-    dialog._closeTimer=setTimeout(finish,340);
+    dialog._closeTimer=setTimeout(finish,520);
   });
 }
 function closeDialogs(opts){return Promise.all([...document.querySelectorAll('dialog[open]')].map(d=>closeDialog(d,opts)));}
@@ -280,14 +299,14 @@ function renderCart(){
   const bagTotal=pricing.totalPaise/100;
   const rows=entries.map(({product:p,quantity,total})=>`<div class="cart-row"><a class="cart-thumb-ring" href="#product/${e(p.id)}" data-action="close-dialog"><img src="${e(imageOf(p))}" alt="${e(p.title)}"></a><div class="cart-row-main"><div class="cart-row-head"><div><h3><a href="#product/${e(p.id)}" data-action="close-dialog">${e(p.title)}</a></h3><p class="cart-artist-meta">by ${e(p.artist||'Suprita Chatterjee')}</p></div><span class="cart-price-pill">${money(total)}</span></div><div class="cart-row-tools"><span class="cart-qty-pill" aria-label="Quantity ${quantity}">Qty ${quantity}</span><button class="remove-button" data-action="remove" data-id="${e(p.id)}" aria-label="Remove ${e(p.title)}">Remove</button></div></div></div>`).join('');
   const ticket=`<div class="cart-ticket-card"><div class="cart-ticket-left"><div class="cart-ticket-row"><span>Artworks subtotal</span><strong>${money(pricing.subtotalPaise/100)}</strong></div>${pricing.bundleDiscountPaise>0?`<div class="cart-ticket-row is-saving"><span>${e(pricing.bundleLabel||'Bundle savings')}</span><strong>−${money(pricing.bundleDiscountPaise/100)}</strong></div>`:''}${pricing.codeDiscountPaise>0?`<div class="cart-ticket-row is-saving"><span>Promo (${e(pricing.appliedCode)})</span><strong>−${money(pricing.codeDiscountPaise/100)}</strong></div>`:''}<div class="cart-ticket-row"><span>India Post shipping (${pricing.totalQty} × ₹${SHIPPING_CHARGE})</span><strong>${pricing.freeShipping?'Free':money(pricing.shippingPaise/100)}</strong></div><div class="cart-ticket-total"><small>Total</small><strong>INR ${e(money(bagTotal).replace(/^₹/,''))}</strong></div></div><div class="cart-ticket-collage" aria-hidden="true">${entries.slice(0,3).map(({product:p})=>`<img src="${e(imageOf(p))}" alt="">`).join('')}</div></div>`;
-  $('cart-content').innerHTML=`<div class="cart-checkout-flow cart-dark-sheet"><div class="cart-sheet-handle" aria-hidden="true"></div><div class="cart-checkout-pile"><section class="cart-checkout-card cart-checkout-current">${cleanupBanner}<div class="cart-checkout-items">${rows}</div>${bagOffersMarkup(entries,pricing,'cart')}<label class="cart-note cart-dark-note" for="order-note">Note for hehe.cafe <span class="muted">(optional)</span><textarea id="order-note" maxlength="1000" placeholder="Gift note, framing preference, or delivery instructions…">${e(orderNote)}</textarea></label>${ticket}<p class="small cart-limit-note">Limit ${MAX_ITEM_QUANTITY} per artwork · add as many artworks as you like.</p></section><section class="cart-checkout-card cart-checkout-confirmed" aria-hidden="true"><span class="cart-checkout-ready-icon" aria-hidden="true"><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 13l4 4L19 7"/></svg></span><h2>Opening checkout…</h2><p>Confirm your address to complete your order.</p></section></div><button class="cart-checkout-button cart-pill-checkout" type="button" data-action="cart-checkout"><svg class="cart-checkout-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 4h2l2.1 11.5a2 2 0 0 0 2 1.6h8.7a2 2 0 0 0 2-1.5L22 8H6"/><circle cx="10" cy="20" r="1.2"/><circle cx="18" cy="20" r="1.2"/></svg><span class="cart-checkout-label">Make Payment · ${money(bagTotal)}</span><span class="cart-pill-chevrons" aria-hidden="true"><svg class="ui-icon ui-chevrons" viewBox="0 0 28 16" aria-hidden="true"><path d="m4 3 5 5-5 5"/><path d="m12 3 5 5-5 5"/><path d="m20 3 5 5-5 5"/></svg></span><svg class="cart-checkout-check" viewBox="0 0 24 24" aria-hidden="true"><path d="m4 12 5 5L20 6"/></svg></button><button class="text-link full cart-dark-browse" data-action="close-dialog" style="display:block;margin:14px auto 4px">Continue browsing</button></div>`;
+  $('cart-content').innerHTML=`<div class="cart-checkout-flow cart-dark-sheet"><div class="cart-sheet-handle" aria-hidden="true"></div><div class="cart-checkout-pile"><section class="cart-checkout-card cart-checkout-current">${cleanupBanner}<div class="cart-checkout-items">${rows}</div>${bagOffersMarkup(entries,pricing,'cart')}<label class="cart-note cart-dark-note" for="order-note">Note for hehe.cafe <span class="muted">(optional)</span><textarea id="order-note" maxlength="1000" placeholder="Gift note, framing preference, or delivery instructions…">${e(orderNote)}</textarea></label>${ticket}<p class="small cart-limit-note">Limit ${MAX_ITEM_QUANTITY} per artwork · add as many artworks as you like.</p></section><section class="cart-checkout-card cart-checkout-confirmed" aria-hidden="true"><span class="cart-checkout-ready-icon" aria-hidden="true"><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 13l4 4L19 7"/></svg></span><h2>Opening checkout…</h2><p>Confirm your address to complete your order.</p></section></div><button class="cart-checkout-button cart-pill-checkout" type="button" data-action="cart-checkout"><svg class="cart-checkout-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 4h2l2.1 11.5a2 2 0 0 0 2 1.6h8.7a2 2 0 0 0 2-1.5L22 8H6"/><circle cx="10" cy="20" r="1.2"/><circle cx="18" cy="20" r="1.2"/></svg><span class="cart-checkout-label">Checkout · ${money(bagTotal)}</span><span class="cart-pill-chevrons" aria-hidden="true"><svg class="ui-icon ui-chevrons" viewBox="0 0 28 16" aria-hidden="true"><path d="m4 3 5 5-5 5"/><path d="m12 3 5 5-5 5"/><path d="m20 3 5 5-5 5"/></svg></span><svg class="cart-checkout-check" viewBox="0 0 24 24" aria-hidden="true"><path d="m4 12 5 5L20 6"/></svg></button><button class="text-link full cart-dark-browse" data-action="close-dialog" style="display:block;margin:14px auto 4px">Continue browsing</button></div>`;
 }
 function breadcrumbs(current,extra=''){return `<div class="breadcrumbs"><a href="#home">hehe.cafe</a><span>/</span>${extra}<span>${e(current)}</span></div>`;}
 function productCard(p){return productCardMarkup(p,siteContent);}
 function story(){return storyMarkup();}
 function renderHome(){
   if((!contentReady&&!contentError)||(!settingsReady&&!settingsError)){$('main').innerHTML=pageSkeleton('home');return;}
-  $('main').innerHTML=homeMarkup(products,storeSettings,siteContent,{catalogLoading:!catalogReady&&!catalogError,catalogError,filter,artists});
+  $('main').innerHTML=homeMarkup(products,storeSettings,siteContent,{catalogLoading:!catalogReady&&!catalogError,catalogError,filter,artists,customerReviews:publicReviews});
 }
 function renderShop(){
   const {page,id}=route();
@@ -311,7 +330,7 @@ function refreshFilterUI(keepOpen=false){
     }
   }
   renderProductResults();
-  decorateCartButtons();
+  decorateCartButtons();syncInBagButtons();
 }
 function renderArtists(){
   $('main').innerHTML=artistsPageMarkup(artists,products,siteContent);
@@ -371,7 +390,10 @@ function renderProduct(){
       <div class="product-topbar">
         <a href="#home" class="product-float-btn" aria-label="Back to all artworks"><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M19 12H5"/><path d="m12 19-7-7 7-7"/></svg></a>
         <span class="product-topbar-title">${e(p.title)}</span>
-        <button type="button" class="product-float-btn" data-action="zoom" aria-label="Zoom ${e(p.title)} image"><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M15 3h6v6"/><path d="M9 21H3v-6"/><path d="M21 3l-7 7"/><path d="M3 21l7-7"/></svg></button>
+        <div class="product-topbar-right">
+          <button type="button" class="product-float-btn" data-action="share-page" data-share-title="${e(`${p.title} by ${artist}`)}" data-share-text="${e(`Look at "${p.title}" (${productType}) by ${artist} on hehe.cafe — ${money(p.price)}`)}" data-share-url="${e(`https://hehe.cafe/#product/${p.id}`)}" aria-label="Share ${e(p.title)}"><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="m8.6 13.5 6.8 4"/><path d="m15.4 6.5-6.8 4"/></svg></button>
+          <button type="button" class="product-float-btn" data-action="zoom" aria-label="Zoom ${e(p.title)} image"><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M15 3h6v6"/><path d="M9 21H3v-6"/><path d="M21 3l-7 7"/><path d="M3 21l7-7"/></svg></button>
+        </div>
       </div>
       <div class="product-immersive-grid" data-product-card style="${themeStyle}">
         <div class="product-stage-column">
@@ -387,7 +409,10 @@ function renderProduct(){
           </div>
           <div class="product-submeta">
             <p class="detail-artist-line">by <a class="artist-link" href="#artist/${e(slug)}">${e(artist)}</a> · ${e(productType)}</p>
-            ${soldOut?'<span class="card-sold-out-pill detail-sold-pill">Sold out</span>':''}
+            <div class="product-submeta-actions">
+              ${soldOut?'<span class="card-sold-out-pill detail-sold-pill">Sold out</span>':''}
+              <button type="button" class="text-link share-inline-btn" data-action="share-page" data-share-title="${e(`${p.title} by ${artist}`)}" data-share-text="${e(`Look at "${p.title}" (${productType}) by ${artist} on hehe.cafe — ${money(p.price)}`)}" data-share-url="${e(`https://hehe.cafe/#product/${p.id}`)}">Share ↗</button>
+            </div>
           </div>
           <div class="product-tabs" role="tablist" aria-label="Artwork details">
             <button type="button" class="product-tab ${activeProductTab==='desc'?'is-active':''}" role="tab" aria-selected="${activeProductTab==='desc'}" data-action="product-tab" data-tab="desc">Description</button>
@@ -411,11 +436,15 @@ function renderProduct(){
               <strong>${money(p.price)}</strong>
               <span>+ ₹${SHIPPING_CHARGE} per item India Post shipping</span>
             </div>
-            ${soldOut?`<button type="button" class="product-cart-pill is-sold-out" disabled>Sold out</button>`:`<div class="product-purchase-btns"><button class="button product-cart-pill artwork-cart-btn" data-action="add-detail" data-id="${e(p.id)}" data-artwork-btn style="${themeStyle}">Add to Cart</button><button type="button" class="product-buy-link" data-action="buy-now" data-id="${e(p.id)}">Buy now →</button></div>`}
+            ${soldOut?`<button type="button" class="product-cart-pill is-sold-out" disabled>Sold out</button>`:`<div class="product-purchase-btns"><button class="button product-cart-pill artwork-cart-btn" data-action="add-detail" data-id="${e(p.id)}" data-artwork-btn style="${themeStyle}">Add to bag</button><button type="button" class="product-buy-link" data-action="buy-now" data-id="${e(p.id)}">Buy now →</button></div>`}
           </div>
         </div>
       </div>
     </div></div>
+    <div class="product-mobile-buybar" data-product-card style="${themeStyle}">
+      <div class="product-mobile-buybar-price"><strong>${money(p.price)}</strong><span>+ ₹${SHIPPING_CHARGE} per item shipping</span></div>
+      <div class="product-mobile-buybar-actions">${soldOut?'<button type="button" class="product-cart-pill is-sold-out" disabled>Sold out</button>':`<button type="button" class="button artwork-cart-btn" data-action="add-detail" data-id="${e(p.id)}" data-artwork-btn style="${themeStyle}">Add to bag</button><button type="button" class="product-mobile-buybar-buy" data-action="buy-now" data-id="${e(p.id)}">Buy now →</button>`}</div>
+    </div>
     <div class="product-related-band"><div class="container">
       <hr class="section-rule rule-terracotta" aria-hidden="true">
       <section class="related"><div class="section-heading"><h2>More artworks from hehe.cafe</h2><a href="#home" class="text-link">View all artworks →</a></div><div class="product-grid">${visible().filter(item=>item.id!==p.id).slice(0,3).map(productCard).join('')}</div></section>
@@ -501,7 +530,7 @@ function renderCheckout(){
   const meadowGroundSvg='<svg class="checkout-meadow-ground" viewBox="0 0 400 54" preserveAspectRatio="none" aria-hidden="true"><path d="M0 54V28C66 10 132 10 202 22c66 11 132-12 198-6v38Z" fill="#a2ab2a"/><path d="M0 54V36c74-10 144-4 214 4 64 7 126-8 186-2v16Z" fill="#849326"/></svg>';
   const meadowWrapMarkup=`<div class="checkout-meadow-wrap" aria-hidden="true">${meadowGroundSvg}<div class="checkout-meadow-strip"><img class="checkout-meadow-tile is-left" src="assets/checkout/meadow-hills.webp" alt="" decoding="async"><img class="checkout-meadow-tile is-main" src="assets/checkout/meadow-wide.webp" alt="" decoding="async"></div></div>`;
   const mobileSceneMarkup=`<div class="checkout-mobile-scene" aria-hidden="true">${meadowGroundSvg}<div class="checkout-mobile-strip"><img class="checkout-mobile-hills" src="assets/checkout/meadow-hills.webp" alt="" decoding="async"><img class="checkout-mobile-mid" src="assets/checkout/meadow-wide.webp" alt="" decoding="async"><img class="checkout-mobile-cat" src="assets/checkout/scene-cat-flowers.webp" alt="" decoding="async"></div></div>`;
-  $('main').innerHTML=`<div class="checkout-wrap">${cleanupBanner}<div class="page-head checkout-page-head">${breadcrumbs('Checkout','<a href="#home">Artworks</a><span>/</span>')}<h1>Checkout</h1><p>Complete your delivery details below.</p></div><div class="checkout-layout"><form id="checkout-form" class="checkout-form" novalidate>${!user||user.isAnonymous?'<div class="checkout-info"><strong>Keep this request in your account</strong><p>Sign in with Google before saving so you can track status, cancel and save your address.</p><button type="button" class="button outline small" data-action="signin">Continue with Google</button></div>':''}${checkoutProgress(checkoutStep)}<div class="checkout-step-stage"><section class="checkout-step" data-checkout-step="1" aria-labelledby="checkout-contact-heading"><h2 id="checkout-contact-heading" tabindex="-1">1 · Contact details</h2><p class="small muted">Where hehe.cafe can send order updates and delivery tracking.</p><div class="form-grid">${field('email','Email address',{type:'email',auto:'email',wide:true,max:254})}${field('phone','Mobile number',{type:'tel',auto:'tel',wide:true,max:16,placeholder:'+91 98765 43210'})}${field('firstName','First name',{auto:'given-name'})}${field('lastName','Last name',{auto:'family-name'})}</div></section><section class="checkout-step" data-checkout-step="2" aria-labelledby="checkout-delivery-heading"><h2 id="checkout-delivery-heading" tabindex="-1">2 · Delivery address</h2><p class="small muted">Add your full delivery address and confirm your pin on the map.</p><div class="form-grid"><label class="field wide" for="country">Country / region<select id="country" name="country" autocomplete="country-name"><option>India</option></select></label>${field('address','Street address',{auto:'address-line1',wide:true,max:300})}${field('apartment','Apartment, landmark, etc. (optional)',{auto:'address-line2',optional:true,wide:true,max:150})}${field('city','City',{auto:'address-level2'})}<label class="field" for="state">State<select id="state" name="state" autocomplete="address-level1" required><option value="">Select state</option>${states.map(s=>`<option ${checkoutDraft.state===s?'selected':''}>${s}</option>`).join('')}</select></label>${field('postalCode','PIN code',{auto:'postal-code',pattern:'[1-9][0-9]{5}',mode:'numeric',max:6})}</div>${mapPanel(checkoutDraft.location)}</section><section class="checkout-step" data-checkout-step="3" aria-labelledby="checkout-review-heading"><h2 id="checkout-review-heading" tabindex="-1">3 · Review &amp; pay</h2><div id="checkout-review" class="checkout-review"></div><label class="field wide checkout-note-field" for="checkout-notes"><span class="checkout-note-label"><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v11H7l-3 3V5Z"/><path d="M8 9h8M8 12.5h5"/></svg>Note for hehe.cafe (optional)</span><textarea id="checkout-notes" name="notes" maxlength="1000" placeholder="Add delivery instructions, framing requests or a gift note…">${e(noteVal)}</textarea><span id="checkout-notes-count" class="note-char-count">${String(noteVal).length} / 1000</span></label><p class="checkout-step-due"><strong>Total due now: ${money(orderTotal)}</strong> · ${pricing.freeShipping?'Includes free India Post shipping.':`Includes ₹${SHIPPING_CHARGE} × ${itemCount} (${money(pricing.shippingPaise/100)}) India Post shipping.`}</p><label class="checkbox checkout-consent-box"><input name="consent" type="checkbox" required ${consentChecked?'checked':''}><span>I agree to the <a href="#info/terms" class="text-link">Terms of service</a>, <a href="#info/shipping" class="text-link">Shipping policy</a> and <a href="#info/refunds" class="text-link">Cancellation &amp; returns policy</a>, and to the use of my details for this order as described in the <a href="#info/privacy" class="text-link">Privacy policy</a>.</span></label></section></div><div class="checkout-step-actions"><button id="checkout-prev" type="button" class="button outline checkout-back-btn" data-action="checkout-previous" hidden>← Back</button><button id="checkout-next" type="button" class="button checkout-next-btn" data-action="checkout-next">Continue →</button><button id="checkout-submit" type="submit" class="pos-transaction-container" hidden aria-label="Pay ${money(orderTotal)}"><span class="left-side" aria-hidden="true"><span class="card"><span class="card-line"></span><span class="buttons"></span></span><span class="post"><span class="post-line"></span><span class="screen"><span class="dollar">₹</span></span><span class="numbers"></span><span class="numbers-line2"></span></span></span><span class="right-side"><span class="new">Pay ${money(orderTotal)}</span><svg viewBox="0 0 451.846 451.847" class="arrow" aria-hidden="true"><path d="M345.441 248.292L151.154 442.573c-12.359 12.365-32.397 12.365-44.75 0-12.354-12.354-12.354-32.391 0-44.744L278.318 225.92 106.409 54.017c-12.354-12.359-12.354-32.394 0-44.748 12.354-12.359 32.391-12.359 44.75 0l194.287 194.284c6.177 6.18 9.262 14.271 9.262 22.366 0 8.099-3.091 16.196-9.267 22.373z"/></svg></span></button></div><p id="checkout-availability" class="notice" role="alert" hidden></p><button id="review-checkout-cart" type="button" class="text-link" data-action="review-checkout-cart" hidden>Review updated bag</button><p id="checkout-notice" class="notice" role="alert"></p><a href="#home" class="text-link">← Back to hehe.cafe</a>${mobileSceneMarkup}</form><aside class="checkout-summary summary-collapsed" aria-labelledby="summary-title">${summaryCatImg}<button type="button" class="summary-toggle" data-action="toggle-summary" aria-expanded="false" aria-controls="checkout-summary-content"><span class="summary-toggle-label">View order summary <svg viewBox="0 0 24 24" class="ui-chevron" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></span><strong>${money(orderTotal)}</strong></button><div id="checkout-summary-content"><div class="section-heading" style="margin:0 0 18px"><h2 id="summary-title">Order summary</h2><button class="text-link" data-action="cart">Edit bag</button></div>${entries.map(({product:p,quantity,total})=>`<div class="checkout-item"><div class="checkout-item-image"><img src="${e(imageOf(p))}" alt="${e(p.title)}"><span>${quantity}</span></div><div>${e(p.title)}<small>by ${e(p.artist||'Suprita Chatterjee')}</small></div><span>${money(total)}</span></div>`).join('')}${bagOffersMarkup(entries,pricing,'checkout')}<hr>${discountTotalRowsMarkup(pricing,`Artworks · ${itemCount} ${itemCount===1?'piece':'pieces'}`)}<div class="checkout-info checkout-protected-card"><span class="protected-shield" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 3 4 6.5v5.5c0 5 3.4 8.7 8 10 4.6-1.3 8-5 8-10V6.5L12 3Z"/><path d="m9 12 2 2 4-4"/></svg></span><div><strong>Protected checkout</strong><p>Your artwork is reserved upon payment verification.</p></div></div></div>${meadowWrapMarkup}</aside></div></div>`;
+  $('main').innerHTML=`<div class="checkout-wrap">${cleanupBanner}<div class="page-head checkout-page-head">${breadcrumbs('Checkout','<a href="#home">Artworks</a><span>/</span>')}<h1>Checkout</h1><p>Complete your delivery details below.</p></div><div class="checkout-layout"><form id="checkout-form" class="checkout-form" novalidate>${!user||user.isAnonymous?'<div class="checkout-info"><strong>Keep this request in your account</strong><p>Sign in with Google before saving so you can track status, cancel and save your address.</p><button type="button" class="button outline small" data-action="signin">Continue with Google</button></div>':''}${checkoutProgress(checkoutStep)}<div class="checkout-step-stage"><section class="checkout-step" data-checkout-step="1" aria-labelledby="checkout-contact-heading"><h2 id="checkout-contact-heading" tabindex="-1">1 · Contact details</h2><p class="small muted">Where hehe.cafe can send order updates and delivery tracking.</p><div class="form-grid">${field('email','Email address',{type:'email',auto:'email',wide:true,max:254})}${field('phone','Mobile number',{type:'tel',auto:'tel',wide:true,max:16,placeholder:'+91 98765 43210'})}${field('firstName','First name',{auto:'given-name'})}${field('lastName','Last name',{auto:'family-name'})}</div></section><section class="checkout-step" data-checkout-step="2" aria-labelledby="checkout-delivery-heading"><h2 id="checkout-delivery-heading" tabindex="-1">2 · Delivery address</h2><p class="small muted">Add your full delivery address and confirm your pin on the map.</p><div class="form-grid"><label class="field wide" for="country">Country / region<select id="country" name="country" autocomplete="country-name"><option>India</option></select></label>${field('address','Street address',{auto:'address-line1',wide:true,max:300})}${field('apartment','Apartment, landmark, etc. (optional)',{auto:'address-line2',optional:true,wide:true,max:150})}${field('city','City',{auto:'address-level2'})}<label class="field" for="state">State<select id="state" name="state" autocomplete="address-level1" required><option value="">Select state</option>${states.map(s=>`<option ${checkoutDraft.state===s?'selected':''}>${s}</option>`).join('')}</select></label>${field('postalCode','PIN code',{auto:'postal-code',pattern:'[1-9][0-9]{5}',mode:'numeric',max:6})}</div>${mapPanel(checkoutDraft.location)}</section><section class="checkout-step" data-checkout-step="3" aria-labelledby="checkout-review-heading"><h2 id="checkout-review-heading" tabindex="-1">3 · Review &amp; pay</h2><div id="checkout-review" class="checkout-review"></div><label class="field wide checkout-note-field" for="checkout-notes"><span class="checkout-note-label"><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v11H7l-3 3V5Z"/><path d="M8 9h8M8 12.5h5"/></svg>Note for hehe.cafe (optional)</span><textarea id="checkout-notes" name="notes" maxlength="1000" placeholder="Add delivery instructions, framing requests or a gift note…">${e(noteVal)}</textarea><span id="checkout-notes-count" class="note-char-count">${String(noteVal).length} / 1000</span></label><p class="checkout-step-due"><strong>Total due now: ${money(orderTotal)}</strong> · ${pricing.freeShipping?'Includes free India Post shipping.':`Includes ₹${SHIPPING_CHARGE} × ${itemCount} (${money(pricing.shippingPaise/100)}) India Post shipping.`}</p><label class="checkbox checkout-consent-box"><input name="consent" type="checkbox" required ${consentChecked?'checked':''}><span>I agree to the <a href="#info/terms" class="text-link">Terms of service</a>, <a href="#info/shipping" class="text-link">Shipping policy</a> and <a href="#info/refunds" class="text-link">Cancellation &amp; returns policy</a>, and to the use of my details for this order as described in the <a href="#info/privacy" class="text-link">Privacy policy</a>.</span></label></section></div><div class="checkout-step-actions"><button id="checkout-prev" type="button" class="button outline checkout-back-btn" data-action="checkout-previous" hidden>← Back</button><button id="checkout-next" type="button" class="button checkout-next-btn" data-action="checkout-next">Continue →</button><button id="checkout-submit" type="submit" class="pos-transaction-container" hidden aria-label="Pay ${money(orderTotal)}"><span class="left-side" aria-hidden="true"><span class="card"><span class="card-line"></span><span class="buttons"></span></span><span class="post"><span class="post-line"></span><span class="screen"><span class="dollar">₹</span></span><span class="numbers"></span><span class="numbers-line2"></span></span></span><span class="right-side"><span class="new">Pay ${money(orderTotal)} securely</span><svg viewBox="0 0 451.846 451.847" class="arrow" aria-hidden="true"><path d="M345.441 248.292L151.154 442.573c-12.359 12.365-32.397 12.365-44.75 0-12.354-12.354-12.354-32.391 0-44.744L278.318 225.92 106.409 54.017c-12.354-12.359-12.354-32.394 0-44.748 12.354-12.359 32.391-12.359 44.75 0l194.287 194.284c6.177 6.18 9.262 14.271 9.262 22.366 0 8.099-3.091 16.196-9.267 22.373z"/></svg></span></button></div><p class="checkout-razorpay-cue small muted" id="checkout-razorpay-cue" ${checkoutStep===3?'':'hidden'}>Secured by Razorpay · UPI, Cards, Netbanking &amp; Wallets</p><p id="checkout-availability" class="notice" role="alert" hidden></p><button id="review-checkout-cart" type="button" class="text-link" data-action="review-checkout-cart" hidden>Review updated bag</button><p id="checkout-notice" class="notice" role="alert"></p><a href="#home" class="text-link">← Back to hehe.cafe</a>${mobileSceneMarkup}</form><aside class="checkout-summary summary-collapsed" aria-labelledby="summary-title">${summaryCatImg}<button type="button" class="summary-toggle" data-action="toggle-summary" aria-expanded="false" aria-controls="checkout-summary-content"><span class="summary-toggle-label">View order summary <svg viewBox="0 0 24 24" class="ui-chevron" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></span><strong>${money(orderTotal)}</strong></button><div id="checkout-summary-content"><div class="section-heading" style="margin:0 0 18px"><h2 id="summary-title">Order summary</h2><button class="text-link" data-action="cart">Edit bag</button></div>${entries.map(({product:p,quantity,total})=>`<div class="checkout-item"><div class="checkout-item-image"><img src="${e(imageOf(p))}" alt="${e(p.title)}"><span>${quantity}</span></div><div>${e(p.title)}<small>by ${e(p.artist||'Suprita Chatterjee')}</small></div><span>${money(total)}</span></div>`).join('')}${bagOffersMarkup(entries,pricing,'checkout')}<hr>${discountTotalRowsMarkup(pricing,`Artworks · ${itemCount} ${itemCount===1?'piece':'pieces'}`)}<div class="checkout-info checkout-protected-card"><span class="protected-shield" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 3 4 6.5v5.5c0 5 3.4 8.7 8 10 4.6-1.3 8-5 8-10V6.5L12 3Z"/><path d="m9 12 2 2 4-4"/></svg></span><div><strong>Protected checkout</strong><p>Your artwork is reserved upon payment verification.</p></div></div></div>${meadowWrapMarkup}</aside></div></div>`;
   mountCheckoutMap();
   applyCheckoutProfile();
   if(user&&!user.isAnonymous&&(!accountState.loaded||accountState.error||accountState.profileError)&&!accountState.loading)void fetchCustomerAccount();
@@ -535,8 +564,8 @@ function setCheckoutStep(step,{focus=true}={}){
     const fallbackTimer=setTimeout(finish,560);
     Promise.all(checkoutStepAnimations.map(animation=>animation.finished.catch(()=>{}))).then(finish);
   }else pages.forEach(page=>{page.hidden=Number(page.dataset.checkoutStep)!==checkoutStep;});
-  const previous=$('checkout-prev'),next=$('checkout-next'),submit=$('checkout-submit');
-  previous.hidden=checkoutStep===1;next.hidden=checkoutStep===3;submit.hidden=checkoutStep!==3;
+  const previous=$('checkout-prev'),next=$('checkout-next'),submit=$('checkout-submit'),cue=$('checkout-razorpay-cue');
+  previous.hidden=checkoutStep===1;next.hidden=checkoutStep===3;submit.hidden=checkoutStep!==3;if(cue)cue.hidden=checkoutStep!==3;
   updateCheckoutAvailability();
   if(focus)form.querySelector(`[data-checkout-step="${checkoutStep}"] h2`)?.focus({preventScroll:canAnimate});
 }
@@ -1208,8 +1237,12 @@ function renderAdminContent(){
       $('admin-product-table').insertAdjacentHTML('beforebegin',`<section class="master-storage-panel"><div><span class="master-admin-pill">Master Admin</span><h2>Artwork image storage</h2><p>Firebase inline storage remains active until you switch to Freeimage.host (configure FREEIMAGE_API_KEY on the Worker first). Existing photos keep their links.</p></div><label class="admin-sort-control"><span>New artwork photos</span><select id="admin-image-storage" aria-label="Artwork image storage provider"><option value="firebase" ${storeSettings.productImageStorage==='firebase'?'selected':''}>Firebase (current)</option><option value="freeimage" ${storeSettings.productImageStorage==='freeimage'?'selected':''}>Freeimage.host</option></select></label></section>`);
     }
   }else if(adminTab==='requests'){
-    $('admin-content').innerHTML=`<div class="admin-title"><div><h1>Orders & requests</h1><p>Search, filter, update fulfilment, print thermal/A4 labels, and monitor live orders. Shipping is ₹${SHIPPING_CHARGE} per item.</p></div><div class="admin-title-actions">${isMasterAdmin?'<span class="master-admin-pill">Master Admin</span><button type="button" class="button outline small danger-button" data-action="delete-all-orders">Delete all orders</button>':''}<button class="button outline small" data-action="refresh-requests">Refresh</button></div></div><div id="requests-shell">${requestsLoaded?'':skeletonMarkup('rows','Loading requests…')}</div>`;
+    $('admin-content').innerHTML=`<div class="admin-title"><div><h1>Orders & requests</h1><p>Search, filter, update fulfilment, add India Post tracking, print thermal/A4 labels, and process refunds. Shipping is ₹${SHIPPING_CHARGE} per item.</p></div><div class="admin-title-actions">${isMasterAdmin?'<span class="master-admin-pill">Master Admin</span>':''}<button class="button outline small" data-action="refresh-requests">Refresh</button></div></div><div id="requests-shell">${requestsLoaded?'':skeletonMarkup('rows','Loading requests…')}</div>`;
     if(requestsLoaded)renderRequests();else fetchRequests();
+  }else if(adminTab==='reviews'){
+    renderAdminReviewsTab();
+  }else if(adminTab==='audit'){
+    renderAdminAuditTab();
   }else if(adminTab==='policies'){
     if(!contentReady&&!contentError){$('admin-content').innerHTML=skeletonMarkup('editor','Loading your published pages…');return;}
     $('admin-content').innerHTML=`<div class="admin-title"><div><h1>Pages &amp; policies</h1><p>Edit your contact page, About page visibility, and store policies from one place.</p></div></div><label class="visibility-toggle admin-about-toggle"><input type="checkbox" id="admin-toggle-about-page" ${storeSettings.aboutVisible?'checked':''}><span>Show "About hehe.cafe" page on storefront</span></label><label class="visibility-toggle admin-about-toggle"><input type="checkbox" id="admin-toggle-story-section" ${storeSettings.storyVisible!==false?'checked':''}><span>Show "Welcome to hehe.cafe" story section on homepage</span></label>${policySubnavMarkup(activePolicyTab)}<div id="admin-policy-editor"></div>`;
@@ -1369,7 +1402,130 @@ function renderAdminContent(){
     }
   }
 }
-function renderAdminTable(){const activeSort=storeSettings.artworkSort||'manual';const isManual=activeSort==='manual';const ordered=sortArtworks(products,activeSort);const list=ordered.filter(p=>`${p.title} ${p.artist||''} ${p.productType||''} ${p.sku} ${p.refNumber||''}`.toLowerCase().includes(adminSearch.toLowerCase()));$('admin-product-table').innerHTML=list.length?`<div class="table-wrap"><table class="admin-products-table"><thead><tr><th>Order</th><th>Artwork</th><th>Show in</th><th>Category</th><th>Artist</th><th>Inventory</th><th>Price</th><th></th></tr></thead><tbody>${list.map(p=>{const pos=ordered.findIndex(item=>item.id===p.id);const onHome=p.visible===true&&!p.archived;const onBanner=p.inBanner!==false&&!p.archived;const stockCell=`<button type="button" class="stock-toggle-pill ${p.stock?'is-in-stock':'is-sold-out'}" data-action="toggle-stock" data-id="${e(p.id)}" title="Click to toggle availability">${p.stock?`${p.stock} in stock`:'Sold out'}</button>`;const priceCell=inlinePriceEditId===p.id?`<form class="inline-price-form" data-inline-price-id="${e(p.id)}"><input type="number" name="price" min="0.01" max="10000000" step="0.01" value="${e(p.price)}" aria-label="New price for ${e(p.title)}" required><button type="submit" class="inline-price-save" aria-label="Save price"><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 13l4 4L19 7"/></svg></button><button type="button" class="inline-price-cancel" data-action="cancel-inline-price" aria-label="Cancel price edit"><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button></form>`:`<div class="price-cell-wrap"><strong>${money(p.price)}</strong><button type="button" class="inline-price-btn" data-action="edit-inline-price" data-id="${e(p.id)}" aria-label="Quick edit price for ${e(p.title)}" title="Quick edit price"><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M17 3a2.83 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg></button></div>`;return `<tr><td data-label="Order"><div class="admin-order-controls"><span class="order-rank-badge">#${pos+1}</span>${isManual?`<button type="button" class="order-move-btn" data-action="move-product" data-id="${e(p.id)}" data-dir="-1" aria-label="Move ${e(p.title)} up" ${pos===0?'disabled':''}><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19V5"/><path d="m5 12 7-7 7 7"/></svg></button><button type="button" class="order-move-btn" data-action="move-product" data-id="${e(p.id)}" data-dir="1" aria-label="Move ${e(p.title)} down" ${pos===ordered.length-1?'disabled':''}><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14"/><path d="m19 12-7 7-7-7"/></svg></button>`:''}</div></td><td data-label="Artwork"><div class="table-product"><img src="${e(imageOf(p))}" alt=""><span><strong>${e(p.title)}</strong>${p.refNumber?`<small class="artwork-ref">Ref ${e(p.refNumber)}</small>`:''}${p.featured?' <span title="Featured">✳</span>':''}</span></div></td><td data-label="Show in"><div class="admin-flag-group"><button type="button" class="admin-flag-toggle ${onHome?'is-on':''}" data-action="toggle-product-flag" data-id="${e(p.id)}" data-field="visible" aria-pressed="${onHome?'true':'false'}"><span class="toggle-track" aria-hidden="true"></span><span>Homepage</span></button><button type="button" class="admin-flag-toggle is-banner ${onBanner?'is-on':''}" data-action="toggle-product-flag" data-id="${e(p.id)}" data-field="inBanner" aria-pressed="${onBanner?'true':'false'}"><span class="toggle-track" aria-hidden="true"></span><span>Banner</span></button></div></td><td data-label="Category">${e(p.productType||'Fridge Magnet')}</td><td data-label="Artist">${e(p.artist||'Suprita Chatterjee')}</td><td data-label="Inventory">${stockCell}</td><td data-label="Price">${priceCell}</td><td class="table-action-cell"><button class="table-action" data-action="edit-product" data-id="${e(p.id)}" aria-label="Edit ${e(p.title)}">Edit artwork</button><button type="button" class="table-action is-danger" data-action="delete-product" data-id="${e(p.id)}" aria-label="Remove ${e(p.title)}">Remove</button></td></tr>`;}).join('')}</tbody></table></div>`:'<div class="empty-state"><h2>No artworks yet.</h2><p>Add an artwork or change your search.</p></div>';}
+function renderAdminReviewsList(){
+  const host=$('admin-reviews-host');
+  if(!host)return;
+  const list=(adminReviewsList||[]).filter(r=>adminReviewFilter==='all'||r.status===adminReviewFilter);
+  if(!list.length){
+    host.innerHTML=`<div class="empty-state"><h2>No ${adminReviewFilter==='all'?'':e(adminReviewFilter)+' '}reviews</h2><p>Buyer reviews submitted on delivered orders appear here for moderation.</p></div>`;
+    return;
+  }
+  host.innerHTML=`<div class="admin-reviews-grid">${list.map(r=>{
+    const stars='★'.repeat(Math.max(1,Math.min(5,Number(r.rating)||5)))+'☆'.repeat(5-Math.max(1,Math.min(5,Number(r.rating)||5)));
+    const titles=Array.isArray(r.artworkTitles)&&r.artworkTitles.length?r.artworkTitles.join(', '):'Original artwork';
+    return `<article class="dashboard-panel admin-review-card">
+      <div class="admin-review-head">
+        <div>
+          <strong>${e(r.authorName||'Collector')}</strong>
+          <span class="small muted">Order #${e(String(r.requestId||r.id).slice(0,8).toUpperCase())} · ${e(titles)}</span>
+        </div>
+        <span class="status-pill ${r.status==='approved'?'is-paid':r.status==='rejected'?'is-refunded':'is-unpaid'}">${e(r.status||'pending')}</span>
+      </div>
+      <div class="buyer-review-stars">${stars}</div>
+      <p class="admin-review-comment">“${e(r.comment||'')}”</p>
+      ${r.photo?`<div class="admin-review-photo"><img src="${e(safeImage(r.photo))}" alt="Buyer photo"></div>`:''}
+      <div class="admin-review-actions">
+        ${r.status!=='approved'?`<button type="button" class="button small" data-action="moderate-review" data-id="${e(r.id)}" data-decision="approved">Approve &amp; publish</button>`:''}
+        ${r.status!=='rejected'?`<button type="button" class="button outline small" data-action="moderate-review" data-id="${e(r.id)}" data-decision="rejected">Hide / reject</button>`:''}
+        <button type="button" class="text-link danger-link" data-action="moderate-review" data-id="${e(r.id)}" data-decision="deleted">Delete</button>
+      </div>
+    </article>`;
+  }).join('')}</div>`;
+}
+async function renderAdminReviewsTab(forceLoad=!adminReviewsLoaded){
+  const host=$('admin-content');
+  if(!host)return;
+  const counts={
+    pending:(adminReviewsList||[]).filter(r=>r.status==='pending').length,
+    approved:(adminReviewsList||[]).filter(r=>r.status==='approved').length,
+    rejected:(adminReviewsList||[]).filter(r=>r.status==='rejected').length,
+    all:(adminReviewsList||[]).length
+  };
+  host.innerHTML=`<div class="admin-title"><div><p class="eyebrow">Social proof</p><h1>Buyer photo reviews</h1><p>Approve collector reviews from delivered orders to display them live on the storefront.</p></div><div class="admin-title-actions"><button type="button" class="button outline small" data-action="refresh-admin-reviews">Refresh</button></div></div>
+  <div class="orders-filter-chips" style="margin-bottom:16px" role="group" aria-label="Filter buyer reviews">
+    ${[['pending','Pending'],['approved','Approved'],['rejected','Rejected'],['all','All']].map(([k,label])=>`<button type="button" class="orders-filter-chip ${adminReviewFilter===k?'is-active':''}" data-action="set-review-filter" data-filter="${k}">${label} <span>${counts[k]}</span></button>`).join('')}
+  </div>
+  <div id="admin-reviews-host">${forceLoad?skeletonMarkup('rows','Loading buyer reviews…'):''}</div>`;
+  if(forceLoad){
+    try{
+      adminReviewsList=await store.loadCustomerReviewsAdmin();
+      adminReviewsLoaded=true;
+      if(adminTab==='reviews')renderAdminReviewsTab(false);
+    }catch(error){
+      if($('admin-reviews-host'))$('admin-reviews-host').innerHTML=`<p class="notice" role="alert">${e(store.friendlyError(error))}</p>`;
+    }
+  }else{
+    renderAdminReviewsList();
+  }
+}
+function renderAdminAuditRows(){
+  const host=$('admin-audit-host');
+  if(!host)return;
+  const q=adminAuditQuery.trim().toLowerCase();
+  const list=(adminAuditList||[]).filter(a=>!q||`${a.action||''} ${a.actorEmail||a.actor||''} ${a.targetId||''} ${a.summary||''}`.toLowerCase().includes(q));
+  if(!list.length){
+    host.innerHTML='<div class="empty-state"><h2>No matching activity</h2><p>Studio admin actions appear here chronologically.</p></div>';
+    return;
+  }
+  host.innerHTML=`<div class="table-wrap"><table class="admin-audit-table"><thead><tr><th>Time (IST)</th><th>Actor</th><th>Action</th><th>Summary</th><th>Target</th></tr></thead><tbody>${list.map(a=>{
+    const dt=a.createdAt?new Date(Number(a.createdAt)).toLocaleString('en-IN',{dateStyle:'medium',timeStyle:'short'}):'Just now';
+    return `<tr><td>${e(dt)}</td><td>${e(a.actorEmail||a.actorUid||a.actor||'system')}</td><td><span class="audit-action-pill">${e(a.action||'event')}</span></td><td>${e(a.summary||'—')}</td><td><code>${e(a.targetId||a.requestId||a.productId||'')}</code></td></tr>`;
+  }).join('')}</tbody></table></div>`;
+}
+async function renderAdminAuditTab(forceLoad=!adminAuditLoaded){
+  const host=$('admin-content');
+  if(!host)return;
+  host.innerHTML=`<div class="admin-title"><div><p class="eyebrow">Operations trail</p><h1>Activity audit log</h1><p>Server-verified history of artwork edits, order updates, tracking, refunds and chain manager actions.</p></div><div class="admin-title-actions"><button type="button" class="button outline small" data-action="refresh-admin-audit">Refresh</button></div></div>
+  <div class="orders-search-row" style="margin-bottom:16px"><input id="admin-audit-search" type="search" value="${e(adminAuditQuery)}" placeholder="Search by actor email, action, summary, or ID…" aria-label="Search activity log"></div>
+  <div id="admin-audit-host">${forceLoad?skeletonMarkup('rows','Loading audit history…'):''}</div>`;
+  if(forceLoad){
+    try{
+      adminAuditList=await store.loadAdminAudit();
+      adminAuditLoaded=true;
+      if(adminTab==='audit')renderAdminAuditTab(false);
+    }catch(error){
+      if($('admin-audit-host'))$('admin-audit-host').innerHTML=`<p class="notice" role="alert">${e(store.friendlyError(error))}</p>`;
+    }
+  }else{
+    renderAdminAuditRows();
+  }
+}
+function openShareDialog({title='hehe.cafe',text='',url=location.href}={}){
+  const cleanUrl=String(url||location.href);
+  const shareText=String(text||title);
+  const waUrl=`https://wa.me/?text=${encodeURIComponent(`${shareText}\n${cleanUrl}`)}`;
+  $('editor-dialog').innerHTML=`<div class="drawer-header"><div><p class="eyebrow">Share</p><h2 id="editor-title">${e(title)}</h2></div><button class="icon-button" data-action="close-dialog" aria-label="Close share dialog"><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button></div>
+  <div class="share-sheet-body">
+    <p class="small muted">Send this original piece directly via WhatsApp or copy the link for Instagram Stories &amp; DMs.</p>
+    <div class="share-url-preview"><code>${e(cleanUrl)}</code></div>
+    <div class="share-sheet-actions">
+      <a class="button" href="${e(waUrl)}" target="_blank" rel="noopener">Share on WhatsApp ↗</a>
+      <button type="button" class="button outline" data-action="copy-share-link" data-share-url="${e(cleanUrl)}">Copy link for Instagram</button>
+      ${typeof navigator.share==='function'?`<button type="button" class="button outline" data-action="native-share" data-share-title="${e(title)}" data-share-text="${e(shareText)}" data-share-url="${e(cleanUrl)}">More apps…</button>`:''}
+    </div>
+  </div>`;
+  openDialog('editor-dialog');
+}
+function openRefundDialog(orderId){
+  const o=requestList.find(r=>r.id===orderId);
+  if(!o)return;
+  const totalPaise=Number(o.quote?.amount)||0;
+  const refundedPaise=Math.max(0,Number(o.refundedAmount)||0);
+  const maxRupees=Math.max(0,(totalPaise-refundedPaise)/100);
+  if(maxRupees<1){toast('No refundable Razorpay balance remains on this order.');return;}
+  $('editor-dialog').innerHTML=`<div class="drawer-header"><div><p class="eyebrow">Razorpay refund · #${e(o.id.slice(0,8).toUpperCase())}</p><h2 id="editor-title">Issue Razorpay refund</h2></div><button class="icon-button" data-action="close-dialog" aria-label="Close refund dialog"><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button></div>
+  <form id="refund-form" data-refund-id="${e(o.id)}">
+    <p class="small muted" style="margin-bottom:14px">Paid: ${money(totalPaise/100)} · Refunded so far: ${money(refundedPaise/100)} · Max refundable: <strong>${money(maxRupees)}</strong></p>
+    <div class="form-grid">
+      <label class="field">Refund amount (₹)<input name="amountRupees" type="number" step="0.01" min="1" max="${maxRupees.toFixed(2)}" value="${maxRupees.toFixed(2)}" required></label>
+      <label class="field">Reason (saved in audit log &amp; Razorpay notes)<input name="reason" maxlength="200" placeholder="e.g. Customer requested return or shipping adjustment"></label>
+    </div>
+    <p id="refund-notice" class="notice" role="alert"></p>
+    <div class="editor-actions"><span></span><button type="submit" class="button danger-button">Process Razorpay refund →</button></div>
+  </form>`;
+  openDialog('editor-dialog');
+}
+function renderAdminTable(){const activeSort=storeSettings.artworkSort||'manual';const isManual=activeSort==='manual';const ordered=sortArtworks(products,activeSort);const list=ordered.filter(p=>`${p.title} ${p.artist||''} ${p.productType||''} ${p.sku} ${p.refNumber||''}`.toLowerCase().includes(adminSearch.toLowerCase()));$('admin-product-table').innerHTML=list.length?`<div class="table-wrap"><table class="admin-products-table"><thead><tr><th>Order</th><th>Artwork</th><th>Show in</th><th>Inventory</th><th>Price</th><th></th></tr></thead><tbody>${list.map(p=>{const pos=ordered.findIndex(item=>item.id===p.id);const onHome=p.visible===true&&!p.archived;const onBanner=p.inBanner!==false&&!p.archived;const stockCell=`<button type="button" class="stock-toggle-pill ${p.stock?'is-in-stock':'is-sold-out'}" data-action="toggle-stock" data-id="${e(p.id)}" title="Click to toggle availability">${p.stock?`${p.stock} in stock`:'Sold out'}</button>`;const priceCell=inlinePriceEditId===p.id?`<form class="inline-price-form" data-inline-price-id="${e(p.id)}"><input type="number" name="price" min="0.01" max="10000000" step="0.01" value="${e(p.price)}" aria-label="New price for ${e(p.title)}" required><button type="submit" class="inline-price-save" aria-label="Save price"><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 13l4 4L19 7"/></svg></button><button type="button" class="inline-price-cancel" data-action="cancel-inline-price" aria-label="Cancel price edit"><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button></form>`:`<div class="price-cell-wrap"><strong>${money(p.price)}</strong><button type="button" class="inline-price-btn" data-action="edit-inline-price" data-id="${e(p.id)}" aria-label="Quick edit price for ${e(p.title)}" title="Quick edit price"><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M17 3a2.83 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg></button></div>`;return `<tr><td data-label="Order"><div class="admin-order-controls"><span class="order-rank-badge">#${pos+1}</span>${isManual?`<button type="button" class="order-move-btn" data-action="move-product" data-id="${e(p.id)}" data-dir="-1" aria-label="Move ${e(p.title)} up" ${pos===0?'disabled':''}><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19V5"/><path d="m5 12 7-7 7 7"/></svg></button><button type="button" class="order-move-btn" data-action="move-product" data-id="${e(p.id)}" data-dir="1" aria-label="Move ${e(p.title)} down" ${pos===ordered.length-1?'disabled':''}><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14"/><path d="m19 12-7 7-7-7"/></svg></button>`:''}</div></td><td data-label="Artwork"><div class="table-product"><img src="${e(imageOf(p))}" alt=""><span><strong>${e(p.title)}${p.featured?' <span title="Featured">✳</span>':''}</strong><small class="table-product-sub">${e(p.productType||'Fridge Magnet')} · ${e(p.artist||'Suprita Chatterjee')}${p.refNumber?` · Ref ${e(p.refNumber)}`:''}</small></span></div></td><td data-label="Show in"><div class="admin-flag-group"><button type="button" class="admin-flag-toggle ${onHome?'is-on':''}" data-action="toggle-product-flag" data-id="${e(p.id)}" data-field="visible" aria-pressed="${onHome?'true':'false'}"><span class="toggle-track" aria-hidden="true"></span><span>Homepage</span></button><button type="button" class="admin-flag-toggle is-banner ${onBanner?'is-on':''}" data-action="toggle-product-flag" data-id="${e(p.id)}" data-field="inBanner" aria-pressed="${onBanner?'true':'false'}"><span class="toggle-track" aria-hidden="true"></span><span>Banner</span></button></div></td><td data-label="Inventory">${stockCell}</td><td data-label="Price">${priceCell}</td><td class="table-action-cell"><button class="table-action" data-action="edit-product" data-id="${e(p.id)}" aria-label="Edit ${e(p.title)}">Edit artwork</button><button type="button" class="table-action is-danger" data-action="delete-product" data-id="${e(p.id)}" aria-label="Remove ${e(p.title)}">Remove</button></td></tr>`;}).join('')}</tbody></table></div>`:'<div class="empty-state"><h2>No artworks yet.</h2><p>Add an artwork or change your search.</p></div>';}
 async function quickToggleStock(id){
   if(!isAdmin)return;
   const idx=products.findIndex(p=>p.id===id);
@@ -1540,15 +1696,16 @@ async function markOrdersPrinted(ids,reset=false){
 function syncThermalDockUI(){
   const wrap=$('thermal-dock-wrap');
   if(!wrap)return;
-  const unprinted=getUnprintedOrders(requestList,{paidOnly:false});
-  const unprintedPaid=getUnprintedOrders(requestList,{paidOnly:true});
-  wrap.innerHTML=thermalPrinterDockMarkup(thermalPrinter.getState(),{unprintedCount:unprinted.length,unprintedPaidCount:unprintedPaid.length});
+  const printableOrders=requestList.filter(o=>canPrintOrderLabel(o));
+  const unprinted=getUnprintedOrders(printableOrders,{paidOnly:false});
+  const unprintedPaid=getUnprintedOrders(printableOrders,{paidOnly:true});
+  wrap.innerHTML=thermalPrinterDockMarkup(thermalPrinter.getState(),{unprintedCount:unprinted.length,unprintedPaidCount:unprintedPaid.length,expanded:thermalDockExpanded});
 }
 async function runContinuousAutoPrint(){
   if(!isAdmin||autoPrintRunning)return;
   const state=thermalPrinter.getState();
   if(!state.autoPrint)return;
-  const eligible=getUnprintedOrders(requestList,{paidOnly:state.autoPrintPaidOnly!==false});
+  const eligible=getUnprintedOrders(requestList.filter(o=>canPrintOrderLabel(o)),{paidOnly:state.autoPrintPaidOnly!==false});
   if(!eligible.length)return;
   if(!thermalPrinter.isHardwareConnected()){
     const fresh=eligible.filter(o=>!notifiedUnprintedIds.has(o.id));
@@ -1643,16 +1800,19 @@ function manualPaymentControls(o){
   else if(canUnpaid)controls='<button class="button outline small" data-action="manual-unpaid" data-id="'+e(o.id)+'">Mark unpaid</button>';
   else if(!captured&&!refunded)controls='<button type="button" class="button small" data-action="manual-paid" data-id="'+e(o.id)+'" '+(canPaid?'':'disabled')+'>Mark paid</button><button type="button" class="button outline small" disabled>Mark unpaid</button><p class="small muted">'+e(help)+'</p>';
   else controls='<p class="small muted">'+(manual?'Offline payment recorded · '+e(o.manualPayment?.method||'Payment')+' · Reference '+e(o.manualPayment?.reference||''):'Razorpay payment is verified. Use Razorpay refund controls for any reversal.')+'</p>';
-  const paymentTitle=captured?'Payment successful':refunded?'Payment refunded':(o.paymentStatus==='failed'||o.status==='cancelled'||o.razorpayOrderId)?'Payment failed':'Unpaid';
+  const isClosedOrFailed=o.paymentStatus==='failed'||['cancelled','closed'].includes(o.status);
+  const paymentTitle=captured?'Payment successful':refunded?'Payment refunded':(isClosedOrFailed&&(o.paymentStatus==='failed'||o.checkoutPayment||o.razorpayOrderId))?'Payment failed':(o.checkoutPayment||o.razorpayOrderId)?'Payment pending':'Unpaid';
   if(!captured&&!refunded)return '<section class="manual-payment-controls"><h3>Payment status · '+paymentTitle+'</h3><label class="field">Offline method<select name="manual-method"><option value="upi">UPI</option><option value="cash">Cash</option><option value="bank_transfer">Bank transfer</option><option value="other">Other</option></select></label><label class="field">Receipt / transaction reference<input name="manual-reference" minlength="3" maxlength="100" autocomplete="off" placeholder="UPI UTR or receipt number"></label>'+controls+'</section>';
   return '<section class="manual-payment-controls"><h3>Payment status · '+paymentTitle+(manual?' · Offline':'')+'</h3>'+controls+'</section>';
 }
 function updateBatchLabelBar(){
-  const validIds=new Set(requestList.map(o=>o.id));
+  const validIds=new Set(requestList.filter(o=>canPrintOrderLabel(o)).map(o=>o.id));
   for(const id of [...selectedLabelOrders])if(!validIds.has(id))selectedLabelOrders.delete(id);
   const count=selectedLabelOrders.size;
   const countEl=$('batch-label-count');
-  if(countEl)countEl.textContent=count?`${count} ${count===1?'order':'orders'} selected`:'Select orders to print labels (2" SEZNIK, 4×6" thermal or 4-in-1 A4)';
+  if(countEl)countEl.textContent=count?`${count} ${count===1?'order':'orders'} selected`:'Select orders to print batch labels';
+  const batchBar=document.querySelector('.batch-label-bar');
+  if(batchBar){batchBar.classList.toggle('is-has-selection',count>0);batchBar.classList.toggle('is-empty',count===0);}
   const clearBtn=document.querySelector('[data-action="select-labels-clear"]');
   const a4Btn=document.querySelector('[data-action="print-batch-a4"]');
   const twoInBtn=document.querySelector('[data-action="print-batch-2in"]');
@@ -1669,21 +1829,22 @@ function updateBatchLabelBar(){
 }
 function renderRequests(){
   const shell=$('requests-shell');if(!shell)return;
-  const validIds=new Set(requestList.map(o=>o.id));
+  const validIds=new Set(requestList.filter(o=>canPrintOrderLabel(o)).map(o=>o.id));
   for(const id of [...selectedLabelOrders])if(!validIds.has(id))selectedLabelOrders.delete(id);
   if(requestsError){shell.innerHTML=`<p class="notice" role="alert">${e(requestsError)}</p>`;return;}
+  const dangerZone=isMasterAdmin?`<details class="orders-danger-zone"><summary>Danger zone · Master Admin bulk tools</summary><p class="small muted">Permanently erase every order and its sales records. Any reserved stock is restored.</p><button type="button" class="button outline small danger-button" data-action="delete-all-orders">Delete all orders</button></details>`:'';
   if(!requestList.length){
-    shell.innerHTML=`<div id="thermal-dock-wrap"></div><div class="empty-state"><span class="empty-icon">↘</span><h2>All quiet for now.</h2><p>Saved checkout requests will appear here.</p></div>`;
+    shell.innerHTML=`<div id="thermal-dock-wrap"></div><div class="empty-state"><span class="empty-icon">↘</span><h2>All quiet for now.</h2><p>Saved checkout requests will appear here.</p></div>${dangerZone}`;
     syncThermalDockUI();
     return;
   }
-  shell.innerHTML=`<div id="thermal-dock-wrap"></div><div id="orders-toolbar-wrap">${ordersToolbarMarkup({counts:orderFilterCounts(requestList),query:orderSearch,status:orderStatusFilter,selectedCount:selectedLabelOrders.size})}</div><div id="orders-cards-wrap"></div>`;
+  shell.innerHTML=`<div id="thermal-dock-wrap"></div><div id="orders-toolbar-wrap">${ordersToolbarMarkup({counts:orderFilterCounts(requestList),query:orderSearch,status:orderStatusFilter,selectedCount:selectedLabelOrders.size})}</div><div id="orders-cards-wrap"></div>${dangerZone}`;
   renderOrdersCards();
 }
 function renderOrdersCards(){
   syncThermalDockUI();
   const wrap=$('orders-cards-wrap');if(!wrap)return;
-  const validIds=new Set(requestList.map(o=>o.id));
+  const validIds=new Set(requestList.filter(o=>canPrintOrderLabel(o)).map(o=>o.id));
   for(const id of [...selectedLabelOrders])if(!validIds.has(id))selectedLabelOrders.delete(id);
   const counts=orderFilterCounts(requestList);
   document.querySelectorAll('[data-action="set-order-filter"]').forEach(btn=>{
@@ -1726,7 +1887,7 @@ function openEditor(id){
   if(!isAdmin)return;editingId=id||null;const ordered=sortArtworks(products);const currentIndex=id?ordered.findIndex(item=>item.id===id):-1;const defaultOrder=currentIndex>=0?(Number.isInteger(ordered[currentIndex].displayOrder)&&ordered[currentIndex].displayOrder<1000?ordered[currentIndex].displayOrder:currentIndex+1):ordered.length+1;const p=products.find(p=>p.id===id)||{title:'',artist:'Suprita Chatterjee',productType:'Fridge Magnet',tag:'',displayOrder:defaultOrder,bgColor:'',description:'',category:'paintings',price:'',stock:1,visible:true,inBanner:true,images:[],material:'',dimensions:'',care:'',sku:''};editingImages=[...p.images];
   const orderVal=Number.isInteger(p.displayOrder)&&p.displayOrder<1000?p.displayOrder:defaultOrder;
   const artistChoices=mergeArtistsWithProducts(artists,products,{includeHidden:true});
-  $('editor-dialog').innerHTML=`<div class="drawer-header"><div><p class="eyebrow">hehe.cafe / Artworks</p><h2 id="editor-title">${id?'Edit artwork':'Add artwork'}</h2></div><button class="icon-button" data-action="close-dialog" aria-label="Close artwork editor"><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button></div><form id="product-form"><input type="hidden" name="category" value="${e(p.category||'paintings')}"><input type="hidden" id="product-bg-color" name="bgColor" value="${e(p.bgColor||'')}"><datalist id="artist-name-options">${artistChoices.map(a=>`<option value="${e(a.name)}">`).join('')}</datalist><div class="form-grid"><label class="field">Artwork name<input name="title" required maxlength="120" value="${e(p.title)}" placeholder="e.g. Monsoon Window II"></label><label class="field">Artist name<input name="artist" list="artist-name-options" required maxlength="120" value="${e(p.artist||'Suprita Chatterjee')}" placeholder="e.g. Suprita Chatterjee"></label><label class="field">Category (shown on card)<input name="productType" list="product-type-options" required maxlength="60" value="${e(p.productType||'Fridge Magnet')}" placeholder="e.g. Fridge Magnet"><datalist id="product-type-options"><option value="Fridge Magnet"><option value="Clay Frame"><option value="Original Painting"><option value="Coaster"><option value="Keychain"></datalist></label><label class="field">Product tag / badge (optional)<input name="tag" maxlength="60" value="${e(p.tag||'')}" placeholder="e.g. Special edition (leave blank for none)"></label><label class="field wide">Artwork description &amp; story<textarea name="description" maxlength="3000" placeholder="Describe the artwork, inspiration, texture and story…">${e(p.description)}</textarea></label><label class="field">Display order (1 = shown first)<input name="displayOrder" type="number" min="1" max="10000" step="1" value="${e(orderVal)}"></label><label class="field">Price (₹)<input name="price" type="number" required min="0.01" max="10000000" step="0.01" value="${e(p.price)}"></label><label class="field">Compare-at price (₹, optional)<input name="comparePrice" type="number" min="0" max="10000000" step="0.01" value="${p.comparePrice||''}"></label><label class="field">Available quantity (0 = Sold out, 1 = In stock)<input name="stock" type="number" required min="0" max="100000" step="1" value="${p.stock}"></label><label class="field">Artwork reference<input value="${e(p.refNumber||'Assigned after save')}" readonly aria-label="Artwork reference"></label><label class="field">Catalogue ref / SKU (optional)<input name="sku" maxlength="80" value="${e(p.sku)}"></label><label class="field">Medium / Material (optional)<input name="material" maxlength="150" value="${e(p.material)}" placeholder="e.g. Gouache on 300gsm cotton paper"></label><label class="field">Dimensions (optional)<input name="dimensions" maxlength="150" value="${e(p.dimensions)}" placeholder="e.g. 12 × 16 inches"></label><label class="field wide">Care &amp; framing notes (optional)<input name="care" maxlength="500" value="${e(p.care)}"></label><label class="field wide">Additional image URLs (one per line)<textarea id="product-image-urls" name="imageUrls" placeholder="https://…"></textarea></label><label class="field wide">Or upload artwork photos · JPG, PNG, WebP · up to 6 MB each<input id="product-files" name="images" type="file" accept="image/jpeg,image/png,image/webp" multiple ></label></div><div id="editor-saved-images" class="image-preview-grid"></div><div id="editor-image-preview" class="image-preview-grid"></div><section class="editor-card-preview-wrap" aria-label="Live artwork card preview"><p class="eyebrow">Live storefront card preview</p><div id="editor-card-preview" class="editor-card-preview"></div></section><p class="small muted" style="margin-top:12px">Up to 8 images. The first image is your cover — its background color is detected automatically when Artwork Color button mode is enabled.</p><label class="checkbox"><input type="checkbox" name="visible" ${p.visible?'checked':''}>Show on homepage</label><label class="checkbox"><input type="checkbox" name="inBanner" ${p.inBanner!==false?'checked':''}>Show in homepage banner</label><label class="checkbox"><input type="checkbox" name="featured" ${p.featured?'checked':''}>Feature on homepage</label><div class="editor-actions">${id?`<div class="admin-title-actions"><button type="button" class="danger-link" data-action="archive-product" data-id="${e(id)}">Archive artwork</button><button type="button" class="danger-link" data-action="delete-product" data-id="${e(id)}">Remove artwork</button></div>`:'<span></span>'}<button id="save-product" class="button" type="submit">${id?'Save changes':'Add artwork'} →</button></div><p id="product-notice" class="notice" role="alert"></p></form>`;renderSavedProductImages();renderEditorCardPreview();openDialog('editor-dialog');
+  $('editor-dialog').innerHTML=`<div class="drawer-header"><div><p class="eyebrow">hehe.cafe / Artworks</p><h2 id="editor-title">${id?'Edit artwork':'Add artwork'}</h2></div><button class="icon-button" data-action="close-dialog" aria-label="Close artwork editor"><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button></div><form id="product-form"><input type="hidden" name="category" value="${e(p.category||'paintings')}"><input type="hidden" id="product-bg-color" name="bgColor" value="${e(p.bgColor||'')}"><datalist id="artist-name-options">${artistChoices.map(a=>`<option value="${e(a.name)}">`).join('')}</datalist><div class="editor-modal-layout"><div class="editor-form-col"><fieldset class="editor-section"><legend>Artwork basics</legend><div class="form-grid"><label class="field">Artwork name<input name="title" required maxlength="120" value="${e(p.title)}" placeholder="e.g. Monsoon Window II"></label><label class="field">Artist name<input name="artist" list="artist-name-options" required maxlength="120" value="${e(p.artist||'Suprita Chatterjee')}" placeholder="e.g. Suprita Chatterjee"></label><label class="field">Category (shown on card)<input name="productType" list="product-type-options" required maxlength="60" value="${e(p.productType||'Fridge Magnet')}" placeholder="e.g. Fridge Magnet"><datalist id="product-type-options"><option value="Fridge Magnet"><option value="Clay Frame"><option value="Original Painting"><option value="Coaster"><option value="Keychain"></datalist></label><label class="field">Product tag / badge (optional)<input name="tag" maxlength="60" value="${e(p.tag||'')}" placeholder="e.g. Special edition (leave blank for none)"></label><label class="field wide">Artwork description &amp; story<textarea name="description" maxlength="3000" placeholder="Describe the artwork, inspiration, texture and story…">${e(p.description)}</textarea></label></div></fieldset><fieldset class="editor-section"><legend>Pricing &amp; inventory</legend><div class="form-grid"><label class="field">Price (₹)<input name="price" type="number" required min="0.01" max="10000000" step="0.01" value="${e(p.price)}"></label><label class="field">Compare-at price (₹, optional)<input name="comparePrice" type="number" min="0" max="10000000" step="0.01" value="${p.comparePrice||''}"></label><label class="field">Available quantity (0 = Sold out, 1 = In stock)<input name="stock" type="number" required min="0" max="100000" step="1" value="${p.stock}"></label><label class="field">Display order (1 = first)<input name="displayOrder" type="number" min="1" max="10000" step="1" value="${e(orderVal)}"></label><label class="field">Artwork reference<input value="${e(p.refNumber||'Assigned after save')}" readonly aria-label="Artwork reference"></label><label class="field">Catalogue ref / SKU (optional)<input name="sku" maxlength="80" value="${e(p.sku)}"></label></div></fieldset><fieldset class="editor-section"><legend>Materials &amp; care</legend><div class="form-grid"><label class="field">Medium / Material (optional)<input name="material" maxlength="150" value="${e(p.material)}" placeholder="e.g. Gouache on 300gsm cotton paper"></label><label class="field">Dimensions (optional)<input name="dimensions" maxlength="150" value="${e(p.dimensions)}" placeholder="e.g. 12 × 16 inches"></label><label class="field wide">Care &amp; framing notes (optional)<input name="care" maxlength="500" value="${e(p.care)}"></label></div></fieldset><fieldset class="editor-section"><legend>Artwork photos</legend><div class="form-grid"><label class="field wide">Additional image URLs (one per line)<textarea id="product-image-urls" name="imageUrls" placeholder="https://…"></textarea></label><label class="field wide">Or upload artwork photos · JPG, PNG, WebP · up to 6 MB each<input id="product-files" name="images" type="file" accept="image/jpeg,image/png,image/webp" multiple ></label></div><div id="editor-saved-images" class="image-preview-grid"></div><div id="editor-image-preview" class="image-preview-grid"></div><p class="small muted" style="margin-top:10px">Up to 8 images. The first image is your cover — its background color is detected automatically.</p></fieldset></div><div class="editor-preview-col"><section class="editor-card-preview-wrap" aria-label="Live artwork card preview"><p class="eyebrow">Live storefront card preview</p><div id="editor-card-preview" class="editor-card-preview"></div></section><div class="editor-visibility-box"><label class="checkbox"><input type="checkbox" name="visible" ${p.visible?'checked':''}>Show on homepage</label><label class="checkbox"><input type="checkbox" name="inBanner" ${p.inBanner!==false?'checked':''}>Show in homepage banner</label><label class="checkbox"><input type="checkbox" name="featured" ${p.featured?'checked':''}>Feature on homepage</label></div><div class="editor-actions">${id?`<div class="admin-title-actions"><button type="button" class="danger-link" data-action="archive-product" data-id="${e(id)}">Archive artwork</button><button type="button" class="danger-link" data-action="delete-product" data-id="${e(id)}">Remove artwork</button></div>`:'<span></span>'}<button id="save-product" class="button" type="submit">${id?'Save changes':'Add artwork'} →</button></div><p id="product-notice" class="notice" role="alert"></p></div></div></form>`;renderSavedProductImages();renderEditorCardPreview();openDialog('editor-dialog');
   const fileLabel=$('product-files').closest('label');
   fileLabel.firstChild.textContent=storeSettings.productImageStorage==='firebase'?'Upload artwork photos · JPG, PNG, WebP · up to 6 MB each':'Upload artwork photos · JPG, PNG, WebP · up to 20 MB each (Freeimage.host)';
 }
@@ -1797,7 +1958,7 @@ function render(){
   if(deferPageRender(render))return;
   if(['about','info'].includes(page)&&!contentReady&&!contentError){$('main').innerHTML=pageSkeleton(page);return;}
   if(page==='home')renderHome();else if(['shop','collection','search'].includes(page))renderShop();else if(page==='artists')renderArtists();else if(page==='artist')renderArtistProfile(route().id);else if(page==='product')renderProduct();else if(page==='checkout')renderCheckout();else if(page==='admin')renderAdmin();else if(page==='account')renderAccount();else if(page==='about'){if(!storeSettings.aboutVisible)renderHome();else $('main').innerHTML=`<div class="container"><div class="page-head">${breadcrumbs('About hehe.cafe')}<h1>About hehe.cafe</h1></div><hr class="section-rule rule-terracotta" aria-hidden="true">${story()}</div>`;}else if(page==='info')renderInfo();else renderNotFound();
-  applyAboutPageVisibility();applyStoreContent(siteContent,page);decorateCartButtons();stopReviews=mountReviews();stopHeroBanner=mountHeroBanner();mountLogout();syncAdminOrdersLivePoll();
+  applyAboutPageVisibility();applyStoreContent(siteContent,page);applyRouteSEO({page,id:route().id,products:visible(),artists:mergeArtistsWithProducts(artists,products,{includeHidden:false}),content:siteContent});decorateCartButtons();syncInBagButtons();stopReviews=mountReviews();stopHeroBanner=mountHeroBanner();mountLogout();syncAdminOrdersLivePoll();
   if(page==='home'||page==='shop')stopArtistPrompt=mountArtistScrollPrompt({dismissed:artistPromptDismissed,onDismiss:()=>{artistPromptDismissed=true;}});
   liveSiteEditor?.sync();
 }
@@ -2076,10 +2237,11 @@ document.addEventListener('click',async event=>{
     else if(action==='search'){openDialog('search-dialog');$('search-input').focus();renderSearch();}
     else if(action==='menu'){const menu=$('mobile-menu');menu.hidden=!menu.hidden;target.setAttribute('aria-expanded',String(!menu.hidden));}
     else if(action==='collections'){const menu=$('collection-menu');menu.hidden=!menu.hidden;target.setAttribute('aria-expanded',String(!menu.hidden));}
-    else if(action==='add'){if(addToCart(id,1,false)){await animateCart(target);if(target.isConnected){openDialog('cart-dialog');setTimeout(()=>{if(target.isConnected){target.classList.remove('clicked');target.removeAttribute('aria-label');}},250);}}}
+    else if(action==='scroll-policy-sec'){const sec=document.getElementById(target.dataset.target||'');sec?.scrollIntoView({behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth',block:'start'});}
+    else if(action==='add'){if(cart.some(c=>c.id===id)){renderCart();openDialog('cart-dialog');return;}if(addToCart(id,1,false)){await animateCart(target);syncInBagButtons();if(target.isConnected){openDialog('cart-dialog');setTimeout(()=>{if(target.isConnected){target.classList.remove('clicked');target.removeAttribute('aria-label');}},250);}}}
     else if(action==='quick-buy'){if(cart.some(c=>c.id===id)||addToCart(id,1,false)){$('main').dataset.smoothNav='checkout';await closeDialogs({immediate:true});location.hash='checkout';}}
-    else if(action==='print-label'){if(isAdmin){const request=requestList.find(o=>o.id===id);if(request)await openLabel(request,{load:store.loadLabel,save:store.saveLabel,thermalPrinter,onPrinted:ids=>markOrdersPrinted(ids)});}}
-    else if(action==='add-detail'||action==='buy-now'){if(action==='buy-now'){if(cart.some(c=>c.id===id)||addToCart(id,1,false)){$('main').dataset.smoothNav='checkout';location.hash='checkout';}}else if(addToCart(id,1,false)){await animateCart(target);if(target.isConnected){openDialog('cart-dialog');setTimeout(()=>{if(target.isConnected){target.classList.remove('clicked');target.removeAttribute('aria-label');}},250);}}}
+    else if(action==='print-label'){if(isAdmin){const request=requestList.find(o=>o.id===id);if(request){if(!canPrintOrderLabel(request))return toast('Labels are only available for active paid orders.');await openLabel(request,{load:store.loadLabel,save:store.saveLabel,thermalPrinter,onPrinted:ids=>markOrdersPrinted(ids)});}}}
+    else if(action==='add-detail'||action==='buy-now'){if(action==='buy-now'){if(cart.some(c=>c.id===id)||addToCart(id,1,false)){$('main').dataset.smoothNav='checkout';location.hash='checkout';}}else{if(cart.some(c=>c.id===id)){renderCart();openDialog('cart-dialog');return;}if(addToCart(id,1,false)){await animateCart(target);syncInBagButtons();if(target.isConnected){openDialog('cart-dialog');setTimeout(()=>{if(target.isConnected){target.classList.remove('clicked');target.removeAttribute('aria-label');}},250);}}}}
     else if(action==='remove'){clearCustomization(id);cart=cart.filter(c=>c.id!==id);persistCart();renderCart();if(route().page==='checkout'){captureCheckout();renderCheckout();}}
     else if(action==='quantity'){
       const context=target.dataset.context,delta=Number(target.dataset.delta),control=target.closest('.quantity');
@@ -2405,8 +2567,9 @@ document.addEventListener('click',async event=>{
     }
     else if(action==='print-unprinted-labels'&&isAdmin){
       const state=thermalPrinter.getState();
-      const pool=getUnprintedOrders(requestList,{paidOnly:state.autoPrintPaidOnly!==false});
-      const targets=pool.length?pool:getUnprintedOrders(requestList,{paidOnly:false});
+      const printableOrders=requestList.filter(o=>canPrintOrderLabel(o));
+      const pool=getUnprintedOrders(printableOrders,{paidOnly:state.autoPrintPaidOnly!==false});
+      const targets=pool.length?pool:getUnprintedOrders(printableOrders,{paidOnly:false});
       if(!targets.length)return toast('No unprinted orders waiting.');
       if(thermalPrinter.isHardwareConnected()){
         const template=await loadCachedLabelTemplate().catch(()=>({}));
@@ -2430,14 +2593,14 @@ document.addEventListener('click',async event=>{
     else if(action==='view-requests'){adminTab='requests';requestsCursor=null;requestsHasMore=false;requestsLoaded=false;location.hash='admin/requests';}
     else if(action==='select-labels-four'&&isAdmin){
       selectedLabelOrders.clear();
-      const visibleOrders=filterOrders(requestList,{query:orderSearch,status:orderStatusFilter});
+      const visibleOrders=filterOrders(requestList,{query:orderSearch,status:orderStatusFilter}).filter(o=>canPrintOrderLabel(o));
       const paid=visibleOrders.filter(o=>o.paymentStatus==='captured');
       const pool=paid.length>=4?paid:[...paid,...visibleOrders.filter(o=>o.paymentStatus!=='captured')];
       pool.slice(0,4).forEach(o=>selectedLabelOrders.add(o.id));
       updateBatchLabelBar();
     }
     else if(action==='select-labels-all'&&isAdmin){
-      filterOrders(requestList,{query:orderSearch,status:orderStatusFilter}).forEach(o=>selectedLabelOrders.add(o.id));
+      filterOrders(requestList,{query:orderSearch,status:orderStatusFilter}).filter(o=>canPrintOrderLabel(o)).forEach(o=>selectedLabelOrders.add(o.id));
       updateBatchLabelBar();
     }
     else if(action==='select-labels-clear'&&isAdmin){
@@ -2445,10 +2608,38 @@ document.addEventListener('click',async event=>{
       updateBatchLabelBar();
     }
     else if((action==='print-batch-a4'||action==='print-batch-2in'||action==='print-batch-thermal')&&isAdmin){
-      const picked=requestList.filter(o=>selectedLabelOrders.has(o.id));
+      const picked=requestList.filter(o=>selectedLabelOrders.has(o.id)&&canPrintOrderLabel(o));
       const mode=action==='print-batch-2in'?'thermal-2in':action==='print-batch-thermal'?'thermal':'a4-4up';
       if(picked.length)await openBatchLabels(picked,{load:store.loadLabel,defaultMode:mode,thermalPrinter,onPrinted:ids=>markOrdersPrinted(ids)});
     }
+    else if(action==='toggle-thermal-dock'&&isAdmin){thermalDockExpanded=!thermalDockExpanded;syncThermalDockUI();}
+    else if(action==='copy-tracking'){
+      const code=target.dataset.tracking||'';
+      if(code){try{await navigator.clipboard.writeText(code);toast(`Tracking ID ${code} copied.`);}catch{toast(`Tracking ID: ${code}`);}}
+    }
+    else if(action==='share-page'){
+      openShareDialog({title:target.dataset.shareTitle,text:target.dataset.shareText,url:target.dataset.shareUrl||location.href});
+    }
+    else if(action==='copy-share-link'){
+      const url=target.dataset.shareUrl||location.href;
+      try{await navigator.clipboard.writeText(url);toast('Link copied — paste in Instagram Stories or DMs.');}catch{toast(url);}
+    }
+    else if(action==='native-share'&&typeof navigator.share==='function'){
+      try{await navigator.share({title:target.dataset.shareTitle||'hehe.cafe',text:target.dataset.shareText||'',url:target.dataset.shareUrl||location.href});}catch{}
+    }
+    else if(action==='open-razorpay-refund'&&isAdmin){openRefundDialog(id);}
+    else if(action==='set-review-filter'&&isAdmin){adminReviewFilter=target.dataset.filter||'pending';renderAdminReviewsTab(false);}
+    else if(action==='refresh-admin-reviews'&&isAdmin){adminReviewsLoaded=false;renderAdminReviewsTab(true);}
+    else if(action==='moderate-review'&&isAdmin){
+      const decision=target.dataset.decision;
+      if(decision==='deleted'&&!window.confirm('Delete this buyer review permanently?'))return;
+      target.disabled=true;
+      await withSavingOverlay('Updating review…',()=>store.moderateCustomerReview(id,decision));
+      adminReviewsLoaded=false;
+      await renderAdminReviewsTab(true);
+      toast(decision==='approved'?'Review approved & published to homepage!':decision==='deleted'?'Review removed.':'Review hidden.');
+    }
+    else if(action==='refresh-admin-audit'&&isAdmin){adminAuditLoaded=false;renderAdminAuditTab(true);}
     else if(action==='toggle-filter-menu'){const panel=$('home-filter-panel');if(panel){const open=panel.hidden;panel.hidden=!open;target.setAttribute('aria-expanded',String(open));}}
     else if(action==='set-filter-sort'){filter.sort=target.dataset.sort||'';refreshFilterUI(true);}
     else if(action==='toggle-filter-discounted'){filter.discounted=!filter.discounted;refreshFilterUI(true);}
@@ -2497,11 +2688,59 @@ async function submitEmailAuth(event){
     if(submitBtn&&submitBtn.isConnected){submitBtn.disabled=false;submitBtn.textContent=prevText;}
   }
 }
-document.addEventListener('submit',event=>{if(event.target.id==='email-auth-form')submitEmailAuth(event);if(event.target.id==='customer-profile-form')submitCustomerProfile(event);if(event.target.id==='checkout-form')submitCheckout(event);if(event.target.id==='banner-form')submitBanners(event);if(event.target.id==='product-form')submitProduct(event);if(event.target.id==='artist-form')submitArtist(event);if(event.target.matches('.inline-price-form')){event.preventDefault();saveInlinePrice(event.target.dataset.inlinePriceId,event.target.elements.price.value);}if(event.target.id==='search-form'){event.preventDefault();location.hash=`search/${encodeURIComponent($('search-input').value.trim())}`;closeDialogs();}});
+document.addEventListener('submit',async event=>{if(event.target.id==='email-auth-form')submitEmailAuth(event);if(event.target.id==='customer-profile-form')submitCustomerProfile(event);if(event.target.id==='checkout-form')submitCheckout(event);if(event.target.id==='banner-form')submitBanners(event);if(event.target.id==='product-form')submitProduct(event);if(event.target.id==='artist-form')submitArtist(event);if(event.target.matches('.inline-price-form')){event.preventDefault();saveInlinePrice(event.target.dataset.inlinePriceId,event.target.elements.price.value);}if(event.target.id==='search-form'){event.preventDefault();location.hash=`search/${encodeURIComponent($('search-input').value.trim())}`;closeDialogs();}
+  if(event.target.matches('.order-tracking-editor')&&isAdmin){
+    event.preventDefault();
+    const form=event.target,orderId=form.dataset.trackingForm,btn=form.querySelector('button[type="submit"]');
+    const courier=String(form.elements.courier?.value||'India Post').trim()||'India Post';
+    const trackingNumber=String(form.elements.trackingNumber?.value||'').trim();
+    if(btn)btn.disabled=true;
+    try{
+      const res=await withSavingOverlay('Saving tracking ID…',()=>store.saveOrderTracking(orderId,{courier,trackingNumber}));
+      requestList=requestList.map(o=>o.id===orderId?{...o,tracking:res.tracking}:o);
+      renderOrdersCards();
+      toast(trackingNumber?`Tracking ${trackingNumber} saved for customer.`:'Tracking cleared.');
+    }catch(error){toast(store.friendlyError(error));}
+    finally{if(btn?.isConnected)btn.disabled=false;}
+  }
+  if(event.target.id==='refund-form'&&isAdmin){
+    event.preventDefault();
+    const form=event.target,orderId=form.dataset.refundId,notice=$('refund-notice'),btn=form.querySelector('button[type="submit"]');
+    const amountRupees=Number(form.elements.amountRupees?.value);
+    const reason=String(form.elements.reason?.value||'').trim();
+    if(!Number.isFinite(amountRupees)||amountRupees<1){if(notice)notice.textContent='Enter a refund amount of at least ₹1.';return;}
+    if(!window.confirm(`Confirm Razorpay refund of ₹${amountRupees.toFixed(2)} for order #${orderId.slice(0,8).toUpperCase()}?`))return;
+    if(btn)btn.disabled=true;if(notice)notice.textContent='';
+    try{
+      await withSavingOverlay('Processing Razorpay refund…',()=>store.issueRazorpayRefund({requestId:orderId,amountRupees,reason}));
+      $('editor-dialog')?.close();
+      await fetchRequests();
+      toast(`Razorpay refund of ₹${amountRupees.toFixed(2)} issued.`);
+    }catch(error){if(notice)notice.textContent=store.friendlyError(error);else toast(store.friendlyError(error));}
+    finally{if(btn?.isConnected)btn.disabled=false;}
+  }
+  if(event.target.matches('.order-review-form')){
+    event.preventDefault();
+    const form=event.target,orderId=form.dataset.reviewForm,btn=form.querySelector('button[type="submit"]');
+    const rating=Number(form.querySelector('input[name="rating"]:checked')?.value||5);
+    const comment=String(form.elements.comment?.value||'').trim();
+    const file=form.elements.photo?.files?.[0];
+    if(comment.length<5){toast('Please write a short review note (at least 5 characters).');return;}
+    if(btn)btn.disabled=true;
+    try{
+      const photo=file?.size?await store.uploadImage(file,'review'):'';
+      await store.submitCustomerReview({requestId:orderId,rating,comment,photo});
+      accountState.requests=(accountState.requests||[]).map(r=>r.id===orderId?{...r,reviewSubmitted:true,reviewStatus:'pending'}:r);
+      refreshAccountOrdersList();
+      toast('Thank you! Your review has been submitted for approval.');
+    }catch(error){toast(store.friendlyError(error));}
+    finally{if(btn?.isConnected)btn.disabled=false;}
+  }
+});
 document.addEventListener('keydown',event=>{if(event.key==='Enter'&&(event.target.id==='cart-promo-input'||event.target.id==='checkout-promo-input')){event.preventDefault();event.target.closest('.promo-code-box')?.querySelector('[data-action="apply-promo"]')?.click();}});
-document.addEventListener('input',event=>{if(event.target.dataset.productNote)setProductNote(event.target.dataset.productNote,event.target.value);if(event.target.id==='checkout-notes'&&$('checkout-notes-count'))$('checkout-notes-count').textContent=`${event.target.value.length} / 1000`;if(event.target.id==='search-input')renderSearch();if(event.target.id==='home-search-input'){filter.search=event.target.value;renderProductResults();decorateCartButtons();}if(event.target.id==='account-order-search'){accountState.orderQuery=event.target.value;refreshAccountOrdersList();}if(event.target.id==='order-note')orderNote=event.target.value;if(event.target.id==='admin-search'){adminSearch=event.target.value;renderAdminTable();}if(event.target.id==='admin-orders-search'){orderSearch=event.target.value;renderOrdersCards();}if(event.target.closest('#product-form'))renderEditorCardPreview();if(event.target.closest('#banner-form')){if(event.target.name==='bannerButtonOffsetX'&&$('banner-cta-x-val'))$('banner-cta-x-val').textContent=`${event.target.value}px`;if(event.target.name==='bannerButtonOffsetY'&&$('banner-cta-y-val'))$('banner-cta-y-val').textContent=`${event.target.value}px`;settingsDirty=true;settingsPreviewController?.update();}if(event.target.closest('#checkout-form')){if(event.target.name)checkoutTouched.add(event.target.name);captureCheckout();}});
+document.addEventListener('input',event=>{if(event.target.dataset.productNote)setProductNote(event.target.dataset.productNote,event.target.value);if(event.target.id==='checkout-notes'&&$('checkout-notes-count'))$('checkout-notes-count').textContent=`${event.target.value.length} / 1000`;if(event.target.id==='search-input')renderSearch();if(event.target.id==='home-search-input'){filter.search=event.target.value;renderProductResults();decorateCartButtons();syncInBagButtons();}if(event.target.id==='account-order-search'){accountState.orderQuery=event.target.value;refreshAccountOrdersList();}if(event.target.id==='order-note')orderNote=event.target.value;if(event.target.id==='admin-search'){adminSearch=event.target.value;renderAdminTable();}if(event.target.id==='admin-orders-search'){orderSearch=event.target.value;renderOrdersCards();}if(event.target.id==='admin-audit-search'){adminAuditQuery=event.target.value;renderAdminAuditRows();}if(event.target.closest('#product-form'))renderEditorCardPreview();if(event.target.closest('#banner-form')){if(event.target.name==='bannerButtonOffsetX'&&$('banner-cta-x-val'))$('banner-cta-x-val').textContent=`${event.target.value}px`;if(event.target.name==='bannerButtonOffsetY'&&$('banner-cta-y-val'))$('banner-cta-y-val').textContent=`${event.target.value}px`;settingsDirty=true;settingsPreviewController?.update();}if(event.target.closest('#checkout-form')){if(event.target.name)checkoutTouched.add(event.target.name);captureCheckout();}if(event.target.closest('#email-auth-form[data-auth-mode="signup"]')&&(event.target.name==='password'||event.target.name==='confirmPassword')){const f=event.target.form,pw=String(f.elements.password?.value||''),cf=String(f.elements.confirmPassword?.value||''),hint=$('signup-password-hint');if(hint){hint.className='auth-password-hint';if(!pw&&!cf){hint.textContent='';}else if(pw.length<6){hint.classList.add('is-warn');hint.textContent='At least 6 characters needed.';}else if(!cf){hint.textContent='Re-enter your password below to confirm.';}else if(pw!==cf){hint.classList.add('is-warn');hint.textContent='Passwords do not match yet.';}else{hint.classList.add('is-ok');hint.textContent='✓ Passwords match';}}}});
 document.addEventListener('change',async event=>{const t=event.target;if(t.closest('#product-form'))renderEditorCardPreview();if(t.closest('#banner-form')){settingsDirty=true;settingsPreviewController?.update();}if(t.dataset.referenceFiles){try{addReferences(t.dataset.referenceFiles,t.files);refreshReferencePreviews(t.dataset.referenceFiles);}catch(error){toast(error.message);}t.value='';}
-  if(t.id==='sort-filter'){filter.sort=t.value;renderProductResults();decorateCartButtons();}if(t.id==='available-filter'){filter.available=t.checked;renderProductResults();decorateCartButtons();}if(t.id==='category-filter')location.hash=t.value?`collection/${t.value}`:'shop';if(t.id==='admin-category'){adminCategory=t.value;renderAdminTable();}
+  if(t.id==='sort-filter'){filter.sort=t.value;renderProductResults();decorateCartButtons();syncInBagButtons();}if(t.id==='available-filter'){filter.available=t.checked;renderProductResults();decorateCartButtons();syncInBagButtons();}if(t.id==='category-filter')location.hash=t.value?`collection/${t.value}`:'shop';if(t.id==='admin-category'){adminCategory=t.value;renderAdminTable();}
   if(t.id==='admin-artwork-sort'&&isAdmin){
     const nextSort=t.value;
     storeSettings=normalizeSettings({...storeSettings,artworkSort:nextSort});
@@ -2647,7 +2886,7 @@ store.observeAuth((nextUser,nextAdmin,nextMasterAdmin=false)=>{
     if(user&&!user.isAnonymous){checkoutDraft={};checkoutTouched.clear();completedRequest=null;orderNote='';clearCustomizations();closeDialogs();}
     accountState={requests:[],profile:{},loaded:false,loading:false,orderFilter:'all',orderQuery:''};
   }
-  user=nextUser;isAdmin=nextAdmin;isMasterAdmin=Boolean(nextMasterAdmin);authLoading=false;authError='';authNotice='';requestList=[];requestsLoaded=false;requestsCursor=null;requestsHasMore=false;
+  user=nextUser;isAdmin=nextAdmin;isMasterAdmin=Boolean(nextMasterAdmin);authLoading=false;authError='';authNotice='';requestList=[];requestsLoaded=false;requestsCursor=null;requestsHasMore=false;adminReviewsList=[];adminReviewsLoaded=false;adminAuditList=[];adminAuditLoaded=false;
   if(changed)startCatalog();
   if(['account','admin'].includes(route().page)){
     if(nextAdmin&&identityChanged){location.hash=requestedAdminPage;requestedAdminPage='admin';render();}
@@ -2705,6 +2944,10 @@ store.observePromos(nextPromos=>{
   if(route().page==='admin'&&adminTab==='promos'&&!promosAdminController?.isDirty?.()){
     promosAdminController?.refresh?.();
   }
+},()=>{}).catch(()=>{});
+store.observePublicReviews(list=>{
+  publicReviews=Array.isArray(list)?list:[];
+  if(['home',''].includes(route().page)&&!isAnimationPlaying())render();
 },()=>{}).catch(()=>{});
 function refreshStoreContent(){
   contentCategories(siteContent).forEach((c,i)=>Object.assign(CATEGORIES[i],c));

@@ -2,6 +2,24 @@ export const DEFAULT_PROMOS = { codes: [], bundles: [] };
 
 const VALID_CODE_TYPES = new Set(['percent', 'fixed', 'free_shipping']);
 const VALID_BUNDLE_TYPES = new Set(['fixed', 'percent']);
+const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+export function normalizePromoExpiry(raw) {
+  const s = String(raw || '').trim();
+  if (!ISO_DATE_RE.test(s)) return '';
+  const [y, m, d] = s.split('-').map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  if (dt.getUTCFullYear() !== y || dt.getUTCMonth() + 1 !== m || dt.getUTCDate() !== d) return '';
+  return s;
+}
+
+export function isPromoExpired(promo, nowMs = Date.now()) {
+  const expiresAt = normalizePromoExpiry(promo?.expiresAt);
+  if (!expiresAt) return false;
+  // Calendar date in IST (UTC+05:30).
+  const istToday = new Date(nowMs + 19800000).toISOString().slice(0, 10);
+  return istToday > expiresAt;
+}
 
 export function normalizePromoCode(raw = {}) {
   const code = String(raw.code || '')
@@ -21,6 +39,7 @@ export function normalizePromoCode(raw = {}) {
   }
   const rawMin = Number(raw.minSubtotal);
   const rawMax = Number(raw.maxDiscount);
+  const rawMaxUses = Number(raw.maxTotalUses);
   return {
     code,
     active: raw.active !== false,
@@ -28,6 +47,9 @@ export function normalizePromoCode(raw = {}) {
     value,
     minSubtotal: Number.isFinite(rawMin) && rawMin > 0 ? Math.min(500000, Math.round(rawMin)) : 0,
     maxDiscount: type === 'percent' && Number.isFinite(rawMax) && rawMax > 0 ? Math.min(50000, Math.round(rawMax)) : 0,
+    maxTotalUses: Number.isFinite(rawMaxUses) && rawMaxUses > 0 ? Math.min(100000, Math.floor(rawMaxUses)) : 0,
+    onePerCustomer: Boolean(raw.onePerCustomer),
+    expiresAt: normalizePromoExpiry(raw.expiresAt),
     label: String(raw.label || '').trim().slice(0, 100)
   };
 }
@@ -92,7 +114,8 @@ export function calculateDiscounts({
   totalQty = 0,
   shippingPaise = 4000,
   promoCode = '',
-  promos = DEFAULT_PROMOS
+  promos = DEFAULT_PROMOS,
+  nowMs = Date.now()
 } = {}) {
   const sub = Math.max(0, Math.round(Number(subtotalPaise) || 0));
   const qty = Math.max(0, Math.floor(Number(totalQty) || 0));
@@ -125,6 +148,8 @@ export function calculateDiscounts({
     const match = safePromos.codes.find(c => c.code === entered && c.active);
     if (!match) {
       promoError = 'That promo code is not valid or has expired.';
+    } else if (isPromoExpired(match, nowMs)) {
+      promoError = 'This promo code has expired.';
     } else if (match.minSubtotal > 0 && sub < match.minSubtotal * 100) {
       const needRupees = Math.ceil((match.minSubtotal * 100 - sub) / 100);
       promoError = `Add ₹${needRupees} more to use ${match.code} (min ₹${match.minSubtotal}).`;

@@ -99,7 +99,7 @@ export function decorateCartButtons(root = document) {
     button.classList.remove('button', 'outline', 'full');
     button.classList.add('cart-button');
     if (inlineStyle) button.setAttribute('style', inlineStyle);
-    button.innerHTML = `<span class="add-to-cart">Add to cart</span>
+    button.innerHTML = `<span class="add-to-cart">Add to bag</span>
       <span class="added" aria-hidden="true">Added ✓</span>
       <i class="fas fa-shopping-cart" aria-hidden="true"></i>
       <i class="fas fa-box" aria-hidden="true"></i>`;
@@ -117,7 +117,7 @@ export async function animateCart(button) {
   void button.offsetWidth;
   button.disabled = true;
   button.setAttribute('aria-busy', 'true');
-  button.setAttribute('aria-label', 'Added to cart');
+  button.setAttribute('aria-label', 'Added to bag');
   cartClick.call(button);
   if (reduced()) {
     await new Promise(resolve => setTimeout(resolve, 150));
@@ -264,7 +264,7 @@ export function preloadPaymentOutcomeSvg(){
   }
   if(cachedPaymentSvgSource)return Promise.resolve(cachedPaymentSvgSource);
   if(!paymentSvgPromise){
-    paymentSvgPromise=fetch(new URL('./assets/payment-shipping.svg?v=cloud-drop-4',import.meta.url),{cache:'force-cache'})
+    paymentSvgPromise=fetch(new URL('./assets/payment-shipping.svg?v=cloud-drop-5',import.meta.url),{cache:'force-cache'})
       .then(response=>{if(!response.ok)throw new Error(`Could not load payment animation (${response.status}).`);return response.text();})
       .then(source=>{cachedPaymentSvgSource=source;return source;})
       .catch(error=>{paymentSvgPromise=null;throw error;});
@@ -387,50 +387,6 @@ function buildCloudDropItems(svg,orderedItems){
   return {cards,size};
 }
 
-function setPaymentOutcomeBadge(svg,success){
-  const badge=svg.querySelector('[data-anim="btn-shipped"]');
-  if(!badge)return;
-  badge.querySelector('[id="label"],[data-outcome-label]')?.remove();
-  badge.querySelector('[id="check"],[data-outcome-cross]')?.remove();
-
-  const ns='http://www.w3.org/2000/svg';
-  const label=svg.ownerDocument.createElementNS(ns,'text');
-  if(success){
-    badge.querySelector('rect')?.setAttribute('fill','#E6F2E5');
-    badge.querySelector('[id="btn-dash"]')?.setAttribute('fill','#C6DCC9');
-    label.setAttribute('id','label');
-    label.setAttribute('data-outcome-label','success');
-    label.setAttribute('x','152');label.setAttribute('y','35');
-    label.setAttribute('text-anchor','end');label.setAttribute('fill','#176B3A');
-    label.setAttribute('font-family','Arial, sans-serif');label.setAttribute('font-size','13');
-    label.setAttribute('font-weight','700');label.setAttribute('letter-spacing','.5');
-    label.textContent='ORDER PLACED';
-    const check=svg.ownerDocument.createElementNS(ns,'path');
-    check.setAttribute('id','check');
-    check.setAttribute('d','M162 29.5L166.5 35.5L176 22.5');
-    check.setAttribute('fill','none');check.setAttribute('stroke','#176B3A');
-    check.setAttribute('stroke-width','3');check.setAttribute('opacity','.85');
-    check.setAttribute('stroke-linecap','round');check.setAttribute('stroke-linejoin','round');
-    badge.append(label,check);
-    return;
-  }
-
-  badge.querySelector('rect')?.setAttribute('fill','#F5E8E5');
-  badge.querySelector('[id="btn-dash"]')?.setAttribute('fill','#D7A8A2');
-  label.setAttribute('data-outcome-label','failure');
-  label.setAttribute('x','160');label.setAttribute('y','34.5');
-  label.setAttribute('text-anchor','end');label.setAttribute('fill','#9B392F');
-  label.setAttribute('font-family','Arial, sans-serif');label.setAttribute('font-size','11.5');
-  label.setAttribute('font-weight','700');label.setAttribute('letter-spacing','.4');
-  label.textContent='ORDER NOT PLACED';
-  const cross=svg.ownerDocument.createElementNS(ns,'path');
-  cross.setAttribute('data-outcome-cross','failure');
-  cross.setAttribute('d','M170 23 L183 36 M183 23 L170 36');
-  cross.setAttribute('fill','none');cross.setAttribute('stroke','#9B392F');
-  cross.setAttribute('stroke-width','3');cross.setAttribute('stroke-linecap','round');
-  badge.append(label,cross);
-}
-
 function populatePaymentRain(container){
   if(!container)return;
   let increment=0,html='';
@@ -500,9 +456,6 @@ async function animateOutcomeTruck(scene,success,orderedItems=[]){
   const cloud=scene.querySelector('.payment-drop-cloud');
   const {cards,size}=buildCloudDropItems(svg,orderedItems);
   const rainBox=scene.querySelector('.payment-rain');
-  const shippedBtn=svg.querySelector('[data-anim="btn-shipped"]');
-  setPaymentOutcomeBadge(svg,success);
-  if(!success)shippedBtn?.setAttribute('transform','translate(93.09 194)');
   scene._stopRain=()=>{rainBox?.classList.remove('is-raining');rainBox?.replaceChildren();};
 
   if(reduced()||!gsap){
@@ -618,7 +571,6 @@ async function animateOutcomeTruck(scene,success,orderedItems=[]){
     .to(frontWheelBack,{y:0,duration:.5},at(.8))
     .to(frontWheels,{y:0,duration:.5,ease:'back.out(5.4)'},at(.9))
     .set(frontWheels[1],{autoAlpha:1},at(1.05))
-    .set(shippedBtn,{autoAlpha:1},success?Math.max(at(1.05),truckDeparture-.15):at(1.05))
     .fromTo(truckBtn,{x:0},{x:'+=1000',duration:1.2,ease:'back.in(.5)'},truckDeparture)
     .fromTo(truckBtn,{autoAlpha:1},{autoAlpha:0,duration:.5,ease:'power1.in'},truckDeparture+1.2);
 
@@ -644,7 +596,7 @@ export async function playPaymentOutcome(outcome,{preview=false,message='',items
   button.dataset.preview=String(preview);
   scene.scrollIntoView?.({behavior:reduced()?'auto':'smooth',block:'start'});
   await animateOutcomeTruck(scene,success,items);
-  copy.textContent=preview?(success?'Success preview: this is how a verified payment will look. No payment, order or stock reservation was recorded.':'Failure preview: the cart is unchanged and you can retry. No payment, order or stock reservation was recorded.'):success?'Your order is confirmed and will ship via India Post.':message||'Payment failed. This order was cancelled and your cart is saved so you can try again.';
+  copy.textContent=preview?(success?'Success preview: this is how a verified payment will look. No payment, order or stock reservation was recorded.':'Failure preview: your bag is unchanged and you can retry. No payment, order or stock reservation was recorded.'):success?'Your order is confirmed and will ship via India Post.':message||'Payment failed. This order was cancelled and your bag is saved so you can try again.';
   try{
     if(preview||!success){button.hidden=false;await new Promise(resolve=>button.addEventListener('click',resolve,{once:true}));}
     else await new Promise(resolve=>setTimeout(resolve,reduced()?300:1100));
@@ -785,15 +737,42 @@ export function beginCheckoutAnimation(button) {
   };
 }
 
-export function reviewSection(images=[]) {
-  if(!images.length)return '';
-  if(images.length<7)return `<section class="reviews-section"><p class="eyebrow">Reviews</p><h2>Customer reviews</h2><div class="review-small-grid">${images.map((url,i)=>`<img src="${url.replaceAll('&','&amp;').replaceAll('"','&quot;')}" alt="Customer review ${i+1}" loading="lazy" decoding="async">`).join('')}</div></section>`;
+function escHtml(v){
+  return String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+export function reviewSection(images=[], customerReviews=[]) {
+  const safeReviews=Array.isArray(customerReviews)?customerReviews.filter(r=>r&&r.comment):[];
+  if(!images.length && !safeReviews.length)return '';
+  const buyerCardsHtml=safeReviews.length?`<div class="buyer-reviews-grid">${safeReviews.slice(0,8).map(r=>{
+    const stars='★'.repeat(Math.max(1,Math.min(5,Number(r.rating)||5)))+'☆'.repeat(5-Math.max(1,Math.min(5,Number(r.rating)||5)));
+    const titles=Array.isArray(r.artworkTitles)&&r.artworkTitles.length?r.artworkTitles.join(', '):'';
+    return `<article class="buyer-review-card">
+      ${r.photo?`<div class="buyer-review-photo"><img src="${escHtml(r.photo)}" alt="Collector photo by ${escHtml(r.authorName||'Collector')}" loading="lazy" decoding="async"></div>`:''}
+      <div class="buyer-review-body">
+        <div class="buyer-review-head">
+          <span class="buyer-review-stars" aria-label="${Math.max(1,Math.min(5,Number(r.rating)||5))} out of 5 stars">${stars}</span>
+          <span class="buyer-review-verified">Verified collector</span>
+        </div>
+        <p class="buyer-review-quote">“${escHtml(r.comment)}”</p>
+        <div class="buyer-review-meta">
+          <strong>${escHtml(r.authorName||'Collector')}</strong>
+          ${titles?`<span>${escHtml(titles)}</span>`:''}
+        </div>
+      </div>
+    </article>`;
+  }).join('')}</div>`:'';
+  if(!images.length){
+    return `<section id="reviews" class="reviews-section" aria-label="Customer reviews"><p class="eyebrow">Reviews</p><h2>Collector notes</h2>${buyerCardsHtml}</section>`;
+  }
+  if(images.length<7)return `<section id="reviews" class="reviews-section"><p class="eyebrow">Reviews</p><h2>Customer reviews</h2>${buyerCardsHtml}<div class="review-small-grid">${images.map((url,i)=>`<img src="${escHtml(url)}" alt="Customer review ${i+1}" loading="lazy" decoding="async">`).join('')}</div></section>`;
   const positions = ['hideLeft', 'prevLeftSecond', 'prev', 'selected', 'next', 'nextRightSecond', 'hideRight'];
-  return `<section class="reviews-section" aria-label="Customer review carousel">
+  return `<section id="reviews" class="reviews-section" aria-label="Customer review carousel">
     <p class="eyebrow">Reviews</p>
     <h2>Customer reviews</h2>
+    ${buyerCardsHtml}
     <div class="review-stage"><div id="carousel" tabindex="0" aria-label="Customer reviews. Use left and right arrow keys to browse.">
-      ${images.map((url, i) => `<div class="${positions[i]}" data-review="${i}"><img src="${url.replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}" alt="Customer review ${i+1}" draggable="false" loading="lazy" decoding="async"></div>`).join('')}
+      ${images.map((url, i) => `<div class="${positions[i]}" data-review="${i}"><img src="${escHtml(url)}" alt="Customer review ${i+1}" draggable="false" loading="lazy" decoding="async"></div>`).join('')}
     </div></div>
     <div class="review-progress"><span id="review-position">4 / 7</span><button type="button" id="review-pause" class="text-link" aria-pressed="false">Pause animation</button></div>
   </section>`;

@@ -44,12 +44,15 @@ export function mountPromosAdmin(root, { getPromos, onSavePromos }) {
                 <label class="field">Discount type<select data-code-field="type" data-idx="${idx}">
                   <option value="percent" ${c.type === 'percent' ? 'selected' : ''}>Percentage off (%)</option>
                   <option value="fixed" ${c.type === 'fixed' ? 'selected' : ''}>Flat amount off (₹)</option>
-                  <option value="free_shipping" ${c.type === 'free_shipping' ? 'selected' : ''}>Free shipping (₹40 off)</option>
+                  <option value="free_shipping" ${c.type === 'free_shipping' ? 'selected' : ''}>Free shipping (waives ₹40/item)</option>
                 </select></label>
                 <label class="field">Value ${c.type === 'percent' ? '(%)' : c.type === 'fixed' ? '(₹)' : '(auto)'}<input type="number" data-code-field="value" data-idx="${idx}" min="0" max="50000" value="${c.type === 'free_shipping' ? 0 : c.value}" ${c.type === 'free_shipping' ? 'disabled' : ''}></label>
                 <label class="field">Min artworks subtotal (₹)<input type="number" data-code-field="minSubtotal" data-idx="${idx}" min="0" max="500000" value="${c.minSubtotal}"></label>
                 ${c.type === 'percent' ? `<label class="field">Max discount cap (₹, 0 = none)<input type="number" data-code-field="maxDiscount" data-idx="${idx}" min="0" max="50000" value="${c.maxDiscount}"></label>` : ''}
+                <label class="field">Max total uses (0 = unlimited)<input type="number" data-code-field="maxTotalUses" data-idx="${idx}" min="0" max="100000" step="1" value="${c.maxTotalUses || 0}"></label>
+                <label class="field">Expiry date (optional)<input type="date" data-code-field="expiresAt" data-idx="${idx}" value="${e(c.expiresAt || '')}"></label>
                 <label class="field wide">Customer label (shown in bag &amp; checkout)<input data-code-field="label" data-idx="${idx}" maxlength="100" value="${e(c.label)}" placeholder="e.g. 10% welcome treat"></label>
+                <label class="visibility-toggle field wide"><input type="checkbox" data-code-field="onePerCustomer" data-idx="${idx}" ${c.onePerCustomer ? 'checked' : ''}><span>Limit to 1 use per customer account</span></label>
               </div>
             </article>`).join('') : '<div class="empty-state"><p>No promo codes yet. Click "+ Add code" to launch a welcome or seasonal discount.</p></div>'}
           </div>
@@ -102,7 +105,7 @@ export function mountPromosAdmin(root, { getPromos, onSavePromos }) {
   function bindEvents() {
     root.querySelector('#add-promo-code-btn').onclick = () => {
       const n = state.codes.length + 1;
-      state.codes.push({ code: `HEHE${n}0`, active: true, type: 'percent', value: 10, minSubtotal: 0, maxDiscount: 0, label: '10% studio treat' });
+      state.codes.push({ code: `HEHE${n}0`, active: true, type: 'percent', value: 10, minSubtotal: 0, maxDiscount: 0, maxTotalUses: 0, onePerCustomer: false, expiresAt: '', label: '10% studio treat' });
       dirty = true;
       render();
     };
@@ -131,12 +134,12 @@ export function mountPromosAdmin(root, { getPromos, onSavePromos }) {
       const key = el.dataset.codeField;
       const apply = () => {
         if (!state.codes[idx]) return;
-        state.codes[idx][key] = key === 'active' ? el.checked : (['value', 'minSubtotal', 'maxDiscount'].includes(key) ? Number(el.value || 0) : el.value);
+        state.codes[idx][key] = (key === 'active' || key === 'onePerCustomer') ? el.checked : (['value', 'minSubtotal', 'maxDiscount', 'maxTotalUses'].includes(key) ? Number(el.value || 0) : el.value);
         dirty = true;
         updateDirtyUI('');
         if (key === 'type') render();
       };
-      if (el.type === 'checkbox' || el.tagName === 'SELECT') el.onchange = apply;
+      if (el.type === 'checkbox' || el.type === 'date' || el.tagName === 'SELECT') el.onchange = apply;
       else el.oninput = apply;
     });
     root.querySelectorAll('[data-bundle-field]').forEach(el => {

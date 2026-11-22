@@ -4,6 +4,9 @@ import {normalizeProfile,validateProfile,checkoutDefaults} from '../frontend/pro
 import {defaultLabel,normalizeLabel,validateLabel} from '../frontend/label-data.js';
 import {labelMarkup} from '../frontend/labels.js';
 import {accountMarkup} from '../frontend/customer-dashboard.js';
+import {canPrintOrderLabel,orderCardMarkup} from '../frontend/admin-ui.js';
+import {infoMarkup} from '../frontend/storefront-view.js';
+import {DEFAULT_CONTENT} from '../frontend/store-content.js';
 const request={id:'label-test',customer:{firstName:'Test',lastName:'Customer',address:'12 Test Lane',apartment:'',city:'Bengaluru',state:'Karnataka',postalCode:'560001',phone:'9876543210',location:{latitude:12.97,longitude:77.59,confirmed:true,source:'pin',accuracy:0,formattedAddress:'Bengaluru'}},items:[{quantity:1}]};
 test('profile accepts optional address fields and safely retains a confirmed delivery pin',()=>{
   const p=normalizeProfile({firstName:' Test ',lastName:'Customer'});assert.equal(validateProfile(p),'');assert.equal(p.firstName,'Test');
@@ -75,4 +78,35 @@ test('unverified email/password user sees verification banner and profile tab ex
   assert.match(verifiedHtml,/data-action="export-my-data"/);
   assert.match(verifiedHtml,/data-action="delete-saved-data"/);
   assert.match(verifiedHtml,/data-action="delete-my-account"/);
+});
+test('pending checkout shows Payment pending (not Payment failed), non-printable orders hide labels, signup has 2 toggles & policy pages format headings',()=>{
+  const baseOrder={...request,id:'pending-checkout-1',customer:{...request.customer},status:'details_received',paymentStatus:'not_started',checkoutPayment:true,razorpayOrderId:'order_123',estimatedSubtotal:290,quote:{amount:29000,shipping:4000},items:[{title:'Clay Cat',quantity:1,unitPrice:250}]};
+  const pendingAcct=accountMarkup({uid:'buyer',displayName:'Buyer',email:'buyer@example.com'},false,{tab:'requests',requests:[baseOrder]});
+  assert.match(pendingAcct,/Payment pending/);
+  assert.doesNotMatch(pendingAcct,/Payment failed/);
+
+  assert.equal(canPrintOrderLabel(baseOrder),false);
+  assert.equal(canPrintOrderLabel({...baseOrder,paymentStatus:'failed',status:'cancelled'}),false);
+  assert.equal(canPrintOrderLabel({...baseOrder,paymentStatus:'refunded'}),false);
+  assert.equal(canPrintOrderLabel({...baseOrder,status:'processing',paymentStatus:'captured'}),true);
+
+  const failedCard=orderCardMarkup({...baseOrder,paymentStatus:'failed',status:'cancelled'});
+  assert.match(failedCard,/Payment failed/);
+  assert.doesNotMatch(failedCard,/Print label/);
+  assert.doesNotMatch(failedCard,/data-select-label-order/);
+
+  const paidCard=orderCardMarkup({...baseOrder,status:'processing',paymentStatus:'captured'});
+  assert.match(paidCard,/Payment successful/);
+  assert.match(paidCard,/Print label/);
+  assert.match(paidCard,/data-select-label-order/);
+
+  const signUpHtml=accountMarkup(null,false,{authMode:'signup'});
+  assert.equal((signUpHtml.match(/data-action="toggle-password"/g)||[]).length,2);
+  assert.match(signUpHtml,/id="signup-password-hint"/);
+
+  const privacyHtml=infoMarkup(DEFAULT_CONTENT,'privacy');
+  assert.match(privacyHtml,/class="policy-meta-banner"/);
+  assert.match(privacyHtml,/<h2 id="policy-sec-/);
+  assert.match(privacyHtml,/data-action="scroll-policy-sec"/);
+  assert.doesNotMatch(privacyHtml,/href="#policy-sec-/);
 });

@@ -38,7 +38,7 @@ export function emailAuthCardMarkup({mode='signin',loading=false,error='',notice
       ${isSignup?`<label class="field">Full name<input name="name" type="text" autocomplete="name" maxlength="80" placeholder="Your name" required ${loading?'disabled':''}></label>`:''}
       <label class="field">Email address<input name="email" type="email" autocomplete="email" maxlength="254" placeholder="you@example.com" required ${loading?'disabled':''}></label>
       <label class="field">Password<div class="password-input-wrap"><input name="password" type="password" autocomplete="${isSignup?'new-password':'current-password'}" minlength="6" maxlength="128" placeholder="${isSignup?'At least 6 characters':'Enter your password'}" required ${loading?'disabled':''}><button type="button" class="password-toggle-btn" data-action="toggle-password" aria-label="Show password" aria-pressed="false">Show</button></div></label>
-      ${isSignup?`<label class="field">Confirm password<input name="confirmPassword" type="password" autocomplete="new-password" minlength="6" maxlength="128" placeholder="Re-enter your password" required ${loading?'disabled':''}></label>`:''}
+      ${isSignup?`<label class="field">Confirm password<div class="password-input-wrap"><input name="confirmPassword" type="password" autocomplete="new-password" minlength="6" maxlength="128" placeholder="Re-enter your password" required ${loading?'disabled':''}><button type="button" class="password-toggle-btn" data-action="toggle-password" aria-label="Show confirm password" aria-pressed="false">Show</button></div></label><p id="signup-password-hint" class="auth-password-hint" aria-live="polite"></p>`:''}
       <div class="email-auth-actions">
         <button type="submit" class="button email-auth-submit" ${loading?'disabled':''}>${loading?'Checking your account…':(isSignup?'Create account →':'Sign in with email →')}</button>
         ${!isSignup?`<button type="button" class="text-link auth-forgot-link" data-action="forgot-password" ${loading?'disabled':''}>Forgot password?</button>`:''}
@@ -90,9 +90,40 @@ function requestCard(request,{productImages=new Map(),open=false}={}) {
     ?'Payment successful'
     :request.paymentStatus==='refunded'
       ?'Payment refunded'
-      :(failed||request.status==='cancelled'||request.checkoutPayment)
+      :(failed||request.status==='cancelled')
         ?'Payment failed'
-        :'Awaiting studio quote';
+        :request.checkoutPayment
+          ?'Payment pending'
+          :'Awaiting studio quote';
+  const trackingHtml=request.tracking?.number?`<div class="order-tracking-box">
+    <div class="order-tracking-meta">
+      <span class="order-tracking-courier">${e(request.tracking.courier||'India Post')}</span>
+      <strong class="order-tracking-number">${e(request.tracking.number)}</strong>
+    </div>
+    <div class="order-tracking-actions">
+      <button type="button" class="button outline small" data-action="copy-tracking" data-tracking="${e(request.tracking.number)}">Copy ID</button>
+      <a class="button small" href="${e(request.tracking.url||'https://www.indiapost.gov.in/_layouts/15/dop.portal.tracking/trackconsignment.aspx')}" target="_blank" rel="noopener">Track parcel ↗</a>
+    </div>
+  </div>`:'';
+  const reviewBlock=request.status==='delivered'
+    ?(request.reviewStatus==='approved'
+      ?`<div class="order-review-status is-approved"><strong>✓ Review published</strong><span>Thank you for sharing your collector note!</span></div>`
+      :request.reviewSubmitted
+        ?`<div class="order-review-status"><strong>Review submitted · ${e(request.reviewStatus==='rejected'?'Not published':'Pending studio review')}</strong><span>Thank you! You can reach out to the studio anytime.</span></div>`
+        :`<form class="order-review-form" data-review-form="${e(request.id)}">
+            <div class="order-review-head">
+              <div><strong>Leave a collector review</strong><p class="small muted">Share how this piece looks in your space (with an optional photo).</p></div>
+              <div class="review-stars-input" role="radiogroup" aria-label="Star rating">
+                ${[5,4,3,2,1].map(n=>`<label><input type="radio" name="rating" value="${n}" ${n===5?'checked':''}><span>${n}★</span></label>`).join('')}
+              </div>
+            </div>
+            <label class="field">Your review note<textarea name="comment" required minlength="5" maxlength="600" placeholder="How did it arrive? How are the details?"></textarea></label>
+            <div class="order-review-bottom">
+              <label class="review-photo-pick"><span>Optional photo (JPG/PNG/WebP)</span><input type="file" name="photo" accept="image/jpeg,image/png,image/webp"></label>
+              <button type="submit" class="button small">Submit review →</button>
+            </div>
+          </form>`)
+    :'';
   const cancelBlock=!['cancelled','cancel_requested','closed','packed','shipped','out_for_delivery','delivered'].includes(request.status)
     ?`<div class="cancel-form"><h3>Need to cancel this order?</h3><p class="small muted">Unpaid requests without a confirmed quote are cancelled immediately. Confirmed orders go to the studio for review.</p><label class="field">Reason (optional)<textarea maxlength="500" placeholder="Let the studio know why"></textarea></label><button class="button outline small" data-action="cancel-request" data-id="${e(request.id)}">Confirm cancellation request</button></div>`
     :'<p class="small muted">This order can no longer be cancelled online. Reach out to the studio directly if you need assistance.</p>';
@@ -105,7 +136,7 @@ function requestCard(request,{productImages=new Map(),open=false}={}) {
         <div class="order-meta-col"><small>Status</small><span class="request-status status-${e(request.status)}">${e(statuses[request.status]||'Details received')}</span></div>
       </div>
       <div class="order-summary-right">
-        <span class="order-brand-mark">hehe.cafe</span>
+        <span class="order-pay-pill ${paid?'is-paid':(failed||request.status==='cancelled')?'is-failed':'is-pending'}">${e(statusHint)}</span>
         <div class="request-amount"><strong>${money(displayTotal)}</strong><span>${totalQty} ${totalQty===1?'item':'items'}</span></div>
         <span class="request-expand" aria-hidden="true"><svg viewBox="0 0 24 24" class="ui-chevron" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></span>
       </div>
@@ -122,6 +153,7 @@ function requestCard(request,{productImages=new Map(),open=false}={}) {
           <strong>${e(statuses[request.status]||'Details received')}</strong>
           <span>${e(statusHint)}</span>
         </div>
+        ${trackingHtml}
         ${paymentBlock}
         ${request.refundStatus==='required'?'<p class="payment-info">Cancellation approved. Your refund is awaiting processing by the studio.</p>':''}
         <div class="order-items-list">
@@ -134,6 +166,7 @@ function requestCard(request,{productImages=new Map(),open=false}={}) {
             </div>`;
           }).join('')}
         </div>
+        ${reviewBlock}
         <button type="button" class="text-link order-notes-trigger" data-action="request-customizations" data-id="${e(request.id)}">View product notes &amp; images</button>
         <div id="request-custom-${e(request.id)}" class="request-customizations"></div>
         <div class="order-card-footer">
@@ -158,6 +191,7 @@ function requestCard(request,{productImages=new Map(),open=false}={}) {
       </section>
       <section class="order-tab-panel" data-order-panel="track" hidden>
         <div class="track-live-row"><span class="live-tracking-pill"><span class="live-dot" aria-hidden="true"></span>Live updates</span></div>
+        ${trackingHtml}
         <div class="request-order-progress ${paid?'is-delivery-progress':''}">${progress}</div>
       </section>
       <section class="order-tab-panel" data-order-panel="help" hidden>
