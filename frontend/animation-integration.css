@@ -96,6 +96,15 @@
 .payment-outcome-scene.is-success .payment-outcome-pill{background:#e9f6ee;color:#166534}
 .payment-outcome-scene.is-failure .payment-outcome-pill{background:#fceceb;color:#9b392f}
 .payment-truck-stage{position:relative;width:min(100%,440px);aspect-ratio:1;margin:6px auto 4px;overflow:hidden;border:1.5px solid #e7e0d4;border-radius:22px;background:#f8f5ec url('assets/payment-truck-bg.webp') center bottom/cover no-repeat;box-shadow:inset 0 0 0 1px rgba(255,255,255,.55)}
+.payment-outcome-scene.is-failure .payment-truck-stage::before{content:'';position:absolute;inset:0;z-index:0;background:linear-gradient(180deg,rgba(62,80,106,.34) 0%,rgba(88,106,128,.18) 64%,rgba(54,64,76,.22) 100%);pointer-events:none}
+.payment-rain{position:absolute;top:27%;right:26%;bottom:8.5%;left:26%;z-index:2;overflow:hidden;pointer-events:none;opacity:0;transition:opacity .38s ease}
+.payment-rain.is-raining{opacity:1}
+.payment-rain .drop{position:absolute;top:-24%;width:15px;height:24%;pointer-events:none;animation:payment-rain-drop .55s linear infinite}
+.payment-rain .stem{width:2px;height:66%;margin-left:6.5px;background:linear-gradient(to bottom,rgba(104,154,204,0),rgba(118,168,216,.72));animation:payment-rain-stem .55s linear infinite}
+.payment-rain .splat{display:block;width:15px;height:10px;border-top:2px dotted rgba(102,150,198,.82);border-radius:50%;opacity:1;transform:scale(0);animation:payment-rain-splat .55s linear infinite}
+@keyframes payment-rain-drop{0%{transform:translateY(0)}75%,100%{transform:translateY(415%)}}
+@keyframes payment-rain-stem{0%,65%{opacity:1}75%,100%{opacity:0}}
+@keyframes payment-rain-splat{0%,80%{opacity:1;transform:scale(0)}90%{opacity:.6;transform:scale(1)}100%{opacity:0;transform:scale(1.5)}}
 /* Keep the payment animation centered inside its clean stage. */
 .payment-truck-stage #ship-it{position:absolute;z-index:1;top:50%;left:50%;display:block;width:100%;max-width:540px;height:auto;overflow:visible;transform:translate(-50%,-50%)}
 .payment-truck-stage #ship-it .hidden{visibility:hidden}
@@ -146,5 +155,6 @@
   .checkout-step-actions .truck-button.checkout-centering{transition:none!important}
   .checkout-progress-line span{transition:none!important}
   .checkout-step-marker.is-glyph-transitioning .checkout-step-glyph,.checkout-step-marker.is-glyph-transitioning .checkout-step-check path{animation:none!important}
+  .payment-rain .drop,.payment-rain .stem,.payment-rain .splat{animation:none!important}
   #carousel div,#carousel img{transition:none}
 }

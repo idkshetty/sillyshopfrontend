@@ -173,12 +173,14 @@ function discountTotalRowsMarkup(pricing,qtyLabel='Artworks subtotal'){
 function paymentAnimationItems(orderItems,fallbackCart=cart){
   const fallback=fallbackCart.map(({id,quantity})=>{
     const product=checkoutProducts.find(item=>item.id===id)||products.find(item=>item.id===id)||rememberedProducts.get(id);
-    return {productId:id,title:product?.title||'Item',quantity};
+    return {productId:id,title:product?.title||'Item',image:product?imageOf(product):'assets/paintings.svg',quantity};
   });
   const source=Array.isArray(orderItems)&&orderItems.length?orderItems:fallback;
   return source.slice(0,MAX_CART_ITEMS).map(item=>{
+    const product=item?.productId?(checkoutProducts.find(candidate=>candidate.id===item.productId)||products.find(candidate=>candidate.id===item.productId)||rememberedProducts.get(item.productId)):null;
     const savedProduct=fallback.find(candidate=>candidate.productId===item?.productId);
-    return {title:String(item?.title||item?.name||savedProduct?.title||'Item'),quantity:Number.isInteger(item?.quantity)&&item.quantity>0?item.quantity:savedProduct?.quantity||1};
+    const image=String(item?.image||(product?imageOf(product):'')||savedProduct?.image||'assets/paintings.svg');
+    return {title:String(item?.title||item?.name||savedProduct?.title||'Item'),image,quantity:Number.isInteger(item?.quantity)&&item.quantity>0?item.quantity:savedProduct?.quantity||1};
   });
 }
 function cartCleanupBannerMarkup(){
