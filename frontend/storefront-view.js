@@ -148,7 +148,7 @@ export function homeMarkup(products,storeSettings,content=DEFAULT_CONTENT,{catal
         ${catalogLoading?skeletonMarkup('products','Loading artworks…'):catalogError&&!allVisible.length?`<div class="empty-state" role="alert"><h2>Artworks could not load</h2><p>Check your connection and try again.</p><button class="button outline" data-action="retry">Try again</button></div>`:allVisible.length?`<div class="product-grid">${allVisible.map(p=>productCardMarkup(p,content)).join('')}</div>`:hasFilter?`<div class="empty-state"><h2>No matching artworks</h2><p>No pieces match those filters yet.</p><button type="button" class="button outline" data-action="reset-filters">Show all artworks</button></div>`:`<div class="product-grid">${FALLBACK_BANNER_ARTWORKS.map(item=>productCardMarkup(item,content)).join('')}</div>`}
       </div>
     </section>`;
-  const storyHtml=storyMarkup();
+  const storyHtml=storeSettings?.storyVisible===false?'':storyMarkup();
   const reviewsHtml=storeSettings.reviewsVisible?reviewSection(storeSettings.reviewImages):'';
   const promoMap=new Map((Array.isArray(storeSettings?.promoBlocks)?storeSettings.promoBlocks:[]).map(b=>[b.id,promoBlockMarkup(b)]));
   const sectionOrder=Array.isArray(storeSettings?.homeSectionOrder)&&storeSettings.homeSectionOrder.length?storeSettings.homeSectionOrder:DEFAULT_HOME_SECTIONS;

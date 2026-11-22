@@ -27,8 +27,32 @@ export function filterCustomerRequests(requests=[],{filter='all',query=''}={}){
     return id.includes(q)||id.slice(0,8).includes(q)||st.includes(q)||items.includes(q);
   });
 }
-function signInCard(loading,error) {
-  return `<div class="container"><section class="account-welcome"><div class="account-welcome-art"><img src="assets/silly-sensei-loading.webp" alt="hehe.cafe studio mascot"></div><div class="account-welcome-copy"><p class="eyebrow">Your account</p><h1>Sign in to<br>hehe.cafe</h1><p>View your artwork orders and manage your delivery details.</p><div class="login-benefits"><p>${icons.requests} Follow your checkout requests</p><p>${icons.profile} Save details for your next visit</p></div><button class="google-signin" data-action="signin" ${loading?'disabled':''}>${googleIcon} <span>${loading?'Checking your account…':'Continue with Google'}</span></button><button type="button" class="text-link signin-redirect-link" data-action="signin-redirect" ${loading?'disabled':''}>Popup blocked? Sign in with redirect →</button><p id="auth-notice" class="notice" role="alert">${e(error||'')}</p><p class="small muted">Your account is private. We only use your details to help with your orders.</p><a class="text-link" href="#home">Continue exploring artworks</a></div></section></div>`;
+export function emailAuthCardMarkup({mode='signin',loading=false,error='',notice='',compact=false}={}){
+  const isSignup=mode==='signup';
+  return `<div class="auth-card-methods${compact?' is-compact':''}">
+    <div class="auth-mode-tabs" role="tablist" aria-label="Sign in or create account">
+      <button type="button" class="auth-mode-tab ${!isSignup?'is-active':''}" role="tab" aria-selected="${!isSignup}" data-action="auth-mode" data-auth-mode="signin" ${loading?'disabled':''}>Sign in</button>
+      <button type="button" class="auth-mode-tab ${isSignup?'is-active':''}" role="tab" aria-selected="${isSignup}" data-action="auth-mode" data-auth-mode="signup" ${loading?'disabled':''}>Create account</button>
+    </div>
+    <form id="email-auth-form" class="email-auth-form${compact?' is-compact':''}" data-auth-mode="${isSignup?'signup':'signin'}" novalidate>
+      ${isSignup?`<label class="field">Full name<input name="name" type="text" autocomplete="name" maxlength="80" placeholder="Your name" required ${loading?'disabled':''}></label>`:''}
+      <label class="field">Email address<input name="email" type="email" autocomplete="email" maxlength="254" placeholder="you@example.com" required ${loading?'disabled':''}></label>
+      <label class="field">Password<div class="password-input-wrap"><input name="password" type="password" autocomplete="${isSignup?'new-password':'current-password'}" minlength="6" maxlength="128" placeholder="${isSignup?'At least 6 characters':'Enter your password'}" required ${loading?'disabled':''}><button type="button" class="password-toggle-btn" data-action="toggle-password" aria-label="Show password" aria-pressed="false">Show</button></div></label>
+      ${isSignup?`<label class="field">Confirm password<input name="confirmPassword" type="password" autocomplete="new-password" minlength="6" maxlength="128" placeholder="Re-enter your password" required ${loading?'disabled':''}></label>`:''}
+      <div class="email-auth-actions">
+        <button type="submit" class="button email-auth-submit" ${loading?'disabled':''}>${loading?'Checking your account…':(isSignup?'Create account →':'Sign in with email →')}</button>
+        ${!isSignup?`<button type="button" class="text-link auth-forgot-link" data-action="forgot-password" ${loading?'disabled':''}>Forgot password?</button>`:''}
+      </div>
+      <p id="auth-notice" class="notice" role="alert">${e(error||notice||'')}</p>
+    </form>
+    <div class="auth-divider" aria-hidden="true"><span>or</span></div>
+    <button class="google-signin" data-action="signin" ${loading?'disabled':''}>${googleIcon} <span>${loading?'Checking your account…':'Continue with Google'}</span></button>
+    <button type="button" class="text-link signin-redirect-link" data-action="signin-redirect" ${loading?'disabled':''}>Popup blocked? Sign in with redirect →</button>
+  </div>`;
+}
+function signInCard(loading,error,{mode='signin',notice=''}={}) {
+  const isSignup=mode==='signup';
+  return `<div class="container"><section class="account-welcome"><div class="account-welcome-art"><img src="assets/silly-sensei-loading.webp" alt="hehe.cafe studio mascot"></div><div class="account-welcome-copy"><p class="eyebrow">Your account</p><h1>${isSignup?'Create your<br>hehe.cafe account':'Sign in to<br>hehe.cafe'}</h1><p>View your artwork orders and manage your delivery details.</p><div class="login-benefits"><p>${icons.requests} Follow your checkout requests</p><p>${icons.profile} Save details for your next visit</p></div>${emailAuthCardMarkup({mode,loading,error,notice})}<p class="small muted">Your account is private. We only use your details to help with your orders.</p><a class="text-link" href="#home">Continue exploring artworks</a></div></section></div>`;
 }
 function requestCard(request,{productImages=new Map(),open=false}={}) {
   const c=request.customer, reference=request.id.slice(0,8).toUpperCase();
@@ -159,12 +183,13 @@ export function ordersListMarkup(requests=[],{filter='all',query='',products=[],
 }
 function profileForm(user,profile,states) {
   const names=(user.displayName||'').trim().split(/\s+/),p={firstName:names[0]||'',lastName:names.slice(1).join(' '),...profile};
+  const emailHint=(user.providerData||[]).some(pr=>pr?.providerId==='google.com')?'Managed by your Google account':'Managed by your account login';
   const input=(key,label,max=100,auto='',required=false)=>`<label class="field">${label}<input name="${key}" value="${e(p[key]||'')}" maxlength="${max}" autocomplete="${auto}" ${required?'required':''}></label>`;
-  return `<form id="customer-profile-form" class="dashboard-panel profile-form"><div class="panel-heading"><div><h2>Personal details</h2><p>Update your contact details.</p></div><span class="secure-badge">Private to you</span></div><div class="form-grid">${input('firstName','First name',100,'given-name',true)}${input('lastName','Last name',100,'family-name',true)}<label class="field">Email address<input value="${e(user.email||'')}" type="email" readonly><small>Managed by your Google account</small></label>${input('phone','Mobile number',16,'tel')}</div><hr><h2>Default delivery address</h2><p class="small muted">Optional. Saved details and a confirmed delivery pin fill checkout. You can update the pin anytime.</p><div class="form-grid">${input('address','Street address',300,'address-line1')}${input('apartment','Apartment / landmark',150,'address-line2')}${input('city','City',100,'address-level2')}<label class="field">State<select name="state" autocomplete="address-level1"><option value="">Choose state</option>${states.map(state=>`<option ${p.state===state?'selected':''}>${e(state)}</option>`).join('')}</select></label>${input('postalCode','PIN code',6,'postal-code')}<label class="field">Country<input value="India" readonly></label></div>${mapPanel(p.location)}<div class="profile-save"><button type="submit" class="button">Save my details →</button><p id="profile-notice" class="notice" role="status"></p></div></form>`;
+  return `<form id="customer-profile-form" class="dashboard-panel profile-form"><div class="panel-heading"><div><h2>Personal details</h2><p>Update your contact details.</p></div><span class="secure-badge">Private to you</span></div><div class="form-grid">${input('firstName','First name',100,'given-name',true)}${input('lastName','Last name',100,'family-name',true)}<label class="field">Email address<input value="${e(user.email||'')}" type="email" readonly><small>${emailHint}</small></label>${input('phone','Mobile number',16,'tel')}</div><hr><h2>Default delivery address</h2><p class="small muted">Optional. Saved details and a confirmed delivery pin fill checkout. You can update the pin anytime.</p><div class="form-grid">${input('address','Street address',300,'address-line1')}${input('apartment','Apartment / landmark',150,'address-line2')}${input('city','City',100,'address-level2')}<label class="field">State<select name="state" autocomplete="address-level1"><option value="">Choose state</option>${states.map(state=>`<option ${p.state===state?'selected':''}>${e(state)}</option>`).join('')}</select></label>${input('postalCode','PIN code',6,'postal-code')}<label class="field">Country<input value="India" readonly></label></div>${mapPanel(p.location)}<div class="profile-save"><button type="submit" class="button">Save my details →</button><p id="profile-notice" class="notice" role="status"></p></div></form>`;
 }
 export function accountMarkup(user,admin,state={}) {
   if(state.authLoading)return pageSkeleton('account');
-  if (!user || user.isAnonymous) return signInCard(state.authLoading,state.authError);
+  if (!user || user.isAnonymous) return signInCard(state.authLoading,state.authError,{mode:state.authMode||'signin',notice:state.authNotice||''});
   if(state.loaded===false)return pageSkeleton('account');
   const tab=['requests','profile'].includes(state.tab)?state.tab:'overview',profile=state.profile||{},requests=state.requests||[],products=state.products||[];
   const orderFilter=state.orderFilter||'all',orderQuery=state.orderQuery||'';

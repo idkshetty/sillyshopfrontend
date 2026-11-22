@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createHmac} from 'node:crypto';
-import {isAdmin,isMasterAdmin,verifySignature,verifiedPayment,quoteItems,canTransition} from '../backend/core.js';
+import {isAdmin,isMasterAdmin,isCustomer,verifySignature,verifiedPayment,quoteItems,canTransition} from '../backend/core.js';
 import {summarizeSales} from '../frontend/sales-dashboard.js';
 import {labelForRequest} from '../frontend/label-data.js';
 import {API_ORIGINS} from '../backend/origins.js';
@@ -19,6 +19,11 @@ test('admin authorization allows the 3 studio emails and restricts master admin 
   assert.equal(isMasterAdmin({email:'VISHNUDEVIPRASADSHETTY@GMAIL.COM',email_verified:true}),true);
   for(const token of [{email:'Supritachat.25@gmail.com',email_verified:true},{email:'abhishekredddy500@gmail.com',email_verified:true},{email:'vishnudeviprasadshetty@gmail.com',email_verified:false},{admin:true},{email:'attacker@example.com',email_verified:true}])assert.equal(isMasterAdmin(token),false);
   for(const token of [{email:'Supritachat.25@gmail.com'},{email:'attacker@example.com',email_verified:true},{admin:'true'},{}])assert.equal(isAdmin(token),false);
+  assert.equal(isCustomer({email_verified:true}),true);
+  assert.equal(isCustomer({email_verified:false,firebase:{sign_in_provider:'password'}}),true);
+  assert.equal(isCustomer({firebase:{sign_in_provider:'anonymous'}}),false);
+  assert.equal(isCustomer({email_verified:false,firebase:{sign_in_provider:'google.com'}}),false);
+  assert.equal(isAdmin({email:'vishnudeviprasadshetty@gmail.com',email_verified:false,firebase:{sign_in_provider:'password'}}),false);
 });
 test('payment and webhook signatures reject changed bodies, malformed signatures and wrong keys',()=>{
   const body='order_abc|pay_123',secret='unit-test-only',signature=createHmac('sha256',secret).update(body).digest('hex');

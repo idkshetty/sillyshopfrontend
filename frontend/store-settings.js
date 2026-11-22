@@ -55,7 +55,8 @@ export const DEFAULT_SETTINGS = {
   artworkSort: 'manual',
   cartButtonMode: 'black',
   bannerLimit: 8,
-  aboutVisible: false
+  aboutVisible: false,
+  storyVisible: true
 };
 
 export const FALLBACK_BANNER_ARTWORKS = [
@@ -255,6 +256,7 @@ export function normalizeSettings(value = {}) {
   const rawLimit = Number(value.bannerLimit);
   result.bannerLimit = Number.isInteger(rawLimit) && rawLimit >= 0 && rawLimit <= 50 ? rawLimit : 8;
   result.aboutVisible = value.aboutVisible === true;
+  result.storyVisible = value.storyVisible !== false;
   return result;
 }
 export function bannerSlidesFor(products = [], settings = DEFAULT_SETTINGS) {
@@ -324,6 +326,7 @@ export function settingsForm(s) {
   return `<form id="banner-form" class="settings-note banner-editor">
   <h2>Storefront pages</h2>
   <label class="visibility-toggle"><input type="checkbox" name="aboutVisible" ${s.aboutVisible?'checked':''}><span>Show "About hehe.cafe" page on storefront</span></label>
+  <label class="visibility-toggle"><input type="checkbox" name="storyVisible" ${s.storyVisible!==false?'checked':''}><span>Show "Welcome to hehe.cafe" story section on homepage</span></label>
   <hr>
   <h2>Announcement bar</h2>
   <label class="visibility-toggle"><input type="checkbox" name="announcementVisible" ${s.announcementVisible?'checked':''}><span>Announcement bar visible</span></label>

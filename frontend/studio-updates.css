@@ -1215,3 +1215,26 @@ button,a,.button,.cart-button,.quick-buy-btn,.home-filter-btn,.hero-banner-cta,.
 .live-dot{width:7px;height:7px;border-radius:50%;background:#1f9d55;animation:live-pulse 1.8s ease-in-out infinite}
 @keyframes live-pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.45;transform:scale(1.35)}}
 @media(max-width:600px){.thermal-dock-unprinted{align-items:flex-start}.thermal-select-field{min-width:100%}.table-action-cell{flex-wrap:wrap}}
+
+.auth-card-methods{display:grid;gap:4px;max-width:360px}
+.auth-card-methods.is-compact{max-width:380px}
+.auth-mode-tabs{display:grid;grid-template-columns:1fr 1fr;gap:4px;padding:4px;border-radius:12px;background:#f3eee4;border:1px solid #dfd8ca;margin:14px 0 10px;max-width:360px}
+.auth-mode-tab{border:0;background:transparent;padding:9px 12px;border-radius:9px;font:600 13px/1.2 'Plus Jakarta Sans',Arial,sans-serif;color:#5a544c;cursor:pointer;transition:background-color .16s ease,color .16s ease}
+.auth-mode-tab:hover{color:#181715}
+.auth-mode-tab.is-active{background:#181715;color:#faf8f5}
+.email-auth-form{display:grid;gap:11px;max-width:360px;text-align:left}
+.email-auth-form .field{margin:0}
+.email-auth-form .field input{width:100%;box-sizing:border-box}
+.password-input-wrap{position:relative;display:flex;align-items:center}
+.password-input-wrap input{padding-right:58px!important;width:100%}
+.password-toggle-btn{position:absolute;right:8px;border:0;background:transparent;font:600 12px/1 'Plus Jakarta Sans',Arial,sans-serif;color:#5a544c;padding:6px 8px;border-radius:6px;cursor:pointer}
+.password-toggle-btn:hover{color:#181715;background:rgba(24,23,21,.06)}
+.email-auth-actions{display:flex;flex-direction:column;align-items:flex-start;gap:8px;margin-top:2px}
+.email-auth-submit{width:100%;justify-content:center}
+.auth-forgot-link{font-size:12px;align-self:flex-end}
+.email-auth-form .notice:empty{display:none}
+.email-auth-form .notice{margin:2px 0 0;font-size:12.5px}
+.auth-divider{display:flex;align-items:center;gap:12px;max-width:360px;margin:10px 0;color:#7a7368;font:600 11.5px/1 'Plus Jakarta Sans',Arial,sans-serif;text-transform:uppercase;letter-spacing:.06em}
+.auth-divider::before,.auth-divider::after{content:'';flex:1;height:1px;background:#e2ddd2}
+.account-welcome-copy .google-signin,.checkout-signin-copy .google-signin{max-width:360px;width:100%}
+.checkout-signin-card{align-items:flex-start}

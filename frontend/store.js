@@ -92,6 +92,42 @@ export function signIn({ redirect = false } = {}) {
 export async function signOut() {
   const {a,auth} = await backend();await a.signOut(auth);
 }
+export async function signInWithEmail(email='',password=''){
+  const cleanEmail=String(email||'').trim().toLowerCase();
+  if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail))throw new Error('Please enter a valid email address.');
+  if(!password)throw new Error('Please enter your password.');
+  const {a,auth}=await backend();
+  const guestToken=auth.currentUser?.isAnonymous?await auth.currentUser.getIdToken().catch(()=>null):null;
+  const result=await a.signInWithEmailAndPassword(auth,cleanEmail,String(password));
+  if(guestToken){try{await callBackend('claimGuestRequests',{guestToken});}catch{}}
+  return result;
+}
+export async function signUpWithEmail({name='',email='',password=''}={}){
+  const cleanName=String(name||'').trim().slice(0,80);
+  const cleanEmail=String(email||'').trim().toLowerCase();
+  if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail))throw new Error('Please enter a valid email address.');
+  if(String(password||'').length<6)throw new Error('Password must be at least 6 characters long.');
+  const {a,auth}=await backend();
+  let result;
+  if(auth.currentUser?.isAnonymous&&typeof a.EmailAuthProvider?.credential==='function'){
+    result=await a.linkWithCredential(auth.currentUser,a.EmailAuthProvider.credential(cleanEmail,String(password)));
+  }else{
+    result=await a.createUserWithEmailAndPassword(auth,cleanEmail,String(password));
+  }
+  if(cleanName&&result?.user&&typeof a.updateProfile==='function'){
+    await a.updateProfile(result.user,{displayName:cleanName}).catch(()=>{});
+  }
+  if(result?.user&&typeof a.sendEmailVerification==='function'){
+    a.sendEmailVerification(result.user).catch(()=>{});
+  }
+  return result;
+}
+export async function resetPassword(email=''){
+  const cleanEmail=String(email||'').trim().toLowerCase();
+  if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail))throw new Error('Enter your email address above first, then tap Forgot password.');
+  const {a,auth}=await backend();
+  await a.sendPasswordResetEmail(auth,cleanEmail);
+}
 export async function observeSettings(onData,onError){return observePublic('settings',v=>onData(normalizeSettings(v)),onError);}
 export async function saveSettings(value){return callBackend('saveStoreData',{kind:'settings',value:normalizeSettings(value)});}
 export async function observeArtists(onData,onError){return observePublic('artists',v=>onData(normalizeArtists(v)),onError);}
@@ -194,7 +230,15 @@ export async function callBackend(name,data={}){
  }
 }
 export function friendlyError(error){
-  if(error?.code==='permission-denied')return error.message||'Your account does not have access to this action.';
-  if(error?.code==='auth/popup-closed-by-user'||error?.code==='auth/popup-blocked')return 'Sign-in popup was closed or blocked by your browser. Tap "Popup blocked? Sign in with redirect" below to continue.';
+  const code=error?.code||'';
+  if(code==='permission-denied')return error.message||'Your account does not have access to this action.';
+  if(code==='auth/popup-closed-by-user'||code==='auth/popup-blocked')return 'Sign-in popup was closed or blocked by your browser. Tap "Popup blocked? Sign in with redirect" below to continue.';
+  if(code==='auth/invalid-email')return 'Please enter a valid email address.';
+  if(code==='auth/user-disabled')return 'This account has been disabled. Please contact the studio.';
+  if(code==='auth/user-not-found'||code==='auth/wrong-password'||code==='auth/invalid-credential')return 'Incorrect email or password. Double-check your details or switch to Create account.';
+  if(code==='auth/email-already-in-use'||code==='auth/credential-already-in-use')return 'An account with this email already exists. Switch to Sign in instead.';
+  if(code==='auth/weak-password')return 'Password must be at least 6 characters long.';
+  if(code==='auth/too-many-requests')return 'Too many attempts. Please wait a minute and try again.';
+  if(code==='auth/operation-not-allowed')return 'Email & password sign-in needs to be enabled in Firebase Console (Authentication → Sign-in method → Email/Password).';
   return error?.message||'Something went wrong. Please retry.';
 }

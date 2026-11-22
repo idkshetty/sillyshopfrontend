@@ -18,7 +18,7 @@ import {createThermalPrinterController,getUnprintedOrders} from './thermal-print
 import {mountOrdersMap} from './orders-map.js';
 import {POLICY_TABS,normalizeAdminTab,countActionableOrders,adminSidebarMarkup,policySubnavMarkup,filterOrders,orderFilterCounts,ordersToolbarMarkup,orderCardMarkup,thermalPrinterDockMarkup} from './admin-ui.js';
 import {decorateCartButtons,animateCart,animateCartCheckout,playPaymentOutcome,preloadPaymentOutcomeSvg,reviewSection,mountReviews,mountHeroBanner,mountArtistScrollPrompt,sampleArtworkBgFromImage} from './shop-effects.js';
-import {accountMarkup,ordersListMarkup} from './customer-dashboard.js';
+import {accountMarkup,ordersListMarkup,emailAuthCardMarkup} from './customer-dashboard.js';
 import {steppedProgress} from './stepped-progress.js';
 import {normalizeProfile,validateProfile,checkoutDefaults} from './profile.js';
 import {logoutMarkup,mountLogout,animateLogout} from './logout.js';
@@ -72,7 +72,7 @@ function isAnimationPlaying() {
 const checkoutTouched=new Set();
 let checkoutStepMotionToken=0,checkoutStepAnimations=[];
 let toastTimer, orderNote = '';
-let authLoading=true,authError='',accountState={requests:[],profile:{},loaded:false,loading:false,orderFilter:'all',orderQuery:''},profileDraftLocation=undefined;
+let authLoading=true,authError='',authMode='signin',authNotice='',accountState={requests:[],profile:{},loaded:false,loading:false,orderFilter:'all',orderQuery:''},profileDraftLocation=undefined;
 try {const saved = JSON.parse(localStorage.getItem(cartKey)); if (Array.isArray(saved)) {const seen=new Set(); cart = saved.filter(c=>c && typeof c.id==='string' && !seen.has(c.id) && Number.isInteger(c.quantity) && c.quantity>0 && seen.add(c.id)).map(c=>({id:c.id,quantity:Math.min(c.quantity,MAX_ITEM_QUANTITY)}));}} catch {}
 const visible = () => sortArtworks(products.filter(p=>p.visible && !p.archived), storeSettings.artworkSort || 'manual');
 const imageOf = p => safeImage(p.images?.[0],categoryOf(p.category)?.image);
@@ -487,7 +487,7 @@ function renderCheckout(){
   const cleanupBanner=cartCleanupBannerMarkup();
   const entries=lines();checkoutProducts=entries.map(l=>({...l.product}));if(!entries.length){$('main').innerHTML=`<div class="container checkout-wrap checkout-empty-wrap">${cleanupBanner}${emptyBagMarkup({inDialog:false})}</div>`;return;}
   if(!user||user.isAnonymous){
-    $('main').innerHTML=`<div class="container checkout-wrap">${cleanupBanner}<div class="page-head">${breadcrumbs('Checkout','<a href="#home">Artworks</a><span>/</span>')}<h1>Sign in to check out</h1><p>Your art bag is saved. Sign in with Google to enter delivery details and complete your order.</p></div><section class="checkout-info checkout-signin-card"><img class="checkout-signin-cat" src="assets/checkout/cat-coffee.webp" alt="" aria-hidden="true" decoding="async"><div class="checkout-signin-copy"><strong>One-tap Google sign-in</strong><p>After signing in, you’ll return right here to complete your order.</p>${authLoading?'<p role="status">Checking your sign-in…</p>':'<button type="button" class="button" data-action="signin">Continue with Google</button><button type="button" class="text-link signin-redirect-link" data-action="signin-redirect">Popup blocked? Sign in with redirect →</button>'}</div></section><p style="margin-top:20px"><a class="text-link" href="#home">← Back to hehe.cafe</a></p></div>`;
+    $('main').innerHTML=`<div class="container checkout-wrap">${cleanupBanner}<div class="page-head">${breadcrumbs('Checkout','<a href="#home">Artworks</a><span>/</span>')}<h1>Sign in to check out</h1><p>Your art bag is saved. Sign in or create an account to enter delivery details and complete your order.</p></div><section class="checkout-info checkout-signin-card"><img class="checkout-signin-cat" src="assets/checkout/cat-coffee.webp" alt="" aria-hidden="true" decoding="async"><div class="checkout-signin-copy"><strong>Sign in or create an account</strong><p>After signing in, you’ll return right here to complete your order.</p>${authLoading?'<p role="status">Checking your sign-in…</p>':emailAuthCardMarkup({mode:authMode,loading:authLoading,error:authError,notice:authNotice,compact:true})}</div></section><p style="margin-top:20px"><a class="text-link" href="#home">← Back to hehe.cafe</a></p></div>`;
     return;
   }
   const pricing = bagPricing(entries);
@@ -768,7 +768,7 @@ function mountProfileMap(){
 function renderAccount(){
   if(deferPageRender(render))return;
   deliveryMap?.destroy();deliveryMap=null;
-  $('main').innerHTML=accountMarkup(user,isAdmin,{...accountState,products,tab:route().id,states,authLoading,authError});mountLogout();
+  $('main').innerHTML=accountMarkup(user,isAdmin,{...accountState,products,tab:route().id,states,authLoading,authError,authMode,authNotice});mountLogout();
   mountProfileMap();
   if(user&&!user.isAnonymous&&!accountState.loaded&&!accountState.loading)fetchCustomerAccount();
 }
@@ -941,6 +941,7 @@ function draftSettingsFromForm(){
   draft.bannerButtonVisible=data.get('bannerButtonVisible')==='on';
   draft.reviewsVisible=data.get('reviewsVisible')==='on';
   draft.aboutVisible=data.get('aboutVisible')==='on';
+  draft.storyVisible=data.get('storyVisible')==='on';
   draft.bannerButtonOffsetX=Number(data.get('bannerButtonOffsetX')||0);
   draft.bannerButtonOffsetY=Number(data.get('bannerButtonOffsetY')||0);
   if(homeLayoutController){
@@ -970,6 +971,7 @@ async function submitBanners(event){
   value.bannerButtonVisible=data.get('bannerButtonVisible')==='on';
   value.reviewsVisible=data.get('reviewsVisible')==='on';
   value.aboutVisible=data.get('aboutVisible')==='on';
+  value.storyVisible=data.get('storyVisible')==='on';
   value.bannerEyebrow=String(value.bannerEyebrow||'').trim();
   value.bannerArtistLabel=String(value.bannerArtistLabel||'').trim();
   value.bannerArtistLink=String(value.bannerArtistLink||'').trim();
@@ -1205,7 +1207,7 @@ function renderAdminContent(){
     if(requestsLoaded)renderRequests();else fetchRequests();
   }else if(adminTab==='policies'){
     if(!contentReady&&!contentError){$('admin-content').innerHTML=skeletonMarkup('editor','Loading your published pages…');return;}
-    $('admin-content').innerHTML=`<div class="admin-title"><div><h1>Pages &amp; policies</h1><p>Edit your contact page, About page visibility, and store policies from one place.</p></div></div><label class="visibility-toggle admin-about-toggle"><input type="checkbox" id="admin-toggle-about-page" ${storeSettings.aboutVisible?'checked':''}><span>Show "About hehe.cafe" page on storefront</span></label>${policySubnavMarkup(activePolicyTab)}<div id="admin-policy-editor"></div>`;
+    $('admin-content').innerHTML=`<div class="admin-title"><div><h1>Pages &amp; policies</h1><p>Edit your contact page, About page visibility, and store policies from one place.</p></div></div><label class="visibility-toggle admin-about-toggle"><input type="checkbox" id="admin-toggle-about-page" ${storeSettings.aboutVisible?'checked':''}><span>Show "About hehe.cafe" page on storefront</span></label><label class="visibility-toggle admin-about-toggle"><input type="checkbox" id="admin-toggle-story-section" ${storeSettings.storyVisible!==false?'checked':''}><span>Show "Welcome to hehe.cafe" story section on homepage</span></label>${policySubnavMarkup(activePolicyTab)}<div id="admin-policy-editor"></div>`;
     contentEditor=mountContentEditor($('admin-policy-editor'),siteContent,{pageOnly:activePolicyTab,
       draft:contentDraft,loadError:contentError,products:()=>products,settings:()=>storeSettings,header:()=>document.querySelector('.site-header').outerHTML,artists:()=>artists,
       onDraft:value=>{contentDraft=value;},
@@ -2083,6 +2085,40 @@ document.addEventListener('click',async event=>{
     }
     else if(action==='thumbnail'){const p=products.find(p=>p.id===route().id);const mainImg=$('product-main-image');if(mainImg&&p){mainImg.src=safeImage(p.images[Number(target.dataset.index)]);sampleAndWashProductImage(mainImg);}document.querySelectorAll('.thumbs button').forEach(b=>{const on=b===target;b.classList.toggle('active',on);b.classList.toggle('is-active',on);});}
     else if(action==='signin'||action==='signin-redirect'){target.disabled=true;const p=store.signIn({redirect:action==='signin-redirect'});await p;if(target.isConnected)target.disabled=false;}
+    else if(action==='auth-mode'){
+      authMode=target.dataset.authMode==='signup'?'signup':'signin';
+      authError='';authNotice='';
+      render();
+    }
+    else if(action==='toggle-password'){
+      const wrap=target.closest('.password-input-wrap');
+      const input=wrap?.querySelector('input');
+      if(input){
+        const show=input.type==='password';
+        input.type=show?'text':'password';
+        target.textContent=show?'Hide':'Show';
+        target.setAttribute('aria-pressed',String(show));
+        target.setAttribute('aria-label',show?'Hide password':'Show password');
+      }
+    }
+    else if(action==='forgot-password'){
+      const emailInput=document.querySelector('#email-auth-form input[name="email"]');
+      const rawEmail=String(emailInput?.value||'').trim().toLowerCase();
+      if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(rawEmail)){
+        const msg='Enter your email address above first, then click Forgot password.';
+        authError=msg;
+        if($('auth-notice'))$('auth-notice').textContent=msg;
+        emailInput?.focus();
+        return;
+      }
+      target.disabled=true;
+      await store.resetPassword(rawEmail);
+      authError='';
+      authNotice='Password reset link sent. Check your inbox (and spam folder).';
+      if($('auth-notice'))$('auth-notice').textContent=authNotice;
+      toast('Password reset link sent.');
+      if(target.isConnected)target.disabled=false;
+    }
     else if(action==='skip-save-address'){$('save-address-prompt').remove();}
     else if(action==='save-checkout-address'){target.disabled=true;if(!user||user.isAnonymous)await store.signIn();const profile=normalizeProfile(completedRequest.customer);await store.saveProfile(profile);accountState.profile=profile;if($('save-address-prompt'))$('save-address-prompt').innerHTML='<p role="status">Your address and confirmed pin are saved for next time.</p>';}
     else if(action==='cancel-request'){target.disabled=true;const form=target.closest('.cancel-form');await store.cancelRequest(id,form.querySelector('textarea').value);await fetchCustomerAccount();toast('Your cancellation has been saved.');}
@@ -2283,7 +2319,41 @@ document.addEventListener('click',event=>{
   if(!event.target.closest('.home-filter-wrap')){const panel=$('home-filter-panel');if(panel&&!panel.hidden){panel.hidden=true;document.querySelector('[data-action="toggle-filter-menu"]')?.setAttribute('aria-expanded','false');}}
 });
 document.querySelectorAll('dialog').forEach(dialog=>dialog.addEventListener('click',event=>{if(event.target===dialog){const r=dialog.getBoundingClientRect();if(event.clientX<r.left||event.clientX>r.right||event.clientY<r.top||event.clientY>r.bottom)closeDialog(dialog);}}));
-document.addEventListener('submit',event=>{if(event.target.id==='customer-profile-form')submitCustomerProfile(event);if(event.target.id==='checkout-form')submitCheckout(event);if(event.target.id==='banner-form')submitBanners(event);if(event.target.id==='product-form')submitProduct(event);if(event.target.id==='artist-form')submitArtist(event);if(event.target.matches('.inline-price-form')){event.preventDefault();saveInlinePrice(event.target.dataset.inlinePriceId,event.target.elements.price.value);}if(event.target.id==='search-form'){event.preventDefault();location.hash=`search/${encodeURIComponent($('search-input').value.trim())}`;closeDialogs();}});
+async function submitEmailAuth(event){
+  event.preventDefault();
+  const form=event.target;
+  const mode=form.dataset.authMode==='signup'?'signup':'signin';
+  const data=new FormData(form);
+  const name=String(data.get('name')||'').trim();
+  const email=String(data.get('email')||'').trim().toLowerCase();
+  const password=String(data.get('password')||'');
+  const confirmPassword=String(data.get('confirmPassword')||'');
+  const notice=$('auth-notice')||form.querySelector('.notice');
+  const setErr=msg=>{authError=msg;if(notice)notice.textContent=msg;};
+  if(mode==='signup'&&name.length<2)return setErr('Please enter your name (at least 2 characters).');
+  if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))return setErr('Please enter a valid email address.');
+  if(password.length<6)return setErr('Password must be at least 6 characters long.');
+  if(mode==='signup'&&password!==confirmPassword)return setErr('Passwords do not match.');
+  const submitBtn=form.querySelector('[type="submit"]');
+  const prevText=submitBtn?.textContent||'';
+  if(submitBtn){submitBtn.disabled=true;submitBtn.textContent=mode==='signup'?'Creating account…':'Signing in…';}
+  if(notice)notice.textContent='';
+  try{
+    if(mode==='signup'){
+      await store.signUpWithEmail({name,email,password});
+      authError='';authNotice='';
+      toast('Account created! Welcome to hehe.cafe.');
+    }else{
+      await store.signInWithEmail(email,password);
+      authError='';authNotice='';
+      toast('Signed in.');
+    }
+  }catch(error){
+    setErr(store.friendlyError(error));
+    if(submitBtn&&submitBtn.isConnected){submitBtn.disabled=false;submitBtn.textContent=prevText;}
+  }
+}
+document.addEventListener('submit',event=>{if(event.target.id==='email-auth-form')submitEmailAuth(event);if(event.target.id==='customer-profile-form')submitCustomerProfile(event);if(event.target.id==='checkout-form')submitCheckout(event);if(event.target.id==='banner-form')submitBanners(event);if(event.target.id==='product-form')submitProduct(event);if(event.target.id==='artist-form')submitArtist(event);if(event.target.matches('.inline-price-form')){event.preventDefault();saveInlinePrice(event.target.dataset.inlinePriceId,event.target.elements.price.value);}if(event.target.id==='search-form'){event.preventDefault();location.hash=`search/${encodeURIComponent($('search-input').value.trim())}`;closeDialogs();}});
 document.addEventListener('keydown',event=>{if(event.key==='Enter'&&(event.target.id==='cart-promo-input'||event.target.id==='checkout-promo-input')){event.preventDefault();event.target.closest('.promo-code-box')?.querySelector('[data-action="apply-promo"]')?.click();}});
 document.addEventListener('input',event=>{if(event.target.dataset.productNote)setProductNote(event.target.dataset.productNote,event.target.value);if(event.target.id==='checkout-notes'&&$('checkout-notes-count'))$('checkout-notes-count').textContent=`${event.target.value.length} / 1000`;if(event.target.id==='search-input')renderSearch();if(event.target.id==='home-search-input'){filter.search=event.target.value;renderProductResults();decorateCartButtons();}if(event.target.id==='account-order-search'){accountState.orderQuery=event.target.value;refreshAccountOrdersList();}if(event.target.id==='order-note')orderNote=event.target.value;if(event.target.id==='admin-search'){adminSearch=event.target.value;renderAdminTable();}if(event.target.id==='admin-orders-search'){orderSearch=event.target.value;renderOrdersCards();}if(event.target.closest('#product-form'))renderEditorCardPreview();if(event.target.closest('#banner-form')){if(event.target.name==='bannerButtonOffsetX'&&$('banner-cta-x-val'))$('banner-cta-x-val').textContent=`${event.target.value}px`;if(event.target.name==='bannerButtonOffsetY'&&$('banner-cta-y-val'))$('banner-cta-y-val').textContent=`${event.target.value}px`;settingsDirty=true;settingsPreviewController?.update();}if(event.target.closest('#checkout-form')){if(event.target.name)checkoutTouched.add(event.target.name);captureCheckout();}});
 document.addEventListener('change',async event=>{const t=event.target;if(t.closest('#product-form'))renderEditorCardPreview();if(t.closest('#banner-form')){settingsDirty=true;settingsPreviewController?.update();}if(t.dataset.referenceFiles){try{addReferences(t.dataset.referenceFiles,t.files);refreshReferencePreviews(t.dataset.referenceFiles);}catch(error){toast(error.message);}t.value='';}
@@ -2332,6 +2402,17 @@ document.addEventListener('change',async event=>{const t=event.target;if(t.close
     try{
       await withSavingOverlay('Updating About page visibility…',()=>store.saveSettings(storeSettings));
       toast(nextVisible?'"About hehe.cafe" page is now visible on your storefront.':'Hidden "About hehe.cafe" page from your storefront.');
+    }catch(error){
+      toast(store.friendlyError(error));
+    }
+  }
+  if(t.id==='admin-toggle-story-section'&&isAdmin){
+    const nextVisible=Boolean(t.checked);
+    storeSettings=normalizeSettings({...storeSettings,storyVisible:nextVisible});
+    if(route().page==='home')render();
+    try{
+      await withSavingOverlay('Updating homepage story section…',()=>store.saveSettings(storeSettings));
+      toast(nextVisible?'"Welcome to hehe.cafe" story section is now visible on the homepage.':'Hidden "Welcome to hehe.cafe" story section from the homepage.');
     }catch(error){
       toast(store.friendlyError(error));
     }
@@ -2412,7 +2493,7 @@ store.observeAuth((nextUser,nextAdmin,nextMasterAdmin=false)=>{
     if(user&&!user.isAnonymous){checkoutDraft={};checkoutTouched.clear();completedRequest=null;orderNote='';clearCustomizations();closeDialogs();}
     accountState={requests:[],profile:{},loaded:false,loading:false,orderFilter:'all',orderQuery:''};
   }
-  user=nextUser;isAdmin=nextAdmin;isMasterAdmin=Boolean(nextMasterAdmin);authLoading=false;authError='';requestList=[];requestsLoaded=false;
+  user=nextUser;isAdmin=nextAdmin;isMasterAdmin=Boolean(nextMasterAdmin);authLoading=false;authError='';authNotice='';requestList=[];requestsLoaded=false;
   if(changed)startCatalog();
   if(['account','admin'].includes(route().page)){
     if(nextAdmin&&identityChanged){location.hash=requestedAdminPage;requestedAdminPage='admin';render();}
@@ -2444,6 +2525,7 @@ store.observeSettings(settings=>{
   if((page==='home'||page==='shop'||page==='about')&&!isAnimationPlaying())render();
   if(page==='admin'){
     if(adminTab==='policies'&&$('admin-toggle-about-page'))$('admin-toggle-about-page').checked=Boolean(storeSettings.aboutVisible);
+    if(adminTab==='policies'&&$('admin-toggle-story-section'))$('admin-toggle-story-section').checked=storeSettings.storyVisible!==false;
     if(adminTab==='settings'&&!settingsDirty&&!$('banner-form')?.contains(document.activeElement))renderAdminContent();
     if(adminTab==='products'){
       if($('admin-artwork-sort'))$('admin-artwork-sort').value=storeSettings.artworkSort||'manual';

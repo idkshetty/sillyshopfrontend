@@ -34,6 +34,14 @@ test('label overrides preserve source data and escape text before rendering',()=
 });
 test('signed-out account has real sign-in only and dashboard escapes profile content',()=>{
   const signedOut=accountMarkup(null,false);assert.ok(signedOut.includes('Continue with Google'));assert.ok(!signedOut.includes('preview-admin'));
+  assert.ok(signedOut.includes('id="email-auth-form"'));
+  assert.ok(signedOut.includes('data-auth-mode="signin"'));
+  assert.ok(signedOut.includes('name="email"')&&signedOut.includes('name="password"'));
+  assert.ok(signedOut.includes('Forgot password?'));
+  const signUpView=accountMarkup(null,false,{authMode:'signup'});
+  assert.ok(signUpView.includes('data-auth-mode="signup"'));
+  assert.ok(signUpView.includes('name="name"')&&signUpView.includes('name="confirmPassword"'));
+  assert.ok(signUpView.includes('Create account →'));
   const html=accountMarkup({uid:'test',displayName:'Test',email:'test@example.com'},false,{profile:{firstName:'<script>x</script>'},requests:[]});
   assert.ok(html.includes('Request')||html.includes('requests'));assert.ok(!html.includes('<script>x'));assert.ok(!html.includes('Open studio dashboard'));
 });

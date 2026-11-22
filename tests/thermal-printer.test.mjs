@@ -77,9 +77,11 @@ test('getUnprintedOrders filters printed/cancelled/closed/in-flight orders and s
   );
 });
 
-test('normalizeSettings hides About page by default and preserves true when enabled',()=>{
+test('normalizeSettings hides About page by default, shows story section by default, and preserves explicit toggles',()=>{
   assert.equal(normalizeSettings().aboutVisible,false);
   assert.equal(normalizeSettings({aboutVisible:true}).aboutVisible,true);
+  assert.equal(normalizeSettings().storyVisible,true);
+  assert.equal(normalizeSettings({storyVisible:false}).storyVisible,false);
 });
 
 test('encodeTSPL2In outputs 50x75mm 2-inch commands within 384 dots width and escapes quotes',()=>{
