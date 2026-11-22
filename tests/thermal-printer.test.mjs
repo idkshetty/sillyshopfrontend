@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {encodeTSPL,encodeZPL,encodeESCPOS,getUnprintedOrders} from '../frontend/thermal-printer.js';
+import {encodeTSPL,encodeTSPL2In,encodeZPL,encodeESCPOS,getUnprintedOrders} from '../frontend/thermal-printer.js';
+import {thermalPrinterDockMarkup} from '../frontend/admin-ui.js';
 import {normalizeSettings} from '../frontend/store-settings.js';
 
 const sampleOrder={
@@ -79,4 +80,26 @@ test('getUnprintedOrders filters printed/cancelled/closed/in-flight orders and s
 test('normalizeSettings hides About page by default and preserves true when enabled',()=>{
   assert.equal(normalizeSettings().aboutVisible,false);
   assert.equal(normalizeSettings({aboutVisible:true}).aboutVisible,true);
+});
+
+test('encodeTSPL2In outputs 50x75mm 2-inch commands within 384 dots width and escapes quotes',()=>{
+  const out=new TextDecoder().decode(encodeTSPL2In(sampleOrder));
+  assert.match(out,/SIZE 50 mm,75 mm/);
+  assert.match(out,/GAP 2 mm,0 mm/);
+  assert.match(out,/#ORDER-9F/);
+  assert.match(out,/\[PREPAID\]/);
+  assert.match(out,/Asha Rao/);
+  assert.match(out,/560038/);
+  assert.match(out,/QRCODE 16,370,M,4,A,0,"https:\/\/www\.google\.com\/maps/);
+  assert.ok(!out.includes('""3B""'),'quotes inside address should be escaped');
+  assert.match(out,/PRINT 1,1/);
+  const barWidths=[...out.matchAll(/^BAR\s+\d+,\d+,(\d+),/gm)].map(m=>Number(m[1]));
+  assert.ok(barWidths.length>=4,'should render section dividers');
+  assert.ok(barWidths.every(w=>w<=384),'all horizontal bars fit inside 2-inch printable width');
+});
+
+test('thermalPrinterDockMarkup renders 2-inch SEZNIK Josh status and browser-2in protocol selection',()=>{
+  const html=thermalPrinterDockMarkup({protocol:'browser-2in',connected:false},{unprintedCount:2,unprintedPaidCount:2});
+  assert.match(html,/Browser 2&quot; label driver \(50×75 mm · SEZNIK Josh\)/);
+  assert.match(html,/<option value="browser-2in" selected>/);
 });

@@ -2,7 +2,7 @@ import {labelForRequest} from './label-data.js';
 import {locationLink} from './location-utils.js';
 
 const PREFS_KEY='hehe-thermal-printer-prefs';
-const VALID_PROTOCOLS=new Set(['tspl','zpl','escpos','browser']);
+const VALID_PROTOCOLS=new Set(['tspl','tspl-2in','zpl','escpos','browser','browser-2in']);
 
 function readPrefs(){
   const defaults={protocol:'tspl',baudRate:9600,autoPrint:false,autoPrintPaidOnly:true};
@@ -160,6 +160,49 @@ export function encodeTSPL(request={},template={}){
   cmds.push('BAR 40,1040,720,3');
   cmds.push(`TEXT 40,1064,"2",0,1,1,"${escTspl(f.postageNote.slice(0,44))}"`);
   cmds.push(`TEXT 40,1104,"2",0,1,1,"Order #${escTspl(f.ref)} * ${escTspl(f.statusBadge)}"`);
+  cmds.push('PRINT 1,1');
+  return utf8Bytes(cmds.join('\r\n')+'\r\n');
+}
+
+/** Encode a 50x75 mm (2-inch, 203 dpi) parcel label in TSPL (SEZNIK / 2-inch USB). */
+export function encodeTSPL2In(request={},template={}){
+  const f=buildThermalFields(request,template);
+  const streetLines2In=wrapThermalLines(f.streetLines.join(', '),26,3);
+  const cmds=[
+    'SIZE 50 mm,75 mm',
+    'GAP 2 mm,0 mm',
+    'DIRECTION 1',
+    'REFERENCE 0,0',
+    'CLS',
+    `TEXT 16,14,"2",0,1,2,"${escTspl(f.brand.slice(0,14))}"`,
+    `TEXT 216,14,"2",0,1,1,"#${escTspl(f.ref)}"`,
+    `TEXT 216,42,"1",0,1,1,"[${escTspl(f.statusBadge)}]"`,
+    'BAR 16,70,360,3',
+    `TEXT 16,82,"1",0,1,1,"${escTspl(f.deliverTo)}"`,
+    `TEXT 16,104,"2",0,1,2,"${escTspl(f.recipient.slice(0,22))}"`
+  ];
+  let y=154;
+  for(const line of streetLines2In){
+    cmds.push(`TEXT 16,${y},"2",0,1,1,"${escTspl(line)}"`);
+    y+=24;
+  }
+  if(f.cityLine){
+    cmds.push(`TEXT 16,${y},"2",0,1,1,"${escTspl(f.cityLine.slice(0,28))}"`);
+    y+=26;
+  }
+  y=Math.max(y+8,258);
+  cmds.push(`BAR 16,${y-8},360,2`);
+  cmds.push(`TEXT 16,${y},"1",0,1,1,"${escTspl(f.postalLabel)}"`);
+  cmds.push(`TEXT 16,${y+18},"3",0,1,1,"${escTspl(f.postalCode.slice(0,10))}"`);
+  cmds.push(`TEXT 184,${y},"1",0,1,1,"${escTspl(f.phoneLabel)}"`);
+  cmds.push(`TEXT 184,${y+20},"2",0,1,1,"${escTspl(f.phone.slice(0,15))}"`);
+  cmds.push('BAR 16,356,360,2');
+  cmds.push(`QRCODE 16,370,M,4,A,0,"${escTspl(f.mapUrl)}"`);
+  cmds.push(`TEXT 184,394,"2",0,1,1,"${escTspl(f.qrHeading.slice(0,16))}"`);
+  cmds.push('TEXT 184,424,"1",0,1,1,"Scan for Maps pin"');
+  cmds.push(`TEXT 184,446,"1",0,1,1,"Items: ${f.itemCount}"`);
+  cmds.push('BAR 16,536,360,2');
+  cmds.push(`TEXT 16,548,"1",0,1,1,"${escTspl(f.postageNote.slice(0,34))}"`);
   cmds.push('PRINT 1,1');
   return utf8Bytes(cmds.join('\r\n')+'\r\n');
 }
@@ -366,7 +409,8 @@ export function createThermalPrinterController({onStateChange}={}){
     usbDevice=device;usbInterface=chosenIface;usbEndpoint=chosenEp;transport='usb';
     deviceName=[device.manufacturerName,device.productName].filter(Boolean).join(' ').trim()||'USB Thermal Printer';
     lastError='';
-    if(prefs.protocol==='browser'){prefs.protocol='tspl';savePrefs(prefs);}
+    if(prefs.protocol==='browser-2in'){prefs.protocol='tspl-2in';savePrefs(prefs);}
+    else if(prefs.protocol==='browser'){prefs.protocol='tspl';savePrefs(prefs);}
     emit();
     return getState();
   }
@@ -386,7 +430,8 @@ export function createThermalPrinterController({onStateChange}={}){
     const info=port.getInfo?.()||{};
     deviceName=info.usbVendorId?`Serial Printer (${info.usbVendorId.toString(16)})`:`Serial / COM Printer (${prefs.baudRate})`;
     lastError='';
-    if(prefs.protocol==='browser'){prefs.protocol='tspl';savePrefs(prefs);}
+    if(prefs.protocol==='browser-2in'){prefs.protocol='tspl-2in';savePrefs(prefs);}
+    else if(prefs.protocol==='browser'){prefs.protocol='tspl';savePrefs(prefs);}
     emit();
     return getState();
   }
@@ -411,6 +456,7 @@ export function createThermalPrinterController({onStateChange}={}){
   }
 
   function encodeForProtocol(request,template){
+    if(prefs.protocol==='tspl-2in')return encodeTSPL2In(request,template);
     if(prefs.protocol==='zpl')return encodeZPL(request,template);
     if(prefs.protocol==='escpos')return encodeESCPOS(request,template);
     return encodeTSPL(request,template);
@@ -435,7 +481,7 @@ export function createThermalPrinterController({onStateChange}={}){
 
   async function printLabel(request,template={}){
     if(!request?.id)throw new Error('Missing order data.');
-    if(prefs.protocol==='browser'||!isHardwareConnected())throw new Error('Connect a USB or Serial thermal printer first.');
+    if(prefs.protocol==='browser'||prefs.protocol==='browser-2in'||!isHardwareConnected())throw new Error('Connect a USB or Serial thermal printer first.');
     return enqueue(request.id,async()=>{
       const bytes=encodeForProtocol(request,template);
       await writeBytes(bytes);

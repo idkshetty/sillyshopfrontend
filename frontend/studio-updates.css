@@ -74,6 +74,32 @@ html{min-height:100%}body{min-height:100vh;min-height:100dvh;display:flex;flex-d
 .address-label .label-payment-badge{flex:none;font-family:'JetBrains Mono',monospace;font-size:8.5px;font-weight:700;letter-spacing:.8px;padding:1.2mm 2.4mm;border-radius:999px;border:1px solid transparent}
 .address-label .label-payment-badge.is-paid{background:#e8f3ea;color:#176b3a;border-color:#9ec9a8}
 .address-label .label-payment-badge.is-unpaid{background:#f5ece9;color:#9b392f;border-color:#e0b7ae}
+.address-label.is-2in{width:50mm;min-height:75mm;padding:2.5mm;border:1.2px solid #181715;border-radius:2mm;gap:1.4mm}
+.address-label.is-2in .label-header{gap:1.5mm;padding-bottom:1.5mm;margin-bottom:1mm;border-bottom-width:1.5px}
+.address-label.is-2in .label-brand-mark{font-size:12.5px}
+.address-label.is-2in .label-brand-sub,.address-label.is-2in .label-order-meta b{display:none}
+.address-label.is-2in .label-order-id{font-size:8.5px;padding:.7mm 1.6mm;border-radius:1mm}
+.address-label.is-2in .label-address{padding:.8mm 0 .5mm}
+.address-label.is-2in .label-caption{font-size:6px;letter-spacing:1px}
+.address-label.is-2in .label-address h2{font-size:12.5px;line-height:1.15;margin:.8mm 0 1mm}
+.address-label.is-2in .label-street{font-size:8.5px;line-height:1.3}
+.address-label.is-2in .label-city{font-size:8.5px;line-height:1.25;margin-top:.8mm}
+.address-label.is-2in .label-postal-row{grid-template-columns:1fr 1fr;gap:1.4mm;margin-top:1.8mm}
+.address-label.is-2in .label-postal{padding:1mm 1.5mm;border-width:1.2px;border-radius:1.2mm;gap:.4mm}
+.address-label.is-2in .label-postal>span{font-size:5.5px;letter-spacing:.7px}
+.address-label.is-2in .label-postal strong{font-size:11.5px;letter-spacing:1.2px}
+.address-label.is-2in .label-phone{padding:1mm 1.5mm;border-radius:1.2mm;gap:.4mm}
+.address-label.is-2in .label-phone b{font-size:5.5px;letter-spacing:.7px}
+.address-label.is-2in .label-phone span{font-size:7.5px}
+.address-label.is-2in .label-location{gap:1.8mm;padding:1.4mm;border-radius:1.5mm}
+.address-label.is-2in .label-qr{width:18mm;min-width:18mm;padding:.7mm;border-width:1px;border-radius:1.2mm}
+.address-label.is-2in .label-location b{font-size:7.5px;letter-spacing:.04em}
+.address-label.is-2in .label-nearby{font-size:6.5px;line-height:1.25}
+.address-label.is-2in .label-footer{margin-top:1.4mm;padding-top:1.4mm;gap:1.4mm}
+.address-label.is-2in .label-footer-logo{font-size:9.5px}
+.address-label.is-2in .label-footer-brand span{font-size:6px}
+.address-label.is-2in .label-payment-badge{font-size:6.5px;padding:.6mm 1.5mm;letter-spacing:.5px}
+.label-sheet.is-2in-preview .address-label.is-2in{zoom:1.35}
 
 /* A4 4-in-1 Sheet Preview & Thermal Batch Preview */
 .a4-preview-sheet{width:210mm;height:296mm;background:#ffffff;border:1px solid #cfc7b8;box-shadow:0 18px 42px -12px rgba(24,23,21,.25);display:grid;grid-template-columns:repeat(2,105mm);grid-template-rows:repeat(2,148mm);zoom:.6;flex:none;box-sizing:border-box}
@@ -112,7 +138,7 @@ html{min-height:100%}body{min-height:100vh;min-height:100dvh;display:flex;flex-d
 .label-preview-head>div{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
 .label-preview-head .eyebrow{margin:0}
 @media(max-width:1040px){.label-template-layout{grid-template-columns:minmax(0,1fr)}.label-preview-panel{position:static}.label-preview-panel .a4-preview-sheet{zoom:.56}}
-@media(max-width:600px){.label-field-grid{grid-template-columns:minmax(0,1fr)}.label-template-form-card{padding:18px}.label-sheet{padding:12px}.label-sheet .address-label{zoom:.76}.a4-preview-sheet,.label-preview-panel .a4-preview-sheet{zoom:.38}.a4-preview-sheet .address-label{zoom:1}.batch-label-actions{width:100%}.batch-label-actions .button{flex:1}}
+@media(max-width:600px){.label-field-grid{grid-template-columns:minmax(0,1fr)}.label-template-form-card{padding:18px}.label-sheet{padding:12px}.label-sheet .address-label{zoom:.76}.label-sheet.is-2in-preview .address-label.is-2in{zoom:1}.a4-preview-sheet,.label-preview-panel .a4-preview-sheet{zoom:.38}.a4-preview-sheet .address-label{zoom:1}.batch-label-actions{width:100%}.batch-label-actions .button{flex:1}}
 @media(max-width:400px){.label-sheet .address-label{zoom:.66}.a4-preview-sheet,.label-preview-panel .a4-preview-sheet{zoom:.31}.a4-preview-sheet .address-label{zoom:1}}
 @media print{
   #print-root{width:auto;margin:0;padding:0;background:#ffffff}
@@ -120,6 +146,9 @@ html{min-height:100%}body{min-height:100vh;min-height:100dvh;display:flex;flex-d
   #print-root.print-mode-thermal .print-thermal-page{width:100mm;height:150mm;overflow:hidden;page-break-after:always;break-after:page}
   #print-root.print-mode-thermal .print-thermal-page:last-child{page-break-after:auto;break-after:auto}
   #print-root.print-mode-thermal .address-label{width:100mm;height:150mm;min-height:0}
+  #print-root.print-mode-thermal-2in .print-thermal-2in-page{width:50mm;height:75mm;overflow:hidden;page-break-after:always;break-after:page}
+  #print-root.print-mode-thermal-2in .print-thermal-2in-page:last-child{page-break-after:auto;break-after:auto}
+  #print-root.print-mode-thermal-2in .address-label{width:50mm;height:75mm;min-height:0}
   #print-root.print-mode-a4-4up .print-a4-sheet{width:210mm;height:296mm;display:grid;grid-template-columns:repeat(2,105mm);grid-template-rows:repeat(2,148mm);background:#ffffff;overflow:hidden;page-break-after:always;break-after:page}
   #print-root.print-mode-a4-4up .print-a4-sheet:last-child{page-break-after:auto;break-after:auto}
   #print-root.print-mode-a4-4up .print-a4-empty{display:none}

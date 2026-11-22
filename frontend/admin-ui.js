@@ -128,9 +128,11 @@ export function thermalPrinterDockMarkup(printerState = {}, { unprintedCount = 0
   const autoPaidOnly = printerState.autoPrintPaidOnly !== false;
   const statusLabel = connected
     ? `Connected (${printerState.transport === 'serial' ? 'Serial' : 'USB'}): ${printerState.deviceName || 'Thermal printer'}`
-    : protocol === 'browser'
-      ? 'Browser thermal driver (100×150 mm)'
-      : 'No direct thermal printer connected';
+    : protocol === 'browser-2in'
+      ? 'Browser 2" label driver (50×75 mm · SEZNIK Josh)'
+      : protocol === 'browser'
+        ? 'Browser thermal driver (100×150 mm)'
+        : 'No direct thermal printer connected';
   const targetUnprinted = autoPaidOnly ? unprintedPaidCount : unprintedCount;
   const queueNote = printerState.busy
     ? `Printing now (${printerState.queuedCount || 1} in queue)…`
@@ -157,10 +159,12 @@ export function thermalPrinterDockMarkup(printerState = {}, { unprintedCount = 0
       <label class="thermal-select-field">
         <span>Printer language</span>
         <select id="thermal-protocol" aria-label="Thermal printer protocol">
-          <option value="tspl" ${protocol === 'tspl' ? 'selected' : ''}>TSPL 4×6" (Xprinter / TSC / TVS / Rollo)</option>
+          <option value="tspl-2in" ${protocol === 'tspl-2in' ? 'selected' : ''}>TSPL 2×3" (50×75mm · SEZNIK / 2-inch USB)</option>
+          <option value="escpos" ${protocol === 'escpos' ? 'selected' : ''}>ESC/POS 2" / 58mm roll (USB / Serial)</option>
+          <option value="browser-2in" ${protocol === 'browser-2in' ? 'selected' : ''}>Browser print 2×3" (50×75mm · SEZNIK Josh)</option>
+          <option value="tspl" ${protocol === 'tspl' ? 'selected' : ''}>TSPL 4×6" (100×150mm · Xprinter / TSC / Rollo)</option>
           <option value="zpl" ${protocol === 'zpl' ? 'selected' : ''}>ZPL 4×6" (Zebra / compatible)</option>
-          <option value="escpos" ${protocol === 'escpos' ? 'selected' : ''}>ESC/POS (80mm / 58mm roll)</option>
-          <option value="browser" ${protocol === 'browser' ? 'selected' : ''}>Browser print dialog (100×150mm)</option>
+          <option value="browser" ${protocol === 'browser' ? 'selected' : ''}>Browser print 4×6" (100×150mm)</option>
         </select>
       </label>
       <label class="thermal-select-field is-baud">
@@ -203,7 +207,7 @@ export function ordersToolbarMarkup({ counts, query = '', status = 'all', select
     </div>
     <div class="batch-label-bar">
       <div class="batch-label-info">
-        <strong id="batch-label-count">${selectedCount ? `${selectedCount} ${selectedCount === 1 ? 'order' : 'orders'} selected` : 'Select orders to print labels (4-in-1 A4 or thermal)'}</strong>
+        <strong id="batch-label-count">${selectedCount ? `${selectedCount} ${selectedCount === 1 ? 'order' : 'orders'} selected` : 'Select orders to print labels (2" SEZNIK, 4×6" thermal or 4-in-1 A4)'}</strong>
         <div class="batch-label-picks">
           <button type="button" class="text-link" data-action="select-labels-four">Select up to 4</button>
           <button type="button" class="text-link" data-action="select-labels-all">Select shown</button>
@@ -212,7 +216,8 @@ export function ordersToolbarMarkup({ counts, query = '', status = 'all', select
       </div>
       <div class="batch-label-actions">
         <button type="button" class="button small" data-action="print-batch-a4" ${selectedCount ? '' : 'disabled'}>Print A4 4-in-1${selectedCount ? ` (${selectedCount})` : ''} ↗</button>
-        <button type="button" class="button outline small" data-action="print-batch-thermal" ${selectedCount ? '' : 'disabled'}>Print thermal${selectedCount ? ` (${selectedCount})` : ''} ↗</button>
+        <button type="button" class="button outline small" data-action="print-batch-2in" ${selectedCount ? '' : 'disabled'}>Print 2" label${selectedCount ? ` (${selectedCount})` : ''} ↗</button>
+        <button type="button" class="button outline small" data-action="print-batch-thermal" ${selectedCount ? '' : 'disabled'}>Print 4×6" thermal${selectedCount ? ` (${selectedCount})` : ''} ↗</button>
       </div>
     </div>`;
 }

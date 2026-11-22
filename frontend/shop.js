@@ -1625,13 +1625,15 @@ function updateBatchLabelBar(){
   for(const id of [...selectedLabelOrders])if(!validIds.has(id))selectedLabelOrders.delete(id);
   const count=selectedLabelOrders.size;
   const countEl=$('batch-label-count');
-  if(countEl)countEl.textContent=count?`${count} ${count===1?'order':'orders'} selected`:'Select orders to print labels (4-in-1 A4 or thermal)';
+  if(countEl)countEl.textContent=count?`${count} ${count===1?'order':'orders'} selected`:'Select orders to print labels (2" SEZNIK, 4×6" thermal or 4-in-1 A4)';
   const clearBtn=document.querySelector('[data-action="select-labels-clear"]');
   const a4Btn=document.querySelector('[data-action="print-batch-a4"]');
+  const twoInBtn=document.querySelector('[data-action="print-batch-2in"]');
   const thermalBtn=document.querySelector('[data-action="print-batch-thermal"]');
   if(clearBtn)clearBtn.disabled=count===0;
   if(a4Btn){a4Btn.disabled=count===0;a4Btn.textContent=`Print A4 4-in-1${count?` (${count})`:''} ↗`;}
-  if(thermalBtn){thermalBtn.disabled=count===0;thermalBtn.textContent=`Print thermal${count?` (${count})`:''} ↗`;}
+  if(twoInBtn){twoInBtn.disabled=count===0;twoInBtn.textContent=`Print 2" label${count?` (${count})`:''} ↗`;}
+  if(thermalBtn){thermalBtn.disabled=count===0;thermalBtn.textContent=`Print 4×6" thermal${count?` (${count})`:''} ↗`;}
   document.querySelectorAll('[data-select-label-order]').forEach(cb=>{
     const checked=selectedLabelOrders.has(cb.dataset.selectLabelOrder);
     cb.checked=checked;
@@ -2237,7 +2239,8 @@ document.addEventListener('click',async event=>{
         });
         toast(`Printed ${count} thermal ${count===1?'label':'labels'}.`);
       }else{
-        await openBatchLabels(targets,{load:store.loadLabel,defaultMode:'thermal',thermalPrinter,onPrinted:ids=>markOrdersPrinted(ids)});
+        const fallbackMode=['browser-2in','tspl-2in','escpos'].includes(state.protocol)?'thermal-2in':'thermal';
+        await openBatchLabels(targets,{load:store.loadLabel,defaultMode:fallbackMode,thermalPrinter,onPrinted:ids=>markOrdersPrinted(ids)});
       }
     }
     else if(action==='new-artist')openArtistEditor();
@@ -2261,9 +2264,10 @@ document.addEventListener('click',async event=>{
       selectedLabelOrders.clear();
       updateBatchLabelBar();
     }
-    else if((action==='print-batch-a4'||action==='print-batch-thermal')&&isAdmin){
+    else if((action==='print-batch-a4'||action==='print-batch-2in'||action==='print-batch-thermal')&&isAdmin){
       const picked=requestList.filter(o=>selectedLabelOrders.has(o.id));
-      if(picked.length)await openBatchLabels(picked,{load:store.loadLabel,defaultMode:action==='print-batch-thermal'?'thermal':'a4-4up',thermalPrinter,onPrinted:ids=>markOrdersPrinted(ids)});
+      const mode=action==='print-batch-2in'?'thermal-2in':action==='print-batch-thermal'?'thermal':'a4-4up';
+      if(picked.length)await openBatchLabels(picked,{load:store.loadLabel,defaultMode:mode,thermalPrinter,onPrinted:ids=>markOrdersPrinted(ids)});
     }
     else if(action==='toggle-filter-menu'){const panel=$('home-filter-panel');if(panel){const open=panel.hidden;panel.hidden=!open;target.setAttribute('aria-expanded',String(open));}}
     else if(action==='set-filter-sort'){filter.sort=target.dataset.sort||'';refreshFilterUI(true);}
