@@ -9,23 +9,6 @@
 			<feGaussianBlur stdDeviation="2" in="shadowOffsetOuter1" result="shadowBlurOuter1"/>
 			<feColorMatrix values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0.12 0" in="shadowBlurOuter1"/>
 		</filter>
-		<filter id="cloud-shadow" width="124%" height="132%" x="-12%" y="-10%" filterUnits="objectBoundingBox">
-			<feOffset dy="5" in="SourceAlpha" result="shadowOffset"/>
-			<feGaussianBlur stdDeviation="4" in="shadowOffset" result="shadowBlur"/>
-			<feColorMatrix values="0 0 0 0 0.18 0 0 0 0 0.16 0 0 0 0 0.14 0 0 0 0.16 0" in="shadowBlur"/>
-			<feMerge>
-				<feMergeNode/>
-				<feMergeNode in="SourceGraphic"/>
-			</feMerge>
-		</filter>
-		<linearGradient id="cloud-sunny" x1="0%" y1="0%" x2="0%" y2="100%">
-			<stop offset="0%" stop-color="#FFFFFF"/>
-			<stop offset="100%" stop-color="#F2ECE0"/>
-		</linearGradient>
-		<linearGradient id="cloud-storm" x1="0%" y1="0%" x2="0%" y2="100%">
-			<stop offset="0%" stop-color="#9AAABB"/>
-			<stop offset="100%" stop-color="#6E8096"/>
-		</linearGradient>
 	</defs>
 	<g id="Page-1" fill="none" fill-rule="evenodd">
 		<g id="truck">

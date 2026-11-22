@@ -254,12 +254,17 @@ export function mountHeroBanner(root = document) {
   };
 }
 
-let cachedPaymentSvgSource=null,paymentSvgPromise=null,paymentBgPreloaded=false;
+let cachedPaymentSvgSource=null,paymentSvgPromise=null,paymentAssetsPreloaded=false;
 export function preloadPaymentOutcomeSvg(){
-  if(!paymentBgPreloaded&&typeof Image==='function'){paymentBgPreloaded=true;const img=new Image();img.src=new URL('./assets/payment-truck-bg.webp',import.meta.url).href;}
+  if(!paymentAssetsPreloaded&&typeof Image==='function'){
+    paymentAssetsPreloaded=true;
+    ['./assets/payment-truck-bg.webp','./assets/payment-cloud-sunny.webp','./assets/payment-cloud-storm.webp'].forEach(src=>{
+      const img=new Image();img.src=new URL(src,import.meta.url).href;
+    });
+  }
   if(cachedPaymentSvgSource)return Promise.resolve(cachedPaymentSvgSource);
   if(!paymentSvgPromise){
-    paymentSvgPromise=fetch(new URL('./assets/payment-shipping.svg?v=cloud-drop-2',import.meta.url),{cache:'force-cache'})
+    paymentSvgPromise=fetch(new URL('./assets/payment-shipping.svg?v=cloud-drop-3',import.meta.url),{cache:'force-cache'})
       .then(response=>{if(!response.ok)throw new Error(`Could not load payment animation (${response.status}).`);return response.text();})
       .then(source=>{cachedPaymentSvgSource=source;return source;})
       .catch(error=>{paymentSvgPromise=null;throw error;});
@@ -276,31 +281,12 @@ async function loadPaymentShippingSvg(){
   return svg;
 }
 
-function buildCloudDropItems(svg,orderedItems,success){
+function buildCloudDropItems(svg,orderedItems){
   const ns='http://www.w3.org/2000/svg';
   const xlink='http://www.w3.org/1999/xlink';
   const doc=svg.ownerDocument;
-  const cloud=svg.querySelector('[data-anim="drop-cloud"]');
   const bucket=svg.querySelector('[data-anim="cloud-items"]');
-  if(cloud){
-    const body=cloud.querySelector('[data-cloud-body]');
-    const shade=cloud.querySelector('[data-cloud-shade]');
-    const hi=cloud.querySelector('[data-cloud-hi]');
-    if(success){
-      body?.setAttribute('fill','url(#cloud-sunny)');
-      body?.setAttribute('stroke','#7D6B5D');
-      shade?.setAttribute('fill','#E7DEC9');
-      shade?.setAttribute('opacity','.55');
-      hi?.setAttribute('opacity','.7');
-    }else{
-      body?.setAttribute('fill','url(#cloud-storm)');
-      body?.setAttribute('stroke','#4B586B');
-      shade?.setAttribute('fill','#57687E');
-      shade?.setAttribute('opacity','.55');
-      hi?.setAttribute('opacity','.22');
-    }
-  }
-  if(!bucket)return {cloud,cards:[],size:58};
+  if(!bucket)return {cards:[],size:48};
   bucket.replaceChildren();
   const source=Array.isArray(orderedItems)?orderedItems.slice(0,5):[];
   const items=(source.length?source:[{title:'Original artwork',image:'assets/paintings.svg',quantity:1}]).map(item=>({
@@ -308,11 +294,11 @@ function buildCloudDropItems(svg,orderedItems,success){
     image:String(item?.image||'assets/paintings.svg').trim()||'assets/paintings.svg',
     quantity:Number.isInteger(item?.quantity)&&item.quantity>0?item.quantity:1
   }));
-  const size=items.length===1?66:items.length===2?58:items.length===3?52:44;
-  const gap=items.length<=2?12:8;
+  const size=items.length===1?52:items.length===2?48:items.length===3?44:items.length===4?40:36;
+  const gap=items.length<=2?12:items.length===3?8:5;
   const totalWidth=items.length*size+(items.length-1)*gap;
-  const startX=198-totalWidth/2;
-  const startY=68;
+  const startX=196-totalWidth/2;
+  const startY=74;
   const defs=svg.querySelector('defs')||svg.insertBefore(doc.createElementNS(ns,'defs'),svg.firstChild);
   defs.querySelectorAll('[id^="cloud-item-clip-"]').forEach(node=>node.remove());
   const uid=Math.random().toString(36).slice(2,7);
@@ -333,28 +319,17 @@ function buildCloudDropItems(svg,orderedItems,success){
     card.setAttribute('data-start-x',String(startX+index*(size+gap)));
     card.setAttribute('data-start-y',String(startY));
     card.setAttribute('data-size',String(size));
-    card.setAttribute('transform',`translate(${startX+index*(size+gap)} ${startY})`);
-
-    const groundShadow=doc.createElementNS(ns,'ellipse');
-    groundShadow.setAttribute('data-item-ground-shadow','');
-    groundShadow.setAttribute('cx',String(size/2));
-    groundShadow.setAttribute('cy',String(size+3));
-    groundShadow.setAttribute('rx',String(Math.round(size*.44)));
-    groundShadow.setAttribute('ry','4.5');
-    groundShadow.setAttribute('fill','rgba(38,44,54,.28)');
-    groundShadow.setAttribute('opacity','0');
-    card.append(groundShadow);
 
     const dropShadow=doc.createElementNS(ns,'rect');
     dropShadow.setAttribute('x','2');dropShadow.setAttribute('y','3');
     dropShadow.setAttribute('width',String(size));dropShadow.setAttribute('height',String(size));
-    dropShadow.setAttribute('rx','9');dropShadow.setAttribute('fill','rgba(28,24,20,.2)');
+    dropShadow.setAttribute('rx','8');dropShadow.setAttribute('fill','rgba(28,24,20,.2)');
     card.append(dropShadow);
 
     const frame=doc.createElementNS(ns,'rect');
     frame.setAttribute('width',String(size));frame.setAttribute('height',String(size));
-    frame.setAttribute('rx','9');frame.setAttribute('fill','#FFFDF9');
-    frame.setAttribute('stroke','#D5C7AE');frame.setAttribute('stroke-width','1.8');
+    frame.setAttribute('rx','8');frame.setAttribute('fill','#FFFDF9');
+    frame.setAttribute('stroke','#D5C7AE');frame.setAttribute('stroke-width','1.6');
     card.append(frame);
 
     const innerBg=doc.createElementNS(ns,'rect');
@@ -378,7 +353,7 @@ function buildCloudDropItems(svg,orderedItems,success){
     const wetTint=doc.createElementNS(ns,'rect');
     wetTint.setAttribute('x','4');wetTint.setAttribute('y','4');
     wetTint.setAttribute('width',String(size-8));wetTint.setAttribute('height',String(size-8));
-    wetTint.setAttribute('rx','6');wetTint.setAttribute('fill','rgba(78,108,142,.22)');
+    wetTint.setAttribute('rx','6');wetTint.setAttribute('fill','rgba(78,108,142,.24)');
     const wetStreaks=doc.createElementNS(ns,'path');
     wetStreaks.setAttribute('d',`M${Math.round(size*.26)} ${Math.round(size*.28)}l-3 10M${Math.round(size*.68)} ${Math.round(size*.36)}l-3 11`);
     wetStreaks.setAttribute('stroke','#C6E0F5');wetStreaks.setAttribute('stroke-width','1.6');
@@ -388,14 +363,14 @@ function buildCloudDropItems(svg,orderedItems,success){
 
     if(item.quantity>1){
       const pill=doc.createElementNS(ns,'rect');
-      const pw=size>=56?24:20;
+      const pw=size>=48?22:18;
       pill.setAttribute('x',String(size-pw-3));pill.setAttribute('y','3');
-      pill.setAttribute('width',String(pw));pill.setAttribute('height','14');
-      pill.setAttribute('rx','7');pill.setAttribute('fill','#181715');
+      pill.setAttribute('width',String(pw));pill.setAttribute('height','13');
+      pill.setAttribute('rx','6.5');pill.setAttribute('fill','#181715');
       const qt=doc.createElementNS(ns,'text');
-      qt.setAttribute('x',String(size-pw/2-3));qt.setAttribute('y','12.5');
+      qt.setAttribute('x',String(size-pw/2-3));qt.setAttribute('y','12');
       qt.setAttribute('text-anchor','middle');qt.setAttribute('fill','#FFFFFF');
-      qt.setAttribute('font-family','Arial, sans-serif');qt.setAttribute('font-size','8.5');
+      qt.setAttribute('font-family','Arial, sans-serif');qt.setAttribute('font-size','8');
       qt.setAttribute('font-weight','700');
       qt.textContent=`×${item.quantity}`;
       card.append(pill,qt);
@@ -407,7 +382,7 @@ function buildCloudDropItems(svg,orderedItems,success){
     bucket.append(card);
     return card;
   });
-  return {cloud,cards,size};
+  return {cards,size};
 }
 
 function setPaymentOutcomeBadge(svg,success){
@@ -467,6 +442,50 @@ function populatePaymentRain(container){
   container.innerHTML=html;
 }
 
+/**
+ * Schedule rigid-body gravity free-fall and damped double-bounce onto the sandstone road.
+ */
+function scheduleFailureDropPhysics(gsap,timeline,card,shadow,index,count,size,dropAt){
+  const startX=Number(card.getAttribute('data-start-x')||170);
+  const startY=Number(card.getAttribute('data-start-y')||74);
+  const groundY=368-size;
+  const spread=(index-(count-1)/2)*12+(index%2===0?-6:6);
+  const finalX=Math.max(58,Math.min(340-size,startX+spread));
+  const dx=finalX-startX;
+  const sign=index%2===0?-1:1;
+  const startRot=sign*4;
+  const restRot=sign*(6+(index%3)*2.5);
+  const wet=card.querySelector('[data-item-wet]');
+
+  gsap.set(card,{x:startX,y:startY,rotation:0,scaleX:.76,scaleY:.76,autoAlpha:0,transformOrigin:'50% 100%'});
+  gsap.set(shadow,{x:startX+size/2,scaleX:.25,opacity:0,transformOrigin:'center center'});
+
+  const tFall=dropAt+.12,dFall=.46,tHit1=tFall+dFall;
+  const tUp1=tHit1+.055,dUp1=.19,tApex1=tUp1+dUp1,tHit2=tApex1+dUp1;
+  const tUp2=tHit2+.045,dUp2=.11,tApex2=tUp2+dUp2,tHit3=tApex2+dUp2;
+
+  timeline
+    .to(card,{autoAlpha:1,scaleX:1,scaleY:1,y:startY+12,rotation:startRot,duration:.14,ease:'power1.out'},dropAt)
+    .to(shadow,{opacity:.14,scaleX:.35,duration:.14,ease:'power1.out'},dropAt)
+    .to(card,{y:groundY,x:startX+dx*.55,rotation:restRot*.5,duration:dFall,ease:'power2.in'},tFall)
+    .to(shadow,{x:startX+dx*.55+size/2,opacity:.65,scaleX:.9,duration:dFall,ease:'power2.in'},tFall)
+    .to(card,{scaleY:.84,scaleX:1.12,duration:.055,ease:'power2.out'},tHit1)
+    .to(shadow,{opacity:.95,scaleX:1.12,duration:.055,ease:'power2.out'},tHit1)
+    .to(card,{y:groundY-38,x:startX+dx*.82,rotation:restRot*.85,scaleY:1.03,scaleX:.98,duration:dUp1,ease:'power2.out'},tUp1)
+    .to(shadow,{x:startX+dx*.82+size/2,opacity:.34,scaleX:.68,duration:dUp1,ease:'power2.out'},tUp1)
+    .to(card,{y:groundY,x:startX+dx*.94,rotation:restRot*.96,scaleY:1,scaleX:1,duration:dUp1,ease:'power2.in'},tApex1)
+    .to(shadow,{x:startX+dx*.94+size/2,opacity:.95,scaleX:1.04,duration:dUp1,ease:'power2.in'},tApex1)
+    .to(card,{scaleY:.92,scaleX:1.06,duration:.045,ease:'power2.out'},tHit2)
+    .to(shadow,{opacity:1,scaleX:1.06,duration:.045,ease:'power2.out'},tHit2)
+    .to(card,{y:groundY-11,x:finalX,rotation:restRot*1.06,scaleY:1,scaleX:1,duration:dUp2,ease:'power2.out'},tUp2)
+    .to(shadow,{x:finalX+size/2,opacity:.62,scaleX:.88,duration:dUp2,ease:'power2.out'},tUp2)
+    .to(card,{y:groundY,rotation:restRot,scaleY:.97,scaleX:1.02,duration:dUp2,ease:'power2.in'},tApex2)
+    .to(shadow,{opacity:1,scaleX:1,duration:dUp2,ease:'power2.in'},tApex2)
+    .to(card,{scaleY:1,scaleX:1,duration:.06,ease:'power1.out'},tHit3);
+
+  if(wet)timeline.to(wet,{opacity:1,duration:.55,ease:'power1.out'},tHit1+.25);
+}
+
 async function animateOutcomeTruck(scene,success,orderedItems=[]){
   const svg=scene.querySelector('#ship-it');
   if(!svg)return;
@@ -475,9 +494,12 @@ async function animateOutcomeTruck(scene,success,orderedItems=[]){
     while(!window.gsap&&Date.now()<deadline)await new Promise(resolve=>setTimeout(resolve,50));
   }
   const gsap=window.gsap;
-  const {cloud,cards,size}=buildCloudDropItems(svg,orderedItems,success);
+  const cloud=scene.querySelector('.payment-drop-cloud');
+  const {cards,size}=buildCloudDropItems(svg,orderedItems);
   const rainBox=scene.querySelector('.payment-rain');
+  const shippedBtn=svg.querySelector('[data-anim="btn-shipped"]');
   setPaymentOutcomeBadge(svg,success);
+  if(!success)shippedBtn?.setAttribute('transform','translate(93.09 194)');
   scene._stopRain=()=>{rainBox?.classList.remove('is-raining');rainBox?.replaceChildren();};
 
   if(reduced()||!gsap){
@@ -485,15 +507,23 @@ async function animateOutcomeTruck(scene,success,orderedItems=[]){
     if(success){
       cards.forEach(card=>card.setAttribute('opacity','0'));
     }else{
-      const landingY=358-size;
+      const landingY=368-size;
       const tilts=[-6,5,-4,6,-5];
+      const ns='http://www.w3.org/2000/svg';
+      const layer=svg.querySelector('#truck-shipping')||svg;
+      const shadows=svg.ownerDocument.createElementNS(ns,'g');
       if(rainBox){populatePaymentRain(rainBox);rainBox.classList.add('is-raining');}
       cards.forEach((card,index)=>{
         const x=Number(card.getAttribute('data-start-x')||170);
+        const s=svg.ownerDocument.createElementNS(ns,'ellipse');
+        s.setAttribute('cx',String(x+size/2));s.setAttribute('cy','369');
+        s.setAttribute('rx',String(Math.round(size*.44)));s.setAttribute('ry','4.2');
+        s.setAttribute('fill','rgba(32,36,44,.32)');
+        shadows.append(s);
         card.setAttribute('transform',`translate(${x} ${landingY}) rotate(${tilts[index%tilts.length]} ${size/2} ${size/2})`);
-        card.querySelector('[data-item-ground-shadow]')?.setAttribute('opacity','1');
         card.querySelector('[data-item-wet]')?.setAttribute('opacity','1');
       });
+      layer.append(shadows,...cards);
     }
     return;
   }
@@ -503,55 +533,55 @@ async function animateOutcomeTruck(scene,success,orderedItems=[]){
   const ripple=select('ripple'),btnBg=select('btn-bg'),btnLabel=select('btn-label'),btnShadow=select('btn-shadow');
   const frontGroup=select('front-group'),frontWheels=selectAll('front-wheel'),frontWheelBack=select('front-wheel-back');
   const backWheels=selectAll('back-wheel'),backWheelsBack=selectAll('back-wheel-back'),containerParts=selectAll('container-part');
-  const containerLip=select('container-lip'),container=select('container'),truckBtn=select('truck-btn'),shippedBtn=select('btn-shipped');
-  // Keep every beat on the same running timeline; CSS rain runs smoothly once activated.
+  const containerLip=select('container-lip'),container=select('container'),truckBtn=select('truck-btn');
   const timeline=gsap.timeline();
   const truckStart=.2;
   const at=seconds=>truckStart+seconds;
-  const truckDeparture=at(1.4);
+  const truckDeparture=success?at(1.52):at(1.25);
 
   if(cloud)gsap.set(cloud,{autoAlpha:1,x:0,y:0});
   if(success&&cards.length){
-    cards.forEach(card=>gsap.set(card,{autoAlpha:0,scale:.76,transformOrigin:'center top'}));
-    const dropStart=.72,dropDur=.48,landingY=276-size/2;
-    if(cloud)timeline.to(cloud,{y:-5,duration:.24,ease:'power1.out'},.15).to(cloud,{y:0,duration:.28,ease:'power1.inOut'},.39);
+    const dropStart=.72,dropDur=.44,bedLandingY=279+Math.round((52-size)*.35);
+    if(cloud)timeline.to(cloud,{y:-6,duration:.24,ease:'power1.out'},.18).to(cloud,{y:0,duration:.3,ease:'power1.inOut'},.42);
     cards.forEach((card,index)=>{
-      const startY=Number(card.getAttribute('data-start-y')||68);
-      const stagger=index*.06;
-      timeline.to(card,{autoAlpha:1,scale:1,duration:.16,ease:'back.out(1.6)'},dropStart+stagger-.12)
-        .to(card,{y:landingY-startY,duration:dropDur,ease:'power2.in'},dropStart+stagger)
-        .to(card,{autoAlpha:0,duration:.1,ease:'power1.in'},dropStart+stagger+dropDur-.02);
+      const startX=Number(card.getAttribute('data-start-x')||170);
+      const startY=Number(card.getAttribute('data-start-y')||74);
+      const tRelease=dropStart+index*.09;
+      const tImpact=tRelease+dropDur;
+      gsap.set(card,{x:startX,y:startY,rotation:0,scale:.76,autoAlpha:0,transformOrigin:'center top'});
+      timeline.to(card,{autoAlpha:1,scale:1,y:startY+12,duration:.14,ease:'power1.out'},tRelease-.14)
+        .to(card,{y:bedLandingY,rotation:index%2===0?-3:3,duration:dropDur,ease:'power2.in'},tRelease)
+        .set(card,{autoAlpha:0},tImpact+.02);
+      if(truckBtn){
+        timeline.to(truckBtn,{y:2.8,scaleY:.96,scaleX:1.015,transformOrigin:'center bottom',duration:.035,ease:'power2.out'},tImpact-.01)
+          .to(truckBtn,{y:0,scaleY:1,scaleX:1,duration:.05,ease:'power1.out'},tImpact+.025);
+      }
     });
-    timeline.to([btnBg,btnLabel],{scaleX:1.05,transformOrigin:'center',duration:.2,ease:'power1.inOut',repeat:1,yoyo:true},dropStart+dropDur-.06)
-      .to([btnBg,btnLabel],{scaleY:.94,duration:.2,ease:'power1.inOut',repeat:1,yoyo:true},dropStart+dropDur-.06);
   }else if(!success&&cards.length){
-    const fallingLayer=svg.ownerDocument.createElementNS('http://www.w3.org/2000/svg','g');
+    const ns='http://www.w3.org/2000/svg';
+    const doc=svg.ownerDocument;
+    const fallingLayer=doc.createElementNS(ns,'g');
+    const shadowLayer=doc.createElementNS(ns,'g');
     fallingLayer.setAttribute('data-anim','fallen-order-layer');
-    if(cloud?.parentNode)cloud.parentNode.insertBefore(fallingLayer,cloud);else svg.append(fallingLayer);
-    cards.forEach(card=>{
-      fallingLayer.append(card);
-      gsap.set(card,{autoAlpha:0,scale:.78,transformOrigin:'center center'});
-    });
+    shadowLayer.setAttribute('data-anim','fallen-shadow-layer');
+    fallingLayer.append(shadowLayer);
+    (svg.querySelector('#truck-shipping')||svg).append(fallingLayer);
     if(rainBox)populatePaymentRain(rainBox);
-    const dropStart=truckDeparture+.35;
-    const landingY=358-size;
-    const tilts=[-7,6,-5,7,-4];
+    const dropStart=truckDeparture+.25;
     if(cloud){
-      timeline.to(cloud,{x:-3,duration:.08,repeat:3,yoyo:true,ease:'sine.inOut'},dropStart-.12)
-        .set(cloud,{x:0},dropStart+.22);
+      timeline.to(cloud,{x:-4,y:3,duration:.07,repeat:5,yoyo:true,ease:'sine.inOut'},truckDeparture-.12)
+        .to(cloud,{x:0,y:0,duration:.18,ease:'power1.out'},truckDeparture+.3);
     }
+    if(rainBox)timeline.call(()=>rainBox.classList.add('is-raining'),[],truckDeparture-.06);
     cards.forEach((card,index)=>{
-      const startY=Number(card.getAttribute('data-start-y')||68);
-      const stagger=index*.11;
-      const gShadow=card.querySelector('[data-item-ground-shadow]');
-      const wet=card.querySelector('[data-item-wet]');
-      timeline.to(card,{autoAlpha:1,scale:1,duration:.16,ease:'power1.out'},dropStart+stagger-.08)
-        .to(card,{y:landingY-startY,rotation:tilts[index%tilts.length],duration:.74,ease:'bounce.out'},dropStart+stagger);
-      if(gShadow)timeline.to(gShadow,{opacity:1,duration:.18,ease:'power1.out'},dropStart+stagger+.42);
-      if(wet)timeline.to(wet,{opacity:1,duration:.45,ease:'power1.out'},dropStart+stagger+.65);
+      const shadow=doc.createElementNS(ns,'ellipse');
+      shadow.setAttribute('cx','0');shadow.setAttribute('cy','369');
+      shadow.setAttribute('rx',String(Math.round(size*.44)));shadow.setAttribute('ry','4.2');
+      shadow.setAttribute('fill','rgba(32,36,44,.32)');
+      shadowLayer.append(shadow);
+      fallingLayer.append(card);
+      scheduleFailureDropPhysics(gsap,timeline,card,shadow,index,cards.length,size,dropStart+index*.1);
     });
-    const rainStart=dropStart+.15;
-    if(rainBox)timeline.call(()=>rainBox.classList.add('is-raining'),[],rainStart);
   }
 
   timeline
@@ -589,7 +619,8 @@ async function animateOutcomeTruck(scene,success,orderedItems=[]){
 export async function playPaymentOutcome(outcome,{preview=false,message='',items=[]}={}){
   const main=document.getElementById('main');if(!main)return;
   const success=outcome==='success';
-  main.innerHTML=`<section class="payment-outcome-scene ${success?'is-success':'is-failure'}" aria-live="polite" aria-label="Payment ${success?'successful':'failed'}"><div class="payment-outcome-pill">${success?'Payment verified':'Payment unsuccessful'}</div><div class="payment-truck-stage"><div class="payment-road" aria-hidden="true"></div><div class="payment-rain" aria-hidden="true"></div></div><div class="payment-outcome-copy"><h1>${success?'Payment successful':'Payment failed'}</h1><p></p><button type="button" class="button" data-action="payment-preview-return" hidden>Return to checkout</button></div></section>`;
+  const cloudAsset=success?'payment-cloud-sunny.webp':'payment-cloud-storm.webp';
+  main.innerHTML=`<section class="payment-outcome-scene ${success?'is-success':'is-failure'}" aria-live="polite" aria-label="Payment ${success?'successful':'failed'}"><div class="payment-outcome-pill">${success?'Payment verified':'Payment unsuccessful'}</div><div class="payment-truck-stage"><div class="payment-road" aria-hidden="true"></div><div class="payment-rain" aria-hidden="true"></div><img class="payment-drop-cloud" src="assets/${cloudAsset}" alt="" aria-hidden="true"></div><div class="payment-outcome-copy"><h1>${success?'Payment successful':'Payment failed'}</h1><p></p><button type="button" class="button" data-action="payment-preview-return" hidden>Return to checkout</button></div></section>`;
   const scene=main.querySelector('.payment-outcome-scene'),copy=scene.querySelector('.payment-outcome-copy p'),button=scene.querySelector('button');
   try{scene.querySelector('.payment-truck-stage').append(await loadPaymentShippingSvg());}
   catch(error){console.error('Payment animation could not load:',error);}
