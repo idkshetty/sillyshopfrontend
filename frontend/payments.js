@@ -1,8 +1,9 @@
 import {callBackend} from './store.js';
 import {loadScript} from './browser-library.js';
 export const preloadRazorpay=()=>loadScript('https://checkout.razorpay.com/v1/checkout.js').catch(()=>{});
-export async function payRequest(id,purpose='items',{onOpen,onVerifying}={}){
+export async function payRequest(id,purpose='items',{beforeOpen,onOpen,onVerifying}={}){
   const [order]=await Promise.all([callBackend('createRazorpayOrder',{requestId:id,purpose}),loadScript('https://checkout.razorpay.com/v1/checkout.js')]);
+  await beforeOpen?.();
   return new Promise((resolve,reject)=>{
     let settled=false;
     const fail=(message='Payment failed or was cancelled.')=>{
@@ -12,7 +13,7 @@ export async function payRequest(id,purpose='items',{onOpen,onVerifying}={}){
       err.paymentFailed=true;
       reject(err);
     };
-    const checkout=new window.Razorpay({key:order.keyId,order_id:order.orderId,amount:order.amount,currency:'INR',name:'hehe.cafe',description:'hehe.cafe artwork order',theme:{color:'#181715'},prefill:order.prefill,
+    const checkout=new window.Razorpay({key:order.keyId,order_id:order.orderId,amount:order.amount,currency:'INR',timeout:600,name:'hehe.cafe',description:'hehe.cafe artwork order',theme:{color:'#181715'},prefill:order.prefill,
       modal:{ondismiss:()=>fail('Payment failed or was cancelled.')},
       handler:async response=>{
         if(settled)return;

@@ -469,7 +469,7 @@ function renderCheckout(){
     if(!checkoutDraft.location&&!checkoutTouched.has('location')&&validLocation(defaults.location))checkoutDraft.location={...defaults.location};
   }
   deliveryMap?.destroy();deliveryMap=null;
-  if(completedRequest)return renderSuccess();
+  if(completedRequest&&!submitting&&!paymentSceneActive)return renderSuccess();
   if(authLoading||(cart.length&&!catalogReady&&!catalogError)){$('main').innerHTML=pageSkeleton('checkout');return;}
   if(cart.length&&!catalogReady&&catalogError){$('main').innerHTML=`<div class="container">${catalogErrorMarkup()}</div>`;return;}
   const cleanupBanner=cartCleanupBannerMarkup();
@@ -584,6 +584,16 @@ function showPaymentPreviewChoice(){
   if(typeof dialog.showModal==='function')dialog.showModal();else dialog.setAttribute('open','');
   dialog.querySelector('[data-outcome="success"]')?.focus();
 }
+async function waitForCheckoutButtonAnimation(button){
+  const pause=ms=>new Promise(resolve=>window.setTimeout(resolve,ms));
+  if(window.matchMedia?.('(prefers-reduced-motion: reduce)').matches){await pause(80);return;}
+  if(typeof button.getAnimations!=='function'||typeof window.requestAnimationFrame!=='function'){await pause(1650);return;}
+  await new Promise(resolve=>window.requestAnimationFrame(()=>window.requestAnimationFrame(resolve)));
+  const animations=button.getAnimations({subtree:true}).filter(a=>a.playState==='running'||a.playState==='pending');
+  if(animations.length)await Promise.race([Promise.all(animations.map(a=>a.finished.catch(()=>{}))),pause(1850)]);
+  else await pause(1650);
+  if(button.isConnected)await pause(120);
+}
 async function submitCheckout(event){
   event.preventDefault();if(submitting)return;
   if(checkoutStep<3){if(checkoutStepValid())setCheckoutStep(checkoutStep+1);return;}
@@ -596,13 +606,19 @@ async function submitCheckout(event){
   // Snapshot names and quantities before payment reserves stock and live catalogue updates can hide cart lines.
   const cartSnapshot=cart.map(item=>({...item}));
   const animationItems=paymentAnimationItems(null,cartSnapshot);
-  submitting=true;const button=$('checkout-submit');button.disabled=true;button.setAttribute('aria-busy','true');$('checkout-notice').textContent='';
+  submitting=true;const button=$('checkout-submit');button.disabled=true;button.setAttribute('aria-busy','true');button.classList.add('is-animating');$('checkout-notice').textContent='';
   const loader=createLoaderController();
-  loader.show('Opening secure checkout…');
+  let popupOpened=false,checkoutDone=false;
+  const buttonAnim=waitForCheckoutButtonAnimation(button).then(()=>{
+    button.classList.remove('is-animating');
+    if(!popupOpened&&!checkoutDone)loader.show('Opening secure checkout…');
+  });
   preloadPaymentOutcomeSvg().catch(()=>{});
   try{
     const paymentConfig=await store.checkoutPaymentConfig();
     if(paymentConfig.paymentPreviewEnabled){
+      checkoutDone=true;
+      await buttonAnim;
       loader.hide();
       showPaymentPreviewChoice();
       return;
@@ -625,6 +641,8 @@ async function submitCheckout(event){
     }
     if(['cancel_requested','closed'].includes(saved.status))throw new Error('This checkout has a pending cancellation. Wait for the studio to release it before starting another order.');
     if(saved.paymentStatus==='captured'){
+      checkoutDone=true;
+      await buttonAnim;
       loader.hide();
       clearPendingCheckout();completedRequest=saved;deliveryMap?.destroy();deliveryMap=null;
       paymentSceneActive=true;
@@ -632,16 +650,21 @@ async function submitCheckout(event){
       cart=[];persistCart();clearCustomizations();checkoutDraft={};checkoutTouched.clear();orderNote='';appliedPromoCode='';promoFeedback='';checkoutId=randomId();renderSuccess();window.scrollTo({top:0,behavior:'smooth'});$('main').focus({preventScroll:true});return;
     }
     try{localStorage.setItem(pendingCheckoutKey,JSON.stringify({id:saved.id,uid:user.uid,fingerprint}));}catch{}
-    completedRequest=saved;requestsLoaded=false;accountState.loaded=false;
-    loader.show('Opening secure checkout…');
+    requestsLoaded=false;accountState.loaded=false;
     try{
-      await payRequest(saved.id,'items',{onOpen:()=>loader.hide(),onVerifying:()=>loader.show('Verifying payment…')});
+      await payRequest(saved.id,'items',{
+        beforeOpen:async()=>{await buttonAnim;},
+        onOpen:()=>{popupOpened=true;loader.hide();},
+        onVerifying:()=>{popupOpened=true;loader.show('Verifying payment…');}
+      });
     }catch(paymentError){
+      popupOpened=true;checkoutDone=true;
+      button.classList.remove('is-animating');
       loader.show('Checking payment status…');
       const cancelResult=await store.callBackend('cancelFailedPayment',{requestId:saved.id,purpose:'items',reason:paymentError?.message||'Payment failed'}).catch(()=>null);
       if(cancelResult?.paid===true){
         loader.hide();
-        deliveryMap?.destroy();deliveryMap=null;
+        completedRequest=saved;deliveryMap?.destroy();deliveryMap=null;
         paymentSceneActive=true;
         try{await playPaymentOutcome('success',{items:animationItems});}finally{paymentSceneActive=false;}
         clearPendingCheckout();cart=[];persistCart();clearCustomizations();checkoutDraft={};checkoutTouched.clear();orderNote='';appliedPromoCode='';promoFeedback='';checkoutId=randomId();
@@ -663,16 +686,22 @@ async function submitCheckout(event){
       try{await playPaymentOutcome('failure',{message:'Payment failed. This order was cancelled and your items are still in your cart if you want to try again.',items:animationItems});}finally{paymentSceneActive=false;}
       return;
     }
+    checkoutDone=true;
     loader.hide();
-    deliveryMap?.destroy();deliveryMap=null;
+    completedRequest=saved;deliveryMap?.destroy();deliveryMap=null;
     paymentSceneActive=true;
     try{await playPaymentOutcome('success',{items:animationItems});}finally{paymentSceneActive=false;}
     clearPendingCheckout();cart=[];persistCart();clearCustomizations();checkoutDraft={};checkoutTouched.clear();orderNote='';appliedPromoCode='';promoFeedback='';checkoutId=randomId();
     if(route().page==='checkout'){renderSuccess();window.scrollTo({top:0,behavior:'smooth'});$('main').focus({preventScroll:true});}
     else{render();toast('Payment successful. Thank you!');}
   }catch(error){
+    checkoutDone=true;
+    button.classList.remove('is-animating');
+    loader.hide();
     if($('checkout-notice'))$('checkout-notice').textContent=store.friendlyError(error);else toast(store.friendlyError(error));
   }finally{
+    checkoutDone=true;
+    button.classList.remove('is-animating');
     loader.hide();
     submitting=false;
     $('checkout-submit')?.removeAttribute('aria-busy');
