@@ -1238,3 +1238,6 @@ button,a,.button,.cart-button,.quick-buy-btn,.home-filter-btn,.hero-banner-cta,.
 .auth-divider::before,.auth-divider::after{content:'';flex:1;height:1px;background:#e2ddd2}
 .account-welcome-copy .google-signin,.checkout-signin-copy .google-signin{max-width:360px;width:100%}
 .checkout-signin-card{align-items:flex-start}
+.artwork-ref{font:600 10px/1.4 'JetBrains Mono',monospace;color:#817668;white-space:nowrap}
+.table-product .artwork-ref{display:block;margin-top:3px}
+.order-lines .artwork-ref{margin-left:6px}

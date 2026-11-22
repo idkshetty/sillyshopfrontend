@@ -114,7 +114,7 @@ export function filterOrders(orders = [], { query = '', status = 'all' } = {}) {
       c.state,
       c.postalCode,
       c.address,
-      ...(o.items || []).map(i => i.title)
+      ...(o.items || []).flatMap(i => [i.title, i.refNumber])
     ].filter(Boolean).join(' ').toLowerCase();
     return haystack.includes(q);
   });
@@ -247,7 +247,8 @@ export function orderCardMarkup(o, {
   locationUrl = '',
   hasPin = false,
   shippingNote = '',
-  isMasterAdmin = false
+  isMasterAdmin = false,
+  refByProductId = {}
 }) {
   const c = o.customer || {};
   const ref = o.id.slice(0, 8).toUpperCase();
@@ -295,7 +296,7 @@ export function orderCardMarkup(o, {
       ${statusHelpText ? `<p class="small muted">${e(statusHelpText)}</p>` : ''}
       <p><strong>${e(c.firstName || '')} ${e(c.lastName || '')}</strong><br>${e(c.email || '')} · ${e(c.phone || '')}</p>
       <p>${e(c.address || '')}${c.apartment ? `, ${e(c.apartment)}` : ''}<br>${e(c.city || '')}, ${e(c.state || '')} ${e(c.postalCode || '')} · ${e(c.country || 'India')}</p>
-      <div class="order-lines">${(o.items || []).map(item => `<span>${e(item.quantity)} × ${e(item.title)} — ${money(item.unitPrice * item.quantity)}</span>`).join('')}</div>
+      <div class="order-lines">${(o.items || []).map(item => {const artRef=item.refNumber||refByProductId[item.productId];return `<span>${e(item.quantity)} × ${e(item.title)}${/^[1-9][0-9]{5}$/.test(String(artRef||''))?` <small class="artwork-ref">Ref ${e(artRef)}</small>`:''} — ${money(item.unitPrice * item.quantity)}</span>`;}).join('')}</div>
       <button type="button" class="text-link" data-action="request-customizations" data-id="${e(o.id)}">View product notes &amp; images</button>
       <div id="request-custom-${e(o.id)}" class="request-customizations"></div>
       <p>Estimated subtotal: <strong>${money(o.estimatedSubtotal)}</strong>${shippingNote}</p>

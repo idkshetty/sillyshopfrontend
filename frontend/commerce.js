@@ -104,6 +104,7 @@ export function normalizeProduct(raw = {}) {
     dimensions: String(raw.dimensions || '').trim(),
     care: String(raw.care || '').trim(),
     sku: String(raw.sku || '').trim(),
+    refNumber: /^[1-9][0-9]{5}$/.test(String(raw.refNumber || '')) ? String(raw.refNumber) : '',
     price: Number.isFinite(Number(raw.price)) && Number(raw.price) >= 0 ? Number(raw.price) : 0,
     stock: Math.max(0, Math.floor(Number(raw.stock) || 0)),
     visible: raw.visible === true,

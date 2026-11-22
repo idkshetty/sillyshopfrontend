@@ -62,6 +62,7 @@ export const DEFAULT_SETTINGS = {
 export const FALLBACK_BANNER_ARTWORKS = [
   {
     id: 'hehe-art-1',
+    refNumber: '610001',
     title: 'Two Cats in a Meadow Frame',
     artist: 'Suprita Chatterjee',
     productType: 'Fridge Magnet',
@@ -77,6 +78,7 @@ export const FALLBACK_BANNER_ARTWORKS = [
   },
   {
     id: 'hehe-art-2',
+    refNumber: '610002',
     title: 'Little Snail in Striped Clay',
     artist: 'Suprita Chatterjee',
     productType: 'Fridge Magnet',
@@ -92,6 +94,7 @@ export const FALLBACK_BANNER_ARTWORKS = [
   },
   {
     id: 'hehe-art-3',
+    refNumber: '610003',
     title: 'Starstruck Puppy in Polka Frame',
     artist: 'Suprita Chatterjee',
     productType: 'Fridge Magnet',
@@ -107,6 +110,7 @@ export const FALLBACK_BANNER_ARTWORKS = [
   },
   {
     id: 'hehe-art-4',
+    refNumber: '610004',
     title: 'Teary-Eyed Pup in Royal Polka',
     artist: 'Suprita Chatterjee',
     productType: 'Fridge Magnet',
@@ -122,6 +126,7 @@ export const FALLBACK_BANNER_ARTWORKS = [
   },
   {
     id: 'hehe-art-5',
+    refNumber: '610005',
     title: 'Wine O’Clock Kitty',
     artist: 'Suprita Chatterjee',
     productType: 'Fridge Magnet',
@@ -137,6 +142,7 @@ export const FALLBACK_BANNER_ARTWORKS = [
   },
   {
     id: 'hehe-art-6',
+    refNumber: '610006',
     title: 'Cheers Doggo in Violet Stripes',
     artist: 'Suprita Chatterjee',
     productType: 'Fridge Magnet',
@@ -152,6 +158,7 @@ export const FALLBACK_BANNER_ARTWORKS = [
   },
   {
     id: 'hehe-art-7',
+    refNumber: '610007',
     title: 'Puppy & Daisy in Wavy Stripes',
     artist: 'Suprita Chatterjee',
     productType: 'Fridge Magnet',
