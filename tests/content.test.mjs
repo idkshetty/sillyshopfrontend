@@ -2,6 +2,8 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {DEFAULT_CONTENT,normalizeContent,validateContent,safeContentLink,contentCategories,footerMarkup,applyStoreContent,CONTENT_SCHEMA} from '../frontend/store-content.js';
 import {parseHTML} from 'linkedom';
+import {LEGACY_POLICY_DEFAULTS} from '../frontend/policy-legacy.js';
+import {accountMarkup} from '../frontend/customer-dashboard.js';
  test('content schema accepts full defaults and rejects unsafe or oversized drafts',()=>{
   assert.equal(validateContent(DEFAULT_CONTENT),'');
   for(const value of ['javascript:alert(1)','data:text/html,test','//example.com'])assert.equal(safeContentLink(value),false);
@@ -13,6 +15,8 @@ import {parseHTML} from 'linkedom';
 test('normalization fills partial documents, limits schema and escapes markup',()=>{
  const c=normalizeContent({brand:{name:'<script>alert(1)</script>',logo:'javascript:alert(1)'},home:{heading:'New studio'},sections:{footer:false},unknown:{admin:true}});
  assert.equal(c.brand.logo,DEFAULT_CONTENT.brand.logo);assert.equal(c.home.heading,'New studio');assert.equal(c.sections.footer,false);assert.equal(c.unknown,undefined);
+ assert.ok(DEFAULT_CONTENT.pages.contactBody.includes('abhishekreddy2499@gmail.com'));
+ assert.equal(normalizeContent({pages:{contactBody:'Write to hello@hehe.cafe or orders@hehe.cafe'}}).pages.contactBody,'Write to abhishekreddy2499@gmail.com or abhishekreddy2499@gmail.com');
  assert(!footerMarkup(c).includes('<script>'));assert(footerMarkup(c).includes('&lt;script&gt;'));
  assert.equal(contentCategories(c)[1].id,'clay-models');assert.equal(contentCategories(c).length,4);
 });
@@ -24,4 +28,16 @@ test('unused dropdown label removed and story button label preserves arrow',()=>
  applyStoreContent(c,'home',dom.document);
  assert.equal(dom.document.querySelector('.story-cta-label').textContent,'Browse clay art');
  assert.match(dom.document.querySelector('.story-copy>a').textContent,/Browse clay art →/);
+});
+test('sign-in mascot is editable, can be hidden, and legacy policy copy becomes current wording',()=>{
+ const c=normalizeContent({brand:{accountLogo:'assets/custom-studio.webp',showAccountMascot:false},pages:{refundsBody:LEGACY_POLICY_DEFAULTS.refundsBody}});
+ assert.equal(c.pages.refundsBody,DEFAULT_CONTENT.pages.refundsBody);
+ assert.match(c.pages.refundsBody,/consumer law/);
+ const dom=parseHTML('<html><body><main></main></body></html>');
+ dom.document.querySelector('main').innerHTML=accountMarkup(null,false);
+ applyStoreContent(c,'account',dom.document);
+ const panel=dom.document.querySelector('.account-welcome-art');
+ assert.equal(panel.hidden,true);
+ assert.equal(panel.querySelector('img').getAttribute('src'),'assets/custom-studio.webp');
+ assert.equal(normalizeContent({brand:{showAccountMascot:true}}).brand.showAccountMascot,true);
 });

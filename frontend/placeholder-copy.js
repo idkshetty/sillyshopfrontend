@@ -100,4 +100,9 @@ export const STARTER_COPY = new Map([
   ['Here for your questions.', 'Need help?'],
   ['Thoughtful things. All in one place.', 'Manage your orders, profile and saved address.'],
 ]);
-export const starterCopy = value => STARTER_COPY.get(value) ?? value;
+export const starterCopy = value => {
+  if (typeof value === 'string' && /(?:hello|orders)@hehe\.cafe/i.test(value)) {
+    value = value.replace(/(?:hello|orders)@hehe\.cafe/gi, 'abhishekreddy2499@gmail.com');
+  }
+  return STARTER_COPY.get(value) ?? value;
+};

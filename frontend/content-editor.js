@@ -4,6 +4,7 @@ import {mergeArtistsWithProducts} from './artists.js';
 import {escapeHTML as e,filterProducts} from './commerce.js';
 import {isInlineImage} from './image-data.js';
 import {mountInlineEditing,readInlinePref,writeInlinePref,inlineToolbarMarkup,inlineHintMarkup,flashControl} from './inline-edit.js';
+import {accountMarkup} from './customer-dashboard.js';
 
 export function previewPageOptions(artists=[],products=[]){
   const artistList=mergeArtistsWithProducts(artists,products,{includeHidden:true});
@@ -14,6 +15,7 @@ export function previewPageOptions(artists=[],products=[]){
     ...artistList.map(a=>[`artist:${a.id}`,`Artist · ${a.name}`]),
     ['product','Artwork detail page'],
     ['checkout','Checkout page'],
+    ['account','Sign-in page'],
     ['about','Our story'],
     ['contact','Contact'],
     ['shipping','Shipping'],
@@ -32,6 +34,7 @@ export function hashForPreviewPage(page='home',products=[]){
   if(page==='about')return '#about';
   if(page==='footer')return '#footer';
   if(page==='checkout')return '#checkout';
+  if(page==='account')return '#account';
   if(page.startsWith('artist:'))return `#artist/${page.slice(7)}`;
   if(page==='product'||page.startsWith('product:')){
     const explicit=page.startsWith('product:')?page.slice(8):'';
@@ -107,6 +110,8 @@ export function contentInlineTargets(page) {
 const KIND_PAGE = { home: 'home', shop: 'shop', artists: 'artists', about: 'about', product: 'product', checkout: 'checkout' };
 const HIGHLIGHT_EXTRAS = {
   'brand.pageTitle': { page: null, selector: '.brand-wordmark' },
+  'brand.accountLogo': { page: 'account', selector: '.account-welcome-art > img' },
+  'brand.showAccountMascot': { page: 'account', selector: '.account-welcome' },
   'navigation.account': { page: null, selector: '.header-actions > a[href="#account"]' },
   'story.button': { page: 'home', selector: '.story-copy > a' },
   'story.destination': { page: 'home', selector: '.story-copy > a' },
@@ -153,6 +158,7 @@ export function editorPreview(content,page,products,settings,header,artists=[]) 
   if(page==='about'){kind=page;main=`<div class="container"><div class="page-head"><h1>${e(c.story.pageTitle)}</h1></div>${storyMarkup()}</div>`;}
   if(page==='footer'){kind=page;main='';}
   if(page==='checkout'){kind='checkout';main=checkoutPreviewMarkup(c);}
+  if(page==='account'){kind='account';main=accountMarkup(null,false,{});}
   if(page==='shop'){kind=page;main=`<div class="container"><div class="page-head"><h1>${e(c.home.shopTitle)}</h1><p>${e(c.home.shopDescription)}</p></div><div class="product-grid">${safeProducts.filter(p=>p.visible&&!p.archived).map(p=>productCardMarkup(p,c)).join('')}</div></div>`;}
   if(page==='artists'){kind='artists';main=artistsPageMarkup(artists,safeProducts,c);}
   if(page&&page.startsWith('artist:')){
@@ -171,7 +177,7 @@ export function editorPreview(content,page,products,settings,header,artists=[]) 
     main=productDetailPreviewMarkup(chosen,c,related);
   }
   if(['contact','shipping','refunds','privacy','terms'].includes(page)){kind='info';main=infoMarkup(c,page);}
-  const doc=new DOMParser().parseFromString(`<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><base href="${e(new URL('./',document.baseURI).href)}"><link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,500;0,9..144,600;0,9..144,700;1,9..144,400&family=JetBrains+Mono:wght@500;600&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">${['shop.css','brand.css','features.css','animations.css','animation-integration.css','studio-updates.css'].map(css=>`<link rel="stylesheet" href="${css}">`).join('')}<style>a,button,input,select{pointer-events:none}body{overflow-x:hidden}.site-header{position:relative}.story-copy>p{white-space:pre-line}[data-edit-highlight="true"]{outline:3px solid #d96b43!important;outline-offset:4px!important;box-shadow:0 0 0 5px rgba(217,107,67,.28),0 0 0 2px rgba(255,255,255,.88)!important;animation:edit-pulse 1.5s ease-in-out infinite;scroll-margin-block:80px}@keyframes edit-pulse{0%,100%{box-shadow:0 0 0 4px rgba(217,107,67,.22),0 0 0 2px rgba(255,255,255,.85)}50%{box-shadow:0 0 0 9px rgba(217,107,67,.38),0 0 0 2px rgba(255,255,255,.95)}}</style></head><body data-page="${kind}">${settings.announcementVisible?`<div class="announcement">${e(settings.announcementText)}</div>`:''}${header}<main>${main}</main><footer id="footer" class="site-footer">${footerMarkup(c)}</footer></body></html>`,'text/html');
+  const doc=new DOMParser().parseFromString(`<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><base href="${e(new URL('./',document.baseURI).href)}"><link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,500;0,9..144,600;0,9..144,700;1,9..144,400&family=JetBrains+Mono:wght@500;600&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">${['shop.css','brand.css','features.css','dashboard.css','animations.css','animation-integration.css','studio-updates.css'].map(css=>`<link rel="stylesheet" href="${css}">`).join('')}<style>a,button,input,select{pointer-events:none}body{overflow-x:hidden}.site-header{position:relative}.story-copy>p{white-space:pre-line}[data-edit-highlight="true"]{outline:3px solid #d96b43!important;outline-offset:4px!important;box-shadow:0 0 0 5px rgba(217,107,67,.28),0 0 0 2px rgba(255,255,255,.88)!important;animation:edit-pulse 1.5s ease-in-out infinite;scroll-margin-block:80px}@keyframes edit-pulse{0%,100%{box-shadow:0 0 0 4px rgba(217,107,67,.22),0 0 0 2px rgba(255,255,255,.85)}50%{box-shadow:0 0 0 9px rgba(217,107,67,.38),0 0 0 2px rgba(255,255,255,.95)}}</style></head><body data-page="${kind}">${settings.announcementVisible?`<div class="announcement">${e(settings.announcementText)}</div>`:''}${header}<main>${main}</main><footer id="footer" class="site-footer">${footerMarkup(c)}</footer></body></html>`,'text/html');
   applyStoreContent(c,kind,doc);
   doc.querySelectorAll('script,iframe,dialog').forEach(el=>el.remove());
   doc.querySelectorAll('*').forEach(el=>{for(const attribute of [...el.attributes])if(/^on/i.test(attribute.name))el.removeAttribute(attribute.name);});
@@ -325,7 +331,7 @@ export function mountContentEditor(root,initial,{onPublish,onUpload,products=()=
   root.querySelector('[aria-label="Preview page"]').value=page;
   if(pageOnly){
     const starter=document.createElement('button');starter.type='button';starter.className='text-link';starter.textContent='Load editable starter wording';
-    starter.onclick=()=>{for(const key of [pageOnly+'Title',pageOnly+'Body'])draft.pages[key]=CONTENT_SCHEMA.pages.fields[key].value;restoreFields();capture();preview();notice.textContent='Starter wording loaded. Replace bracketed business details, then publish.';};
+    starter.onclick=()=>{for(const key of [pageOnly+'Title',pageOnly+'Body'])draft.pages[key]=CONTENT_SCHEMA.pages.fields[key].value;restoreFields();capture();preview();notice.textContent='Current policy wording loaded. Review details, then publish.';};
     form.prepend(starter);form.querySelector('textarea').rows=16;
   }
   const observer=new ResizeObserver(size);observer.observe(stage);preview();

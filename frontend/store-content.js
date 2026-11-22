@@ -1,4 +1,5 @@
 import {POLICY_DEFAULTS} from './policy-defaults.js';
+import {LEGACY_POLICY_DEFAULTS} from './policy-legacy.js';
 import {starterCopy} from './placeholder-copy.js';
 import {escapeHTML as e,safeImage} from './commerce.js';
 import {MAX_INLINE_IMAGE_LENGTH} from './image-data.js';
@@ -8,7 +9,7 @@ const link=(label,value)=>field(label,value,'link',500);
 const picture=(label,value)=>field(label,value,'image',MAX_INLINE_IMAGE_LENGTH);
 const toggle=(label,value=true)=>field(label,value,'checkbox');
 export const CONTENT_SCHEMA={
-  brand:{label:'Branding',fields:{name:field('Store name','hehe.cafe'),pageTitle:field('Browser tab title','hehe.cafe · Art & prints'),logo:picture('Store logo','assets/brand-logo.webp'),mascot:picture('Studio mascot','assets/silly-sensei-loading.webp')}},
+  brand:{label:'Branding',fields:{name:field('Store name','hehe.cafe'),pageTitle:field('Browser tab title','hehe.cafe · Art & prints'),logo:picture('Store logo','assets/brand-logo.webp'),mascot:picture('Studio mascot','assets/silly-sensei-loading.webp'),accountLogo:picture('Sign-in page logo','assets/silly-sensei-loading.webp'),showAccountMascot:toggle('Show sign-in page logo')}},
   navigation:{label:'Header & navigation',fields:{home:field('Home link label','Home'),shop:field('Shop link label','All artworks'),story:field('Story link label','About hehe.cafe'),account:field('Account link label','My account')}},
   home:{label:'Homepage & shop headings',fields:{eyebrow:field('Homepage eyebrow','hehe.cafe · artworks'),heading:field('Homepage heading','Artistic clay magnets for some hehe'),shopTitle:field('Shop page heading','Artistic clay magnets for some hehe'),shopDescription:field('Shop page description','Hand-sculpted artistic clay magnets and miniature paintings by Suprita Chatterjee.','textarea',400),checkoutTitle:field('Checkout heading','Checkout'),checkoutDescription:field('Checkout introduction','Complete your delivery details below.','textarea',400),relatedTitle:field('Related products heading','More artworks from hehe.cafe'),searchPlaceholder:field('Search box placeholder (live site only)','Search by artwork name, artist, medium…'),cartTitle:field('Cart drawer heading (live site only)','Your art bag')}},
   artists:{label:'Artists page',fields:{navLabel:field('Artists nav link label','Artists'),eyebrow:field('Artists page eyebrow','hehe.cafe · independent makers'),heading:field('Artists page heading','Meet our artists'),description:field('Artists page intro','Choose an artist to explore their signature style and every handmade piece they’ve crafted for hehe.cafe.','textarea',400)}},
@@ -24,6 +25,8 @@ export function safeContentLink(value){return typeof value==='string'&&(/^(?:#(?
 export function normalizeContent(value={}) {
   return Object.fromEntries(Object.entries(CONTENT_SCHEMA).map(([section,group])=>[section,Object.fromEntries(Object.entries(group.fields).map(([key,f])=>{
     let v=starterCopy(value[section]?.[key]);
+    if(section==='brand' && key==='accountLogo' && v===undefined)v=starterCopy(value.brand?.mascot);
+    if(section==='pages' && key.endsWith('Body') && (v===LEGACY_POLICY_DEFAULTS[key] || v===LEGACY_POLICY_DEFAULTS[key]?.replace(/(?:hello|orders)@hehe\.cafe/gi,'abhishekreddy2499@gmail.com')))v=POLICY_DEFAULTS[key];
     if(f.kind==='image'&&typeof v==='string')v=v.replace(/^assets\/(brand-logo|silly-sensei-loading|loading-doodles)\.png$/, 'assets/$1.webp');
     if(f.kind==='checkbox')return [key,typeof v==='boolean'?v:f.value];
     if(typeof v!=='string')return [key,f.value];
@@ -56,7 +59,9 @@ export function applyStoreContent(c,page,root=document) {
   const hasCustomLogo = c.brand.logo && !/^assets\/brand-logo\.(?:webp|png)$/.test(c.brand.logo);
   image('.brand-logo',c.brand.logo);root.querySelectorAll('.brand-logo').forEach(el=>{el.alt=brandName;el.hidden=!hasCustomLogo;});
   set('.brand-wordmark',brandName);
-  image('.story-symbol>img,.account-welcome-art>img,.dashboard-studio>img',c.brand.mascot);
+  image('.story-symbol>img,.dashboard-studio>img',c.brand.mascot);
+  image('.account-welcome-art>img',c.brand.accountLogo);
+  root.querySelectorAll('.account-welcome-art').forEach(el=>{el.hidden=!c.brand.showAccountMascot;});
   set('.desktop-nav>a[href="#home"]',c.navigation.home);set('.desktop-nav>a[href="#shop"]',c.navigation.shop);set('.desktop-nav>a[href="#artists"]',c.artists.navLabel);set('.desktop-nav>a[href="#about"]',c.navigation.story);
   for(const [route,key] of [['home','home'],['shop','shop'],['about','story'],['account','account']])set(`#mobile-menu>a[href="#${route}"]`,c.navigation[key]);
   set('#mobile-menu>a[href="#artists"]',c.artists.navLabel);
