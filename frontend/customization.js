@@ -1,4 +1,14 @@
 import {escapeHTML as e} from './commerce.js';
+export function randomId(){
+  if(globalThis.crypto?.randomUUID)return globalThis.crypto.randomUUID();
+  if(globalThis.crypto?.getRandomValues){
+    const b=globalThis.crypto.getRandomValues(new Uint8Array(16));
+    b[6]=(b[6]&0x0f)|0x40;b[8]=(b[8]&0x3f)|0x80;
+    const h=[...b].map(n=>n.toString(16).padStart(2,'0')).join('');
+    return `${h.slice(0,8)}-${h.slice(8,12)}-${h.slice(12,16)}-${h.slice(16,20)}-${h.slice(20)}`;
+  }
+  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2,10)}-${Math.random().toString(36).slice(2,10)}`;
+}
 
 // Product notes and private reference images stay in this tab, never localStorage.
 const drafts = new Map();
@@ -21,7 +31,7 @@ export function addReferences(id, files) {
   for (const file of list) {
     if (!['image/jpeg','image/png','image/webp'].includes(file.type) || file.size > 6*1024*1024) throw new Error('Use JPG, PNG or WebP images, no larger than 6 MB each.');
   }
-  d.files.push(...list.map(file => ({id:crypto.randomUUID(),file,url:URL.createObjectURL(file)})));
+  d.files.push(...list.map(file => ({id:randomId(),file,url:URL.createObjectURL(file)})));
 }
 export function removeReference(id, fileId) {
   const d = draft(id), found = d.files.find(file => file.id === fileId);

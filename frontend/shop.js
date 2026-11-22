@@ -27,7 +27,7 @@ import {homeMarkup,homeFilterPanelMarkup,artistsPageMarkup,artistDetailMarkup,st
 import {mountContentEditor} from './content-editor.js';
 import {mountSitePreviewPanel,openSitePreviewModal} from './site-preview.js';
 import {mountArtistStudio} from './artist-studio.js';
-import {customizationFields,setProductNote,addReferences,removeReference,refreshReferencePreviews,clearCustomization,checkoutCustomizations,clearCustomizations} from './customization.js';
+import {randomId,customizationFields,setProductNote,addReferences,removeReference,refreshReferencePreviews,clearCustomization,checkoutCustomizations,clearCustomizations} from './customization.js';
 import {DEFAULT_PROMOS,normalizePromos,calculateDiscounts,nextBundleHint} from './promotions.js';
 import {mountHomeLayoutEditor} from './home-layout-editor.js';
 import {mountPromosAdmin} from './promos-admin.js';
@@ -62,7 +62,7 @@ const expandedOrderIds = new Set();
 const previousPositiveStock = new Map();
 const rememberedProducts=new Map();
 let checkoutProducts=[];
-let checkoutDraft = {}, checkoutId = crypto.randomUUID(), completedRequest = null, submitting = false, paymentSceneActive = false, checkoutStep = 1, lastRenderedPage = '', activeProductTab = 'desc';
+let checkoutDraft = {}, checkoutId = randomId(), completedRequest = null, submitting = false, paymentSceneActive = false, checkoutStep = 1, lastRenderedPage = '', activeProductTab = 'desc';
 function isAnimationPlaying() {
   return paymentSceneActive || Boolean(document.querySelector(
     '.cart-button[aria-busy="true"], .cart-checkout-flow.is-checking-out, .pos-transaction-container.is-animating, .logoutButton.clicked, .payment-outcome-scene'
@@ -253,7 +253,7 @@ function addToCart(id,quantity=1,open=true){
   if(next>Math.min(99,product.stock))return toast(`Only ${product.stock} available. Your cart already has ${current?.quantity||0}.`);
   if(!current && cart.length>=MAX_CART_ITEMS)return toast(`You can add up to ${MAX_CART_ITEMS} different items.`);
   if(current)current.quantity=next;else cart.push({id,quantity});
-  completedRequest=null;checkoutId=crypto.randomUUID();persistCart();renderCart();if(open)openDialog('cart-dialog');
+  completedRequest=null;checkoutId=randomId();persistCart();renderCart();if(open)openDialog('cart-dialog');
   return true;
 }
 function renderCart(){
@@ -561,7 +561,16 @@ function mountCheckoutMap(){
 }
 
 function captureCheckout(){const form=$('checkout-form');if(!form)return;const data=new FormData(form);const point=checkoutDraft.location;checkoutDraft=Object.fromEntries(data);if(point)checkoutDraft.location=point;checkoutDraft.consent=data.get('consent')==='on';}
-async function checkoutFingerprint(customer){const value=JSON.stringify({uid:user.uid,customer,promoCode:appliedPromoCode||'',cart:cart.map(item=>({id:item.id,quantity:item.quantity})).sort((a,b)=>a.id.localeCompare(b.id))});const digest=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(value));return [...new Uint8Array(digest)].map(byte=>byte.toString(16).padStart(2,'0')).join('');}
+async function checkoutFingerprint(customer){
+  const value=JSON.stringify({uid:user.uid,customer,promoCode:appliedPromoCode||'',cart:cart.map(item=>({id:item.id,quantity:item.quantity})).sort((a,b)=>a.id.localeCompare(b.id))});
+  if(globalThis.crypto?.subtle?.digest){
+    const digest=await globalThis.crypto.subtle.digest('SHA-256',new TextEncoder().encode(value));
+    return [...new Uint8Array(digest)].map(byte=>byte.toString(16).padStart(2,'0')).join('');
+  }
+  let h1=0xdeadbeef,h2=0x41c6ce57;
+  for(let i=0;i<value.length;i++){const ch=value.charCodeAt(i);h1=Math.imul(h1^ch,2654435761);h2=Math.imul(h2^ch,1597334677);}
+  return `${(h1>>>0).toString(16).padStart(8,'0')}${(h2>>>0).toString(16).padStart(8,'0')}`;
+}
 function renderSuccess(){$('main').innerHTML=`<div class="container"><section class="success-card">${checkoutProgress(4)}<span class="success-icon"><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 13l4 4L19 7"/></svg></span><p class="eyebrow">Payment successful · hehe.cafe</p><h1>Thanks, ${e(completedRequest.customer.firstName)}.</h1><p>Your order is confirmed and will ship via India Post.</p><p>Order Reference: <strong>${e(completedRequest.id.slice(0,8).toUpperCase())}</strong></p><div class="checkout-info"><strong>Total paid: ${money(completedRequest.quote.amount/100)}</strong></div><section id="save-address-prompt" class="save-address-prompt"><h2>Save this address for next time?</h2><p>Your delivery details stay with this order either way.</p><div class="save-address-actions"><button class="button" data-action="save-checkout-address">${user&&!user.isAnonymous?'Save address':'Sign in & save address'}</button><button class="text-link" data-action="skip-save-address">Not now</button></div><p class="notice" role="status"></p></section><a class="button" href="#home">Keep exploring hehe.cafe →</a><p style="margin-top:20px"><a href="#account/requests" class="text-link">View my orders →</a></p></section></div>`;}
 function showPaymentPreviewChoice(){
   let dialog=$('payment-preview-dialog');
@@ -603,14 +612,14 @@ async function submitCheckout(event){
     if(pending?.uid===user.uid){
       let oldRequest=accountState.requests.find(request=>request.id===pending.id);
       if(!oldRequest){const history=await store.loadCustomerRequests();oldRequest=history.requests.find(request=>request.id===pending.id);}
-      if(['cancelled','closed'].includes(oldRequest?.status)||(oldRequest?.paymentStatus==='captured'&&oldRequest.status!=='cancel_requested')){clearPendingCheckout();pending=null;checkoutId=crypto.randomUUID();}
+      if(['cancelled','closed'].includes(oldRequest?.status)||(oldRequest?.paymentStatus==='captured'&&oldRequest.status!=='cancel_requested')){clearPendingCheckout();pending=null;checkoutId=randomId();}
       else if(pending.fingerprint!==fingerprint)throw new Error('An unpaid checkout already exists for this account. Finish or cancel it under My account before starting a different checkout.');
       else checkoutId=pending.id;
     }
     const promoForOrder=bagPricing(lines()).appliedCode;
     let saved=await store.saveCheckout(checkoutId,customer,cart,checkoutProducts,checkoutCustomizations(cart),true,promoForOrder);
     if(saved.status==='cancelled'){
-      clearPendingCheckout();checkoutId=crypto.randomUUID();
+      clearPendingCheckout();checkoutId=randomId();
       saved=await store.saveCheckout(checkoutId,customer,cart,checkoutProducts,checkoutCustomizations(cart),true,promoForOrder);
     }
     if(['cancel_requested','closed'].includes(saved.status))throw new Error('This checkout has a pending cancellation. Wait for the studio to release it before starting another order.');
@@ -619,7 +628,7 @@ async function submitCheckout(event){
       clearPendingCheckout();completedRequest=saved;deliveryMap?.destroy();deliveryMap=null;
       paymentSceneActive=true;
       try{await playPaymentOutcome('success',{items:animationItems});}finally{paymentSceneActive=false;}
-      cart=[];persistCart();clearCustomizations();checkoutDraft={};checkoutTouched.clear();orderNote='';appliedPromoCode='';promoFeedback='';checkoutId=crypto.randomUUID();renderSuccess();window.scrollTo({top:0,behavior:'smooth'});$('main').focus({preventScroll:true});return;
+      cart=[];persistCart();clearCustomizations();checkoutDraft={};checkoutTouched.clear();orderNote='';appliedPromoCode='';promoFeedback='';checkoutId=randomId();renderSuccess();window.scrollTo({top:0,behavior:'smooth'});$('main').focus({preventScroll:true});return;
     }
     try{localStorage.setItem(pendingCheckoutKey,JSON.stringify({id:saved.id,uid:user.uid,fingerprint}));}catch{}
     completedRequest=saved;requestsLoaded=false;accountState.loaded=false;
@@ -634,13 +643,13 @@ async function submitCheckout(event){
         deliveryMap?.destroy();deliveryMap=null;
         paymentSceneActive=true;
         try{await playPaymentOutcome('success',{items:animationItems});}finally{paymentSceneActive=false;}
-        clearPendingCheckout();cart=[];persistCart();clearCustomizations();checkoutDraft={};checkoutTouched.clear();orderNote='';appliedPromoCode='';promoFeedback='';checkoutId=crypto.randomUUID();
+        clearPendingCheckout();cart=[];persistCart();clearCustomizations();checkoutDraft={};checkoutTouched.clear();orderNote='';appliedPromoCode='';promoFeedback='';checkoutId=randomId();
         if(route().page==='checkout'){renderSuccess();window.scrollTo({top:0,behavior:'smooth'});$('main').focus({preventScroll:true});}
         else{render();toast('Payment successful. Thank you!');}
         return;
       }
       loader.hide();
-      clearPendingCheckout();completedRequest=null;checkoutId=crypto.randomUUID();requestsLoaded=false;accountState.loaded=false;
+      clearPendingCheckout();completedRequest=null;checkoutId=randomId();requestsLoaded=false;accountState.loaded=false;
       deliveryMap?.destroy();deliveryMap=null;
       paymentSceneActive=true;
       try{await playPaymentOutcome('failure',{message:'Payment failed. This order was cancelled and your items are still in your cart if you want to try again.',items:animationItems});}finally{paymentSceneActive=false;}
@@ -650,7 +659,7 @@ async function submitCheckout(event){
     deliveryMap?.destroy();deliveryMap=null;
     paymentSceneActive=true;
     try{await playPaymentOutcome('success',{items:animationItems});}finally{paymentSceneActive=false;}
-    clearPendingCheckout();cart=[];persistCart();clearCustomizations();checkoutDraft={};checkoutTouched.clear();orderNote='';appliedPromoCode='';promoFeedback='';checkoutId=crypto.randomUUID();
+    clearPendingCheckout();cart=[];persistCart();clearCustomizations();checkoutDraft={};checkoutTouched.clear();orderNote='';appliedPromoCode='';promoFeedback='';checkoutId=randomId();
     if(route().page==='checkout'){renderSuccess();window.scrollTo({top:0,behavior:'smooth'});$('main').focus({preventScroll:true});}
     else{render();toast('Payment successful. Thank you!');}
   }catch(error){
@@ -1439,7 +1448,7 @@ async function submitProduct(event){event.preventDefault();if(!isAdmin)return;co
   const button=$('save-product');button.disabled=true;button.textContent='Saving…';fail('');
   try{
     await withSavingOverlay('Saving artwork…',async()=>{
-      const id=editingId||crypto.randomUUID();const uploaded=[];for(const file of files)uploaded.push(await store.uploadImage(file,id));
+      const id=editingId||randomId();const uploaded=[];for(const file of files)uploaded.push(await store.uploadImage(file,id));
       const existing=editingId?products.find(item=>item.id===editingId):null;
       const rawOrder=Number(data.get('displayOrder'));
       const displayOrder=Number.isInteger(rawOrder)&&rawOrder>=1&&rawOrder<=100000?rawOrder:(existing?.displayOrder??products.length+1);
