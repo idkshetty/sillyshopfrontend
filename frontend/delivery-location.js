@@ -23,6 +23,7 @@ export function mapPanel(location) {
     <div class="map-actions map-primary-pills">
       <button type="button" class="button map-pill-primary" data-map="device">⌖ Locate Me</button>
       <button type="button" class="button outline map-pill-secondary" data-map="open">${hasPin ? 'Change location' : 'Choose on map'}</button>
+      <button type="button" class="button map-pill-confirm" data-map="confirm" hidden>Confirm pin ✓</button>
     </div>
   </section>`;
 }
@@ -67,7 +68,7 @@ export function mountDeliveryMap(root,{getAddress,onChange,onAddress,initial}) {
       <div id="mapped-address" class="mapped-address" hidden>
         <span class="eyebrow">Nearby mapped address · please check</span>
         <p id="mapped-address-text"></p>
-        <button type="button" class="text-link" data-map="apply-address">Use this address in the form</button>
+        <button type="button" class="text-link" data-map="apply-address">Use this address &amp; confirm pin ✓</button>
         <p class="small muted">Check the house number and keep your apartment / landmark details.</p>
       </div>
       <div class="map-sheet-confirm-row">
@@ -90,9 +91,11 @@ export function mountDeliveryMap(root,{getAddress,onChange,onAddress,initial}) {
     const card=root.querySelector('.delivery-pin-card');
     if(card)card.classList.toggle('is-confirmed',isOk);
     const badge=root.querySelector('.map-summary-badge');
-    if(badge)badge.textContent=isOk?'Pin confirmed ✓':pending?'Confirm pin':'Required';
+    if(badge)badge.textContent=isOk?'Pin confirmed ✓':pending?'Not confirmed':'Required';
     const openBtn=root.querySelector('[data-map="open"]');
     if(openBtn)openBtn.textContent=isOk?'Change location':pending?'Adjust pin':'Choose on map';
+    const inlineConfirm=root.querySelector('.map-pill-confirm');
+    if(inlineConfirm){inlineConfirm.hidden=isOk||!pending;inlineConfirm.disabled=isOk||!pending;}
   };
   const enabled=()=>{
     const button=sheet.querySelector('[data-map="confirm"]');
@@ -282,16 +285,22 @@ export function mountDeliveryMap(root,{getAddress,onChange,onAddress,initial}) {
       else if(action==='device')await locate();
       else if(action==='confirm'&&pending){
         pending.confirmed=true;
+        if(suggestion){
+          const cur=getAddress?.()||{};
+          if(!cur.address?.trim()&&!cur.city?.trim()&&!cur.postalCode?.trim())onAddress?.(featureAddress(suggestion));
+        }
         onChange({...pending});
         updatePointUI();
         status('✓ Delivery pin confirmed.');
         closeSheet();
       }
       else if(action==='apply-address'&&suggestion){
-        pending.confirmed=false;
+        pending.confirmed=true;
         onChange({...pending});
         onAddress(featureAddress(suggestion));
-        status('Nearby address copied to form. Tap Confirm delivery pin when ready.');
+        updatePointUI();
+        status('✓ Delivery pin confirmed and address copied.');
+        closeSheet();
       }
       else if(action==='clear'){
         version++;clearTimeout(timer);controller?.abort();
