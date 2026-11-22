@@ -3,6 +3,8 @@ import {validImageSource} from './image-data.js';
 export const MAX_CART_ITEMS = 5;
 export const SHIPPING_CHARGE = 40;
 export const SHIPPING_PAISE = 4000;
+export const shippingForQuantity = qty => Math.max(0, Math.floor(Number(qty) || 0)) * SHIPPING_CHARGE;
+export const shippingPaiseForQuantity = qty => Math.max(0, Math.floor(Number(qty) || 0)) * SHIPPING_PAISE;
 export const CATEGORIES = [
   { id: 'paintings', name: 'Paintings', description: 'Little windows to a world of colour.', image: 'assets/paintings.svg' },
   { id: 'clay-models', name: 'Clay models', description: 'Small characters. Big personalities.', image: 'assets/clay-models.svg' },
@@ -180,7 +182,8 @@ export function cartLines(cart, products) {
 export const subtotal = lines => lines.reduce((sum, line) => sum + Math.round(line.total * 100), 0) / 100;
 export const totalWithShipping = lines => {
   const sub = subtotal(lines);
-  return sub > 0 ? Math.round((sub + SHIPPING_CHARGE) * 100) / 100 : 0;
+  const qty = (lines || []).reduce((sum, line) => sum + (Number(line?.quantity) || 0), 0);
+  return sub > 0 ? Math.round((sub + shippingForQuantity(qty)) * 100) / 100 : 0;
 };
 export function filterProducts(products, { category = '', search = '', sort = 'featured', available = false, discounted = false, productType = '', artist = '' } = {}) {
   const query = search.trim().toLowerCase();

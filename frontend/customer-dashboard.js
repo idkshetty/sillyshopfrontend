@@ -43,15 +43,22 @@ function requestCard(request,{productImages=new Map(),open=false}={}) {
   const terminalText=refunded?' · This order is no longer in fulfilment.':failed?' · This order was cancelled because payment failed.':request.status==='cancel_requested'?' · The studio is reviewing your cancellation request.':request.status==='cancelled'?' · This request has been cancelled.':' · This order is closed.';
   const progress=terminal?`<p class="request-progress-note" role="status"><strong>${e(terminalLabel)}</strong>${terminalText}</p>`:steppedProgress(stepLabels,step+1,paid?'Order status progress':'Request status progress');
   const totalQty=(request.items||[]).reduce((n,i)=>n+i.quantity,0);
-  const displayTotal=Number.isFinite(Number(request.estimatedSubtotal))?Number(request.estimatedSubtotal):(request.quote?.amount?request.quote.amount/100:0);
+  const displayTotal=request.quote?.amount?request.quote.amount/100:(Number.isFinite(Number(request.estimatedSubtotal))?Number(request.estimatedSubtotal):0);
+  const shippingIncluded=Boolean(request.quote?.shipping>0||request.quote?.freeShipping);
   const leadItem=(request.items||[])[0];
   const leadImg=leadItem?safeImage(leadItem.image||leadItem.thumbnail||productImages.get(leadItem.productId||leadItem.id),''):'';
-  const paymentBlock=request.checkoutPayment
+  const paymentBlock=request.checkoutPayment&&shippingIncluded
     ?(request.paymentStatus!=='captured'&&request.paymentStatus!=='refunded'&&!['cancelled','cancel_requested','closed'].includes(request.status)
-      ?`<div class="payment-info">Pay for items now: <strong>${money(request.quote.amount/100)}</strong><p>Shipping will be confirmed and billed separately by the studio.</p><button class="button small" data-action="pay-request" data-id="${e(request.id)}" data-purpose="items">Pay item subtotal</button></div>`
+      ?`<div class="payment-info">Total due: <strong>${money(request.quote.amount/100)}</strong><p>${request.quote.freeShipping?'Includes free India Post shipping.':`Includes India Post shipping (${money(request.quote.shipping/100)}).`}</p><button class="button small" data-action="pay-request" data-id="${e(request.id)}" data-purpose="items">Pay with Razorpay</button></div>`
       :request.paymentStatus==='captured'
-        ?`<div class="payment-info">Payment successful · Item subtotal paid: <strong>${money(request.quote.amount/100)}</strong>${request.shippingQuote?.amount>0?request.shippingPaymentStatus==='captured'?`<p>Shipping paid: ${money(request.shippingQuote.amount/100)}</p>`:`<p>Shipping charge due: <strong>${money(request.shippingQuote.amount/100)}</strong></p><button class="button small" data-action="pay-request" data-id="${e(request.id)}" data-purpose="shipping">Pay shipping</button>`:request.shippingQuote?.amount===0?'<p>Shipping confirmed: no additional charge.</p>':'<p>Shipping will be confirmed and billed separately by the studio.</p>'}</div>`
+        ?`<div class="payment-info">Payment successful · Total paid: <strong>${money(request.quote.amount/100)}</strong><p>${request.quote.freeShipping?'Includes free India Post shipping.':`Includes India Post shipping (${money(request.quote.shipping/100)}).`}</p></div>`
         :'')
+    :request.checkoutPayment
+      ?(request.paymentStatus!=='captured'&&request.paymentStatus!=='refunded'&&!['cancelled','cancel_requested','closed'].includes(request.status)
+        ?`<div class="payment-info">Pay for items now: <strong>${money(request.quote.amount/100)}</strong><p>Shipping will be confirmed and billed separately by the studio.</p><button class="button small" data-action="pay-request" data-id="${e(request.id)}" data-purpose="items">Pay item subtotal</button></div>`
+        :request.paymentStatus==='captured'
+          ?`<div class="payment-info">Payment successful · Item subtotal paid: <strong>${money(request.quote.amount/100)}</strong>${request.shippingQuote?.amount>0?request.shippingPaymentStatus==='captured'?`<p>Shipping paid: ${money(request.shippingQuote.amount/100)}</p>`:`<p>Shipping charge due: <strong>${money(request.shippingQuote.amount/100)}</strong></p><button class="button small" data-action="pay-request" data-id="${e(request.id)}" data-purpose="shipping">Pay shipping</button>`:request.shippingQuote?.amount===0?'<p>Shipping confirmed: no additional charge.</p>':'<p>Shipping will be confirmed and billed separately by the studio.</p>'}</div>`
+          :'')
     :request.quote&&!['captured','refunded'].includes(request.paymentStatus)&&!['cancelled','cancel_requested','closed'].includes(request.status)
       ?`<div class="payment-info">Studio-confirmed total: <strong>${money(request.quote.amount/100)}</strong><p>Includes the agreed delivery charges. Read the <a class="text-link" href="#info/refunds">cancellation policy</a> before paying.</p><button class="button small" data-action="pay-request" data-id="${e(request.id)}" data-purpose="items">Pay with Razorpay</button></div>`
       :'';

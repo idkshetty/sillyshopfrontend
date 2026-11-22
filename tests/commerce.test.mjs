@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {cartLines,subtotal,filterProducts,validateCustomer,safeImage,escapeHTML,CATEGORIES} from '../frontend/commerce.js';
+import {cartLines,subtotal,totalWithShipping,shippingForQuantity,shippingPaiseForQuantity,filterProducts,validateCustomer,safeImage,escapeHTML,CATEGORIES} from '../frontend/commerce.js';
 import {pruneCart} from '../frontend/cart-state.js';
 const products=[{id:'a',title:'Landscape',description:'Mountain painting',category:'paintings',price:10.10,stock:2,visible:true},{id:'b',title:'Clay friend',description:'Small clay model',category:'clay-models',price:0.20,stock:3,visible:true},{id:'hidden',title:'Hidden',price:20,stock:5,visible:false},{id:'sold',title:'Sold',price:30,stock:0,visible:true}];
 test('cart drops hidden, removed, sold out, duplicate and malformed lines; caps stock',()=>{
@@ -26,6 +26,19 @@ test('pruneCart removes unavailable or sold-out items, clamps stock, and emits u
   assert.deepEqual(clean.notes,[]);
 });
 test('subtotal uses integer paise arithmetic',()=>assert.equal(subtotal(cartLines([{id:'a',quantity:1},{id:'b',quantity:1}],products)),10.30));
+test('shipping multiplies ₹40 per total item quantity in totals and paise helpers',()=>{
+  assert.equal(shippingForQuantity(1),40);
+  assert.equal(shippingForQuantity(2),80);
+  assert.equal(shippingPaiseForQuantity(2),8000);
+  assert.equal(shippingPaiseForQuantity(3),12000);
+  const one=cartLines([{id:'a',quantity:1}],products);
+  const two=cartLines([{id:'a',quantity:2}],products);
+  const three=cartLines([{id:'a',quantity:2},{id:'b',quantity:1}],products);
+  assert.equal(totalWithShipping(one),50.10);
+  assert.equal(totalWithShipping(two),100.20);
+  assert.equal(totalWithShipping(three),140.40);
+  assert.equal(totalWithShipping([]),0);
+});
 test('public category, search, availability and price sorting compose',()=>{
   assert.deepEqual(filterProducts(products,{search:'CLAY',available:true}).map(p=>p.id),['b']);
   assert.deepEqual(filterProducts(products,{category:'paintings'}).map(p=>p.id),['a']);

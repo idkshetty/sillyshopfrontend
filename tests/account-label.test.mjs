@@ -53,4 +53,7 @@ test('checkout payment separates the paid item subtotal from a later shipping pa
   const failedOrder={...request,id:'failed-payment-order',status:'cancelled',paymentStatus:'failed',checkoutPayment:true,quote:{amount:12000},estimatedSubtotal:120,createdAt:Date.now(),items:[{title:'Painted cup',quantity:1,unitPrice:120}]};
   const failedHtml=accountMarkup({uid:'buyer',displayName:'Test Buyer',email:'buyer@example.com'},false,{tab:'requests',requests:[failedOrder]});
   assert.match(failedHtml,/Payment failed/);assert(!/Payment pending/i.test(failedHtml));
+  const inclusiveOrder={...request,id:'inclusive-shipping-order',status:'processing',paymentStatus:'captured',checkoutPayment:true,quote:{amount:33000,subtotal:25000,shipping:8000},estimatedSubtotal:250,createdAt:Date.now(),items:[{title:'Cup A',quantity:1,unitPrice:150},{title:'Cup B',quantity:1,unitPrice:100}]};
+  const inclusiveHtml=accountMarkup({uid:'buyer',displayName:'Test Buyer',email:'buyer@example.com'},false,{tab:'requests',requests:[inclusiveOrder]});
+  assert.match(inclusiveHtml,/Total paid/);assert.match(inclusiveHtml,/330\.00/);assert.match(inclusiveHtml,/Includes India Post shipping.*80\.00/);
 });

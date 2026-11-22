@@ -181,8 +181,9 @@ export function orderCardMarkup(o, {
   const stageLabel = STAGE_LABELS[o.status] || o.status || 'Received';
   const canDownloadInvoice = ['captured', 'refunded'].includes(o.paymentStatus);
   const canCancel = ['details_received', 'reviewed', 'contacted', 'processing'].includes(o.status);
+  const shippingIncluded = Boolean(o.quote?.shipping > 0 || o.quote?.freeShipping);
   const canSetQuote = o.checkoutPayment
-    ? (!o.shippingQuote && ['details_received', 'reviewed', 'contacted', 'processing'].includes(o.status))
+    ? (!shippingIncluded && !o.shippingQuote && ['details_received', 'reviewed', 'contacted', 'processing'].includes(o.status))
     : (!o.quote && ['details_received', 'reviewed', 'contacted'].includes(o.status));
 
   return `<article class="order-card ${selected ? 'is-label-selected' : ''} ${highlighted ? 'is-highlighted' : ''} ${open ? 'is-open' : ''}" data-order-id="${e(o.id)}">
@@ -195,7 +196,7 @@ export function orderCardMarkup(o, {
         </button>
       </div>
       <div class="order-summary-right">
-        <span class="order-summary-meta">${itemCount} ${itemCount === 1 ? 'item' : 'items'} · <strong>${money(o.estimatedSubtotal)}</strong></span>
+        <span class="order-summary-meta">${itemCount} ${itemCount === 1 ? 'item' : 'items'} · <strong>${money(o.quote?.amount ? o.quote.amount / 100 : o.estimatedSubtotal)}</strong></span>
         <span class="status-pill ${paidCls}">${paidLabel}</span>
         <span class="status-pill order-stage-pill">${e(stageLabel)}</span>
         <button type="button" class="button outline small order-summary-print" data-action="print-label" data-id="${e(o.id)}">Print label ↗</button>
@@ -224,7 +225,7 @@ export function orderCardMarkup(o, {
       ${canCancel ? `<button type="button" class="text-link" data-action="resolve-cancellation" data-id="${e(o.id)}" data-approve="true">${o.inventoryReserved ? 'Cancel order & release stock' : 'Cancel request'}</button>` : ''}
       ${o.status === 'cancel_requested' ? `<div class="order-tools"><button type="button" class="button small" data-action="resolve-cancellation" data-id="${e(o.id)}" data-approve="true">Approve cancellation</button><button type="button" class="button outline small" data-action="resolve-cancellation" data-id="${e(o.id)}" data-approve="false">Decline cancellation</button></div>` : ''}
       ${canSetQuote ? `<button type="button" class="text-link" data-action="approve-quote" data-id="${e(o.id)}">Set quote / shipping charge →</button>` : ''}
-      ${o.quote ? `<p class="payment-info">${o.checkoutPayment ? 'Item subtotal' : 'Confirmed total'}: ${money(o.quote.amount / 100)} · ${e(o.refundStatus === 'required' ? (o.paymentMethod === 'manual' ? 'Offline refund due — return funds through the original method, then record it below.' : 'Refund due — issue it in Razorpay; the webhook updates this request.') : paidLabel)}</p>${o.shippingQuote ? `<p class="small">Shipping charge: ${money(o.shippingQuote.amount / 100)} - ${e(shipStatusLabel)}</p>` : ''}` : ''}
+      ${o.quote ? `<p class="payment-info">${o.checkoutPayment && !shippingIncluded ? 'Item subtotal' : o.paymentStatus === 'captured' ? 'Total paid' : 'Confirmed total'}: ${money(o.quote.amount / 100)}${o.quote.shipping > 0 ? ` (includes ${money(o.quote.shipping / 100)} shipping)` : o.quote.freeShipping ? ' (free shipping)' : ''} · ${e(o.refundStatus === 'required' ? (o.paymentMethod === 'manual' ? 'Offline refund due — return funds through the original method, then record it below.' : 'Refund due — issue it in Razorpay; the webhook updates this request.') : paidLabel)}</p>${o.shippingQuote ? `<p class="small">Shipping charge: ${money(o.shippingQuote.amount / 100)} - ${e(shipStatusLabel)}</p>` : ''}` : ''}
       <p class="small muted">Received ${new Date(o.createdAt?.seconds ? o.createdAt.seconds * 1000 : o.createdAt).toLocaleString('en-IN')}</p>
     </div>
   </article>`;
