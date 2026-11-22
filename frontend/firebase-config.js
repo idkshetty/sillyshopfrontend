@@ -10,6 +10,7 @@ export const firebaseConfig = {
   measurementId: 'G-44V5H1KBH2',
 };
 // UI fallback; backend/core.js is authoritative for administrator access.
-export const ADMIN_EMAILS = ['abhishekredddy500@gmail.com','vishnudeviprasadshetty@gmail.com','supritachat.25@gmail.com'];
+export const MASTER_ADMIN_EMAIL = 'vishnudeviprasadshetty@gmail.com';
+export const ADMIN_EMAILS = ['abhishekredddy500@gmail.com', MASTER_ADMIN_EMAIL, 'supritachat.25@gmail.com'];
 // Public reCAPTCHA Enterprise site key (not a secret). Add after App Check registration.
 export const APP_CHECK_SITE_KEY = '';

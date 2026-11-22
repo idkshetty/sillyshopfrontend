@@ -1,5 +1,5 @@
 import {backendURL} from './backend-config.js';
-import {firebaseConfig, ADMIN_EMAILS,APP_CHECK_SITE_KEY} from './firebase-config.js';
+import {firebaseConfig,ADMIN_EMAILS,MASTER_ADMIN_EMAIL,APP_CHECK_SITE_KEY} from './firebase-config.js';
 import {normalizeProduct,sortArtworks,validateCustomer} from './commerce.js';
 import {normalizeArtists} from './artists.js';
 import {normalizeSettings} from './store-settings.js';
@@ -44,12 +44,13 @@ export async function observeAuth(callback) {
   let version=0;
   return a.onAuthStateChanged(auth, async user => {
     const current=++version;
-    let admin = false;
+    let admin = false, masterAdmin = false;
     if (user && !user.isAnonymous) {
-      try { const {claims} = await user.getIdTokenResult(); admin = claims.admin === true || (user.emailVerified && ADMIN_EMAILS.includes((user.email || '').toLowerCase())); } catch {}
+      const email=(user.email||'').toLowerCase();
+      try { const {claims} = await user.getIdTokenResult(); admin = claims.admin === true || (user.emailVerified && ADMIN_EMAILS.includes(email)); masterAdmin = user.emailVerified && email === MASTER_ADMIN_EMAIL; } catch {}
     }
-    if(user&&!user.isAnonymous){try{admin=(await callBackend('currentUser')).admin;}catch{}}
-    if(current===version&&auth.currentUser?.uid===user?.uid)callback(user,admin);
+    if(user&&!user.isAnonymous){try{const me=await callBackend('currentUser');admin=me.admin;masterAdmin=Boolean(me.masterAdmin);}catch{}}
+    if(current===version&&auth.currentUser?.uid===user?.uid)callback(user,admin,masterAdmin);
   });
 }
 export function signIn({ redirect = false } = {}) {
@@ -139,6 +140,11 @@ export async function archiveProduct(id){
   try{localStorage.removeItem('silly-public-v2:products');}catch{}
   for(const refresh of productListeners)await refresh();
 }
+export async function deleteProduct(id){
+  await callBackend('deleteProduct',{id});
+  try{localStorage.removeItem('silly-public-v2:products');}catch{}
+  for(const refresh of productListeners)await refresh();
+}
 export async function uploadImage(file){return encodeImage(file);}
 export async function saveCheckout(id,customer,cart,displayedProducts,customizations=[],payAtCheckout=false,promoCode=''){
  const invalid=validateCustomer(customer);if(invalid)throw new Error(invalid);const {auth}=await backend();await auth.authStateReady();if(!auth.currentUser||auth.currentUser.isAnonymous)throw new Error('Sign in before checkout.');
@@ -161,6 +167,14 @@ export async function loadCustomizations(id){return callBackend('loadCustomizati
 export async function referenceImageURL(value){if(!isInlineImage(value))throw new Error('This older image needs migration by the studio.');return value;}
 export async function loadRequests(){return callBackend('loadRequests');}
 export async function updateRequest(id,status){return callBackend('updateOrderStatus',{requestId:id,status});}
+export async function deleteOrder(id){return callBackend('deleteOrder',{requestId:id});}
+export async function deleteAllOrders(confirm){return callBackend('deleteAllOrders',{confirm});}
+export async function markLabelsPrinted(requestIds,reset=false){return callBackend('markLabelsPrinted',{requestIds,reset});}
+export async function observeCustomerOrdersSignal(uid,onSignal,onError){
+  if(!uid)return ()=>{};
+  const {r,db}=await realtimeBackend();
+  return r.onValue(r.ref(db,`customers/${uid}/ordersSync`),snapshot=>onSignal(snapshot.val()||null),onError);
+}
 export async function loadCustomerRequests(cursor=null){return callBackend('loadCustomerRequests',{cursor});}
 export async function loadProfile(){return callBackend('getProfile');}
 export async function saveProfile(profile){return callBackend('saveProfile',{profile});}

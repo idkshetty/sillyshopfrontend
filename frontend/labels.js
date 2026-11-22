@@ -118,13 +118,15 @@ function formatSwitchMarkup(mode){
     <button type="button" class="label-mode-btn ${mode==='a4-4up'?'is-active':''}" data-label-mode="a4-4up" aria-pressed="${mode==='a4-4up'}">A4 sheet (4-in-1)</button>
   </div>`;
 }
-export async function openLabel(request,{load}) {
+export async function openLabel(request,{load,onPrinted,thermalPrinter}) {
   const [template,qr]=await Promise.all([load(),makeQR(request.customer)]);
   let dialog=document.getElementById('label-dialog');
   if(!dialog){dialog=document.createElement('dialog');dialog.id='label-dialog';dialog.className='label-dialog';document.body.append(dialog);}
   const html=labelMarkup(request,labelForRequest(request,template),qr);
   let mode=getSavedPrintMode('thermal');
   let copies=4;
+  const hwReady=Boolean(thermalPrinter?.isHardwareConnected?.());
+  const hwLabel=hwReady?`Send to thermal printer ↗`:'';
   dialog.innerHTML=`<div class="drawer-header"><div class="label-dialog-title"><p class="eyebrow">Dispatch</p><div class="label-dialog-heading-row"><h2 id="label-title">Delivery label</h2><span class="label-size-badge" id="label-mode-badge"></span></div></div><button type="button" class="icon-button" id="label-close" aria-label="Close label"><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button></div>
     <div class="label-mode-bar">
       ${formatSwitchMarkup(mode)}
@@ -132,12 +134,13 @@ export async function openLabel(request,{load}) {
     </div>
     <div class="label-print-preview"><div class="label-sheet" id="label-dialog-sheet"></div></div>
     <p class="small muted label-print-tip" id="label-print-tip"></p>
-    <div class="label-controls"><a href="#admin/labels" class="text-link" id="label-template-link">Edit the global label template →</a><a class="text-link" href="${e(locationLink(request.customer))}" target="_blank" rel="noopener">Open Google Maps ↗</a><button class="button" id="label-print"></button></div>`;
+    <div class="label-controls"><a href="#admin/labels" class="text-link" id="label-template-link">Edit the global label template →</a><a class="text-link" href="${e(locationLink(request.customer))}" target="_blank" rel="noopener">Open Google Maps ↗</a>${hwReady?`<button type="button" class="button outline small" id="label-hw-print">${hwLabel}</button>`:''}<button class="button" id="label-print"></button></div>`;
   dialog.setAttribute('aria-labelledby','label-title');
   const sheet=$('#label-dialog-sheet',dialog)||dialog.querySelector('#label-dialog-sheet');
   const badge=dialog.querySelector('#label-mode-badge');
   const tip=dialog.querySelector('#label-print-tip');
   const printBtn=dialog.querySelector('#label-print');
+  const hwBtn=dialog.querySelector('#label-hw-print');
   const copiesWrap=dialog.querySelector('#label-copies-wrap');
   const copiesSelect=dialog.querySelector('#label-copies-select');
   function paintDialog(){
@@ -161,28 +164,46 @@ export async function openLabel(request,{load}) {
   dialog.querySelector('#label-template-link').onclick=()=>dialog.close();
   const printRoot=getPrintRoot();
   dialog.onclose=()=>{dialog.replaceChildren();printRoot.replaceChildren();document.body.classList.remove('printing-label');};
-  printBtn.onclick=()=>triggerLabelPrint(mode==='a4-4up'?Array(copies).fill(html):[html],mode);
+  if(hwBtn){
+    hwBtn.onclick=async()=>{
+      hwBtn.disabled=true;hwBtn.textContent='Printing…';
+      try{
+        await thermalPrinter.printLabel(request,template);
+        Promise.resolve(onPrinted?.([request.id])).catch(()=>{});
+        hwBtn.textContent='Sent to printer ✓';
+      }catch(error){
+        tip.textContent=error?.message||'Hardware thermal print failed.';
+        hwBtn.disabled=false;hwBtn.textContent=hwLabel;
+      }
+    };
+  }
+  printBtn.onclick=()=>{
+    triggerLabelPrint(mode==='a4-4up'?Array(copies).fill(html):[html],mode);
+    Promise.resolve(onPrinted?.([request.id])).catch(()=>{});
+  };
   paintDialog();
   dialog.showModal();
 }
-export async function openBatchLabels(requests,{load,defaultMode='a4-4up'}) {
+export async function openBatchLabels(requests,{load,defaultMode='a4-4up',onPrinted,thermalPrinter}) {
   if(!Array.isArray(requests)||!requests.length)return;
   const [template,qrs]=await Promise.all([load(),Promise.all(requests.map(r=>makeQR(r.customer)))]);
   const labelHtmlList=requests.map((req,i)=>labelMarkup(req,labelForRequest(req,template),qrs[i]));
   let dialog=document.getElementById('label-dialog');
   if(!dialog){dialog=document.createElement('dialog');dialog.id='label-dialog';dialog.className='label-dialog label-batch-dialog';document.body.append(dialog);}
   let mode=defaultMode==='thermal'||defaultMode==='a4-4up'?defaultMode:getSavedPrintMode('a4-4up');
+  const hwReady=Boolean(thermalPrinter?.isHardwareConnected?.());
   dialog.innerHTML=`<div class="drawer-header"><div class="label-dialog-title"><p class="eyebrow">Batch dispatch</p><div class="label-dialog-heading-row"><h2 id="label-title">${requests.length} ${requests.length===1?'label':'labels'} ready</h2><span class="label-size-badge" id="label-mode-badge"></span></div></div><button type="button" class="icon-button" id="label-close" aria-label="Close batch labels"><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button></div>
     <div class="label-mode-bar">${formatSwitchMarkup(mode)}<span class="small muted" id="batch-summary-meta"></span></div>
     <div class="label-print-preview"><div class="label-sheet is-batch" id="label-dialog-sheet"></div></div>
     <p class="small muted label-print-tip" id="label-print-tip"></p>
-    <div class="label-controls"><a href="#admin/labels" class="text-link" id="label-template-link">Edit the global label template →</a><button class="button" id="label-print"></button></div>`;
+    <div class="label-controls"><a href="#admin/labels" class="text-link" id="label-template-link">Edit the global label template →</a>${hwReady?`<button type="button" class="button outline small" id="label-hw-print">Send all ${requests.length} to thermal printer ↗</button>`:''}<button class="button" id="label-print"></button></div>`;
   dialog.setAttribute('aria-labelledby','label-title');
   const sheet=dialog.querySelector('#label-dialog-sheet');
   const badge=dialog.querySelector('#label-mode-badge');
   const meta=dialog.querySelector('#batch-summary-meta');
   const tip=dialog.querySelector('#label-print-tip');
   const printBtn=dialog.querySelector('#label-print');
+  const hwBtn=dialog.querySelector('#label-hw-print');
   function paintBatch(){
     dialog.querySelectorAll('[data-label-mode]').forEach(btn=>{
       const active=btn.dataset.labelMode===mode;
@@ -204,7 +225,22 @@ export async function openBatchLabels(requests,{load,defaultMode='a4-4up'}) {
   dialog.querySelector('#label-template-link').onclick=()=>dialog.close();
   const printRoot=getPrintRoot();
   dialog.onclose=()=>{dialog.replaceChildren();printRoot.replaceChildren();document.body.classList.remove('printing-label');};
-  printBtn.onclick=()=>triggerLabelPrint(labelHtmlList,mode);
+  if(hwBtn){
+    hwBtn.onclick=async()=>{
+      hwBtn.disabled=true;hwBtn.textContent=`Sending ${requests.length}…`;
+      try{
+        await thermalPrinter.printBatch(requests,template,{onEachPrinted:req=>Promise.resolve(onPrinted?.([req.id])).catch(()=>{})});
+        hwBtn.textContent=`Printed ${requests.length} ✓`;
+      }catch(error){
+        tip.textContent=error?.message||'Hardware batch print failed.';
+        hwBtn.disabled=false;hwBtn.textContent=`Send all ${requests.length} to thermal printer ↗`;
+      }
+    };
+  }
+  printBtn.onclick=()=>{
+    triggerLabelPrint(labelHtmlList,mode);
+    Promise.resolve(onPrinted?.(requests.map(r=>r.id))).catch(()=>{});
+  };
   paintBatch();
   dialog.showModal();
 }

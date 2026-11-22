@@ -84,15 +84,22 @@ export function orderStatusCategory(o) {
 }
 
 export function orderFilterCounts(orders = []) {
-  const counts = { all: orders.length, 'to-ship': 0, unpaid: 0, shipped: 0, cancelled: 0 };
-  for (const o of orders) counts[orderStatusCategory(o)] += 1;
+  const counts = { all: orders.length, 'to-ship': 0, unpaid: 0, shipped: 0, cancelled: 0, unprinted: 0 };
+  for (const o of orders) {
+    counts[orderStatusCategory(o)] += 1;
+    if (!o.labelPrintedAt && !['cancelled', 'closed'].includes(o.status)) counts.unprinted += 1;
+  }
   return counts;
 }
 
 export function filterOrders(orders = [], { query = '', status = 'all' } = {}) {
   const q = String(query || '').trim().toLowerCase();
   return (Array.isArray(orders) ? orders : []).filter(o => {
-    if (status && status !== 'all' && orderStatusCategory(o) !== status) return false;
+    if (status === 'unprinted') {
+      if (o.labelPrintedAt || ['cancelled', 'closed'].includes(o.status)) return false;
+    } else if (status && status !== 'all' && orderStatusCategory(o) !== status) {
+      return false;
+    }
     if (!q) return true;
     const c = o.customer || {};
     const haystack = [
@@ -113,9 +120,74 @@ export function filterOrders(orders = [], { query = '', status = 'all' } = {}) {
   });
 }
 
+export function thermalPrinterDockMarkup(printerState = {}, { unprintedCount = 0, unprintedPaidCount = 0 } = {}) {
+  const connected = Boolean(printerState.connected);
+  const protocol = printerState.protocol || 'tspl';
+  const baudRate = Number(printerState.baudRate) === 115200 ? 115200 : 9600;
+  const autoPrint = Boolean(printerState.autoPrint);
+  const autoPaidOnly = printerState.autoPrintPaidOnly !== false;
+  const statusLabel = connected
+    ? `Connected (${printerState.transport === 'serial' ? 'Serial' : 'USB'}): ${printerState.deviceName || 'Thermal printer'}`
+    : protocol === 'browser'
+      ? 'Browser thermal driver (100×150 mm)'
+      : 'No direct thermal printer connected';
+  const targetUnprinted = autoPaidOnly ? unprintedPaidCount : unprintedCount;
+  const queueNote = printerState.busy
+    ? `Printing now (${printerState.queuedCount || 1} in queue)…`
+    : autoPrint
+      ? (connected
+        ? `Continuous auto-print ON · watching every 5s (${autoPaidOnly ? 'paid' : 'all active'} unprinted)`
+        : 'Auto-print alert ON · connect USB/Serial for hands-free printing, or print unprinted batch in one click')
+      : (printerState.lastPrintedId
+        ? `Last printed #${String(printerState.lastPrintedId).slice(0, 8).toUpperCase()}`
+        : 'Connect USB/Serial thermal printer for direct 1-click or continuous auto-printing, or use the browser driver.');
+
+  return `<section class="thermal-dock" aria-label="Thermal label printer controls">
+    <div class="thermal-dock-head">
+      <div>
+        <span class="thermal-status-pill ${connected ? 'is-connected' : ''}">${e(statusLabel)}</span>
+        <p class="small muted thermal-dock-note">${e(printerState.lastError || queueNote)}</p>
+      </div>
+      <div class="thermal-dock-unprinted">
+        <button type="button" class="button small" data-action="print-unprinted-labels" ${unprintedCount ? '' : 'disabled'}>${autoPaidOnly ? `Print paid unprinted (${unprintedPaidCount})` : `Print all unprinted (${unprintedCount})`}</button>
+        ${autoPaidOnly && unprintedCount > unprintedPaidCount ? `<span class="small muted">${unprintedCount} total active unprinted</span>` : ''}
+      </div>
+    </div>
+    <div class="thermal-controls-row">
+      <label class="thermal-select-field">
+        <span>Printer language</span>
+        <select id="thermal-protocol" aria-label="Thermal printer protocol">
+          <option value="tspl" ${protocol === 'tspl' ? 'selected' : ''}>TSPL 4×6" (Xprinter / TSC / TVS / Rollo)</option>
+          <option value="zpl" ${protocol === 'zpl' ? 'selected' : ''}>ZPL 4×6" (Zebra / compatible)</option>
+          <option value="escpos" ${protocol === 'escpos' ? 'selected' : ''}>ESC/POS (80mm / 58mm roll)</option>
+          <option value="browser" ${protocol === 'browser' ? 'selected' : ''}>Browser print dialog (100×150mm)</option>
+        </select>
+      </label>
+      <label class="thermal-select-field is-baud">
+        <span>Serial baud</span>
+        <select id="thermal-baud" aria-label="Serial baud rate">
+          <option value="9600" ${baudRate === 9600 ? 'selected' : ''}>9600</option>
+          <option value="115200" ${baudRate === 115200 ? 'selected' : ''}>115200</option>
+        </select>
+      </label>
+      <div class="thermal-hw-buttons">
+        <button type="button" class="button outline small" data-action="thermal-connect-usb" ${printerState.webUsbSupported === false ? 'disabled' : ''}>Connect USB printer</button>
+        <button type="button" class="button outline small" data-action="thermal-connect-serial" ${printerState.webSerialSupported === false ? 'disabled' : ''}>Connect Serial / BT</button>
+        ${connected ? `<button type="button" class="button outline small" data-action="thermal-test-print">Test print</button><button type="button" class="text-link" data-action="thermal-disconnect">Disconnect</button>` : ''}
+      </div>
+    </div>
+    <div class="thermal-toggles-row">
+      <label class="thermal-toggle"><input type="checkbox" id="thermal-autoprint" ${autoPrint ? 'checked' : ''}><span>Auto-print new orders continuously</span></label>
+      <label class="thermal-toggle"><input type="checkbox" id="thermal-autoprint-paid" ${autoPaidOnly ? 'checked' : ''}><span>Paid orders only</span></label>
+      <span class="small muted">${targetUnprinted} eligible waiting</span>
+    </div>
+  </section>`;
+}
+
 export function ordersToolbarMarkup({ counts, query = '', status = 'all', selectedCount = 0 }) {
   const chips = [
     ['all', 'All', counts.all],
+    ['unprinted', 'Unprinted', counts.unprinted || 0],
     ['to-ship', 'Paid · To ship', counts['to-ship']],
     ['unpaid', 'Unpaid / pending', counts.unpaid],
     ['shipped', 'Shipped', counts.shipped],
@@ -169,7 +241,8 @@ export function orderCardMarkup(o, {
   statusHelpText = '',
   locationUrl = '',
   hasPin = false,
-  shippingNote = ''
+  shippingNote = '',
+  isMasterAdmin = false
 }) {
   const c = o.customer || {};
   const ref = o.id.slice(0, 8).toUpperCase();
@@ -179,6 +252,11 @@ export function orderCardMarkup(o, {
   const paidCls = o.paymentStatus === 'captured' ? 'is-paid' : o.paymentStatus === 'refunded' ? 'is-refunded' : 'is-unpaid';
   const shipStatusLabel = o.shippingPaymentStatus === 'captured' ? 'Payment successful' : o.shippingPaymentStatus === 'refunded' ? 'Payment refunded' : o.shippingPaymentStatus === 'failed' ? 'Payment failed' : o.shippingPaymentStatus === 'not_required' ? 'No charge' : o.shippingRazorpayOrderId ? 'Payment failed' : 'Unpaid';
   const stageLabel = STAGE_LABELS[o.status] || o.status || 'Received';
+  const isPrinted = Boolean(o.labelPrintedAt);
+  const isTerminal = ['cancelled', 'closed'].includes(o.status);
+  const printBadge = isPrinted
+    ? `<span class="order-print-pill is-printed" title="Printed${o.labelPrintCount > 1 ? ` (${o.labelPrintCount}×)` : ''}">Printed</span>`
+    : (!isTerminal ? '<span class="order-print-pill is-unprinted">Unprinted</span>' : '');
   const canDownloadInvoice = ['captured', 'refunded'].includes(o.paymentStatus);
   const canCancel = ['details_received', 'reviewed', 'contacted', 'processing'].includes(o.status);
   const shippingIncluded = Boolean(o.quote?.shipping > 0 || o.quote?.freeShipping);
@@ -199,6 +277,7 @@ export function orderCardMarkup(o, {
         <span class="order-summary-meta">${itemCount} ${itemCount === 1 ? 'item' : 'items'} · <strong>${money(o.quote?.amount ? o.quote.amount / 100 : o.estimatedSubtotal)}</strong></span>
         <span class="status-pill ${paidCls}">${paidLabel}</span>
         <span class="status-pill order-stage-pill">${e(stageLabel)}</span>
+        ${printBadge}
         <button type="button" class="button outline small order-summary-print" data-action="print-label" data-id="${e(o.id)}">Print label ↗</button>
         <button type="button" class="icon-button order-expand-chevron" data-action="toggle-order-card" data-id="${e(o.id)}" aria-expanded="${open ? 'true' : 'false'}" aria-label="${open ? 'Collapse order details' : 'Expand order details'}"><svg viewBox="0 0 24 24" class="ui-chevron" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></button>
       </div>
@@ -219,6 +298,7 @@ export function orderCardMarkup(o, {
       <div class="order-label-actions">
         ${canDownloadInvoice ? `<button type="button" class="button outline small" data-action="download-invoice" data-id="${e(o.id)}">Download invoice</button>` : ''}
         <button type="button" class="button outline small" data-action="print-label" data-id="${e(o.id)}">Print label ↗</button>
+        ${isPrinted ? `<button type="button" class="text-link" data-action="reset-label-printed" data-id="${e(o.id)}">Mark unprinted</button>` : ''}
         <a class="text-link" href="${e(locationUrl)}" target="_blank" rel="noopener">${hasPin ? 'View delivery pin ↗' : 'Search address ↗'}</a>
       </div>
       ${manualPaymentHtml}
@@ -226,7 +306,10 @@ export function orderCardMarkup(o, {
       ${o.status === 'cancel_requested' ? `<div class="order-tools"><button type="button" class="button small" data-action="resolve-cancellation" data-id="${e(o.id)}" data-approve="true">Approve cancellation</button><button type="button" class="button outline small" data-action="resolve-cancellation" data-id="${e(o.id)}" data-approve="false">Decline cancellation</button></div>` : ''}
       ${canSetQuote ? `<button type="button" class="text-link" data-action="approve-quote" data-id="${e(o.id)}">Set quote / shipping charge →</button>` : ''}
       ${o.quote ? `<p class="payment-info">${o.checkoutPayment && !shippingIncluded ? 'Item subtotal' : o.paymentStatus === 'captured' ? 'Total paid' : 'Confirmed total'}: ${money(o.quote.amount / 100)}${o.quote.shipping > 0 ? ` (includes ${money(o.quote.shipping / 100)} shipping)` : o.quote.freeShipping ? ' (free shipping)' : ''} · ${e(o.refundStatus === 'required' ? (o.paymentMethod === 'manual' ? 'Offline refund due — return funds through the original method, then record it below.' : 'Refund due — issue it in Razorpay; the webhook updates this request.') : paidLabel)}</p>${o.shippingQuote ? `<p class="small">Shipping charge: ${money(o.shippingQuote.amount / 100)} - ${e(shipStatusLabel)}</p>` : ''}` : ''}
-      <p class="small muted">Received ${new Date(o.createdAt?.seconds ? o.createdAt.seconds * 1000 : o.createdAt).toLocaleString('en-IN')}</p>
+      <div class="order-card-footer-meta">
+        <p class="small muted">Received ${new Date(o.createdAt?.seconds ? o.createdAt.seconds * 1000 : o.createdAt).toLocaleString('en-IN')}</p>
+        ${isMasterAdmin ? `<button type="button" class="danger-link" data-action="delete-order" data-id="${e(o.id)}">Delete order</button>` : ''}
+      </div>
     </div>
   </article>`;
 }

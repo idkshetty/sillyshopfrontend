@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createHmac} from 'node:crypto';
-import {isAdmin,verifySignature,verifiedPayment,quoteItems,canTransition} from '../backend/core.js';
+import {isAdmin,isMasterAdmin,verifySignature,verifiedPayment,quoteItems,canTransition} from '../backend/core.js';
 import {summarizeSales} from '../frontend/sales-dashboard.js';
 import {labelForRequest} from '../frontend/label-data.js';
 import {API_ORIGINS} from '../backend/origins.js';
@@ -11,8 +11,13 @@ test('API origins allow local development and production but reject lookalike ho
   for(const origin of ['http://localhost:4173','http://127.0.0.1:5500','https://localhost','http://[::1]:8080','https://www.sillysensei.com','https://shopatsillysensei.web.app'])assert(allowed(origin),origin);
   for(const origin of ['http://localhost.evil.com:5500','https://www.sillysensei.com.evil.com','null','file://localhost','https://attacker.example'])assert(!allowed(origin),origin);
 });
-test('admin authorization requires a trusted claim or verified allowlisted email',()=>{
-  assert.equal(isAdmin({email:'Supritachat.25@gmail.com',email_verified:true}),true);
+test('admin authorization allows the 3 studio emails and restricts master admin to vishnudeviprasadshetty@gmail.com',()=>{
+  for(const email of ['Supritachat.25@gmail.com','abhishekredddy500@gmail.com','vishnudeviprasadshetty@gmail.com']){
+    assert.equal(isAdmin({email,email_verified:true}),true);
+  }
+  assert.equal(isMasterAdmin({email:'vishnudeviprasadshetty@gmail.com',email_verified:true}),true);
+  assert.equal(isMasterAdmin({email:'VISHNUDEVIPRASADSHETTY@GMAIL.COM',email_verified:true}),true);
+  for(const token of [{email:'Supritachat.25@gmail.com',email_verified:true},{email:'abhishekredddy500@gmail.com',email_verified:true},{email:'vishnudeviprasadshetty@gmail.com',email_verified:false},{admin:true},{email:'attacker@example.com',email_verified:true}])assert.equal(isMasterAdmin(token),false);
   for(const token of [{email:'Supritachat.25@gmail.com'},{email:'attacker@example.com',email_verified:true},{admin:'true'},{}])assert.equal(isAdmin(token),false);
 });
 test('payment and webhook signatures reject changed bodies, malformed signatures and wrong keys',()=>{

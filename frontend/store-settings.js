@@ -54,7 +54,8 @@ export const DEFAULT_SETTINGS = {
   reviewImages: [],
   artworkSort: 'manual',
   cartButtonMode: 'black',
-  bannerLimit: 8
+  bannerLimit: 8,
+  aboutVisible: false
 };
 
 export const FALLBACK_BANNER_ARTWORKS = [
@@ -253,6 +254,7 @@ export function normalizeSettings(value = {}) {
   result.cartButtonMode = value.cartButtonMode === 'artwork' ? 'artwork' : 'black';
   const rawLimit = Number(value.bannerLimit);
   result.bannerLimit = Number.isInteger(rawLimit) && rawLimit >= 0 && rawLimit <= 50 ? rawLimit : 8;
+  result.aboutVisible = value.aboutVisible === true;
   return result;
 }
 export function bannerSlidesFor(products = [], settings = DEFAULT_SETTINGS) {
@@ -320,6 +322,9 @@ export function settingsForm(s) {
   const ctaPos = s.bannerButtonPosition || 'below-text';
   const ctaStyle = s.bannerButtonStyle || 'light';
   return `<form id="banner-form" class="settings-note banner-editor">
+  <h2>Storefront pages</h2>
+  <label class="visibility-toggle"><input type="checkbox" name="aboutVisible" ${s.aboutVisible?'checked':''}><span>Show "About hehe.cafe" page on storefront</span></label>
+  <hr>
   <h2>Announcement bar</h2>
   <label class="visibility-toggle"><input type="checkbox" name="announcementVisible" ${s.announcementVisible?'checked':''}><span>Announcement bar visible</span></label>
   <div class="form-grid"><label class="field wide">Announcement text<input name="announcementText" maxlength="160" required value="${e(s.announcementText)}"></label><label class="field wide">Announcement link<input name="announcementLink" required maxlength="500" value="${e(s.announcementLink)}"></label></div>

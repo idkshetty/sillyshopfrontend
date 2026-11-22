@@ -1137,6 +1137,44 @@ button,a,.button,.cart-button,.quick-buy-btn,.home-filter-btn,.hero-banner-cta,.
 }
 
 @media(prefers-reduced-motion:reduce){
-  .hehe-wheel-and-hamster *,.empty-bag-fly{animation:none!important}
+  .hehe-wheel-and-hamster *,.empty-bag-fly,.live-dot{animation:none!important}
   .artist-pass-stage,.artist-pass-details,.artist-works-reveal,.artist-lanyard-pass,.artist-pass-flight,dialog.map-picker-dialog,.product-immersive-page{transition:none!important}
 }
+
+.master-admin-pill{display:inline-flex;align-items:center;padding:5px 11px;border-radius:999px;background:#181715;color:#f8e57e;font:700 11.5px/1 'Plus Jakarta Sans',Arial,sans-serif;letter-spacing:.03em;text-transform:uppercase}
+.danger-button{border-color:#d79b94!important;color:#9b2c22!important;background:#fff8f7!important}
+.danger-button:hover{background:#fceceb!important;border-color:#b43a2e!important}
+.admin-title-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.table-action-cell{display:flex;align-items:center;gap:10px;white-space:nowrap}
+.table-action.is-danger{color:#9b2c22;border-color:#e8c4bf}
+.table-action.is-danger:hover{background:#fceceb;border-color:#9b2c22}
+.admin-about-toggle{margin-bottom:14px;padding:12px 16px;border:1.5px solid #e7e0d4;border-radius:14px;background:#fffefb}
+
+.thermal-dock{padding:16px 18px;margin-bottom:14px;border:1.5px solid #dfd8ca;border-radius:16px;background:linear-gradient(180deg,#fffefb 0%,#faf7ef 100%);display:grid;gap:12px}
+.thermal-dock-head{display:flex;align-items:flex-start;justify-content:space-between;gap:14px;flex-wrap:wrap}
+.thermal-status-pill{display:inline-flex;align-items:center;gap:7px;padding:5px 12px;border-radius:999px;background:#ece6da;color:#4a443c;font:700 12px/1 'Plus Jakarta Sans',Arial,sans-serif}
+.thermal-status-pill::before{content:'';width:7px;height:7px;border-radius:50%;background:#968e82}
+.thermal-status-pill.is-connected{background:#e6f2e5;color:#176b3a}
+.thermal-status-pill.is-connected::before{background:#176b3a}
+.thermal-dock-note{margin:6px 0 0}
+.thermal-dock-unprinted{display:flex;flex-direction:column;align-items:flex-end;gap:4px}
+.thermal-controls-row{display:flex;align-items:flex-end;gap:10px;flex-wrap:wrap}
+.thermal-select-field{display:grid;gap:4px;font-size:11.5px;color:#625c54;min-width:220px}
+.thermal-select-field.is-baud{min-width:105px}
+.thermal-select-field select{padding:7px 10px;border:1px solid #d7cfc2;border-radius:10px;background:#ffffff;font:500 12.5px/1.2 'Plus Jakarta Sans',Arial,sans-serif}
+.thermal-hw-buttons{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.thermal-toggles-row{display:flex;align-items:center;gap:16px;flex-wrap:wrap;padding-top:4px;border-top:1px solid rgba(24,23,21,.08)}
+.thermal-toggle{display:inline-flex;align-items:center;gap:7px;font-size:12.5px;font-weight:600;color:#181715;cursor:pointer}
+.thermal-toggle input{accent-color:#181715;width:15px;height:15px}
+
+.order-print-pill{display:inline-flex;align-items:center;padding:4px 9px;border-radius:999px;font:700 11px/1 'Plus Jakarta Sans',Arial,sans-serif}
+.order-print-pill.is-printed{background:#e8f4ec;color:#176b3a}
+.order-print-pill.is-unprinted{background:#fdf3dc;color:#8c5b10}
+.order-card-footer-meta{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-top:8px}
+
+.dashboard-heading-actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.track-live-row{display:flex;justify-content:flex-end;margin-bottom:8px}
+.live-tracking-pill{display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border-radius:999px;background:#ebf6ee;color:#176b3a;font:700 11.5px/1 'Plus Jakarta Sans',Arial,sans-serif}
+.live-dot{width:7px;height:7px;border-radius:50%;background:#1f9d55;animation:live-pulse 1.8s ease-in-out infinite}
+@keyframes live-pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.45;transform:scale(1.35)}}
+@media(max-width:600px){.thermal-dock-unprinted{align-items:flex-start}.thermal-select-field{min-width:100%}.table-action-cell{flex-wrap:wrap}}
