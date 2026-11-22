@@ -597,16 +597,16 @@ body[data-product-wash="true"]{background:#faf8f5}
 .product-buy-link{padding:8px 12px;color:#f8e57e;font:600 12.5px/1 'Plus Jakarta Sans',Arial,sans-serif;text-decoration:underline;text-underline-offset:4px}
 
 /* Sculpted Dark Cart Drawer & Warm Butter Ticket Card */
-#cart-dialog.cart-drawer{background:#141413;color:#faf8f5;padding:0;flex-direction:column;border:0;border-radius:24px 0 0 24px;overflow:hidden}
+#cart-dialog.cart-drawer{background:linear-gradient(180deg,#ffffff 0 124px,#141413 124px 100%);color:#faf8f5;padding:0;flex-direction:column;border:0;border-radius:24px 0 0 24px;overflow:hidden}
 #cart-dialog.cart-drawer[open]{display:flex}
-#cart-dialog .drawer-header{background:#ffffff;color:#181715;margin:0;padding:18px 22px 16px;border-bottom:1px solid rgba(24,23,21,.08);flex-shrink:0}
+#cart-dialog .drawer-header{background:#ffffff;color:#181715;margin:0;padding:18px 22px 14px;border-bottom:0;flex-shrink:0}
 .cart-header-title-wrap{display:flex;align-items:center;gap:12px}
 #cart-dialog #cart-title{font-size:24px;margin:0;color:#181715}
 .cart-header-count{display:inline-grid;place-items:center;min-width:30px;height:30px;padding:0 8px;border-radius:999px;background:#f8e57e;color:#181715;font:700 13px/1 'Plus Jakarta Sans',Arial,sans-serif}
 #cart-dialog .drawer-header .icon-button{color:#181715}
-#cart-dialog #cart-content{padding:14px 22px 24px;overflow-y:auto;flex:1;background:#141413;border-radius:0;margin-top:0;scrollbar-width:thin;scrollbar-color:rgba(255,255,255,.24) #141413}
+#cart-dialog #cart-content{padding:14px 22px 24px;overflow-y:auto;flex:1;background:#141413;border-radius:26px 26px 0 0;margin-top:0;scrollbar-width:thin;scrollbar-color:rgba(255,255,255,.24) transparent}
 #cart-dialog #cart-content::-webkit-scrollbar{width:6px}
-#cart-dialog #cart-content::-webkit-scrollbar-track{background:#141413}
+#cart-dialog #cart-content::-webkit-scrollbar-track{background:transparent;margin-top:22px;margin-bottom:12px}
 #cart-dialog #cart-content::-webkit-scrollbar-thumb{background:rgba(255,255,255,.24);border-radius:999px}
 #cart-dialog .empty-state{color:#faf8f5}
 #cart-dialog .empty-state p{color:#b8b1a6}
