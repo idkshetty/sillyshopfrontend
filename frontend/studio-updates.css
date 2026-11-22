@@ -694,7 +694,6 @@ main:has(.checkout-wrap){overflow-x:clip}
 .checkout-signin-card{display:flex;align-items:center;gap:18px;flex-wrap:wrap}
 .checkout-signin-cat{width:84px;height:auto;flex-shrink:0;pointer-events:none;user-select:none}
 .checkout-signin-copy{flex:1 1 220px;min-width:0}
-.checkout-success-cat{display:block;width:112px;max-width:36vw;height:auto;margin:0 auto 10px;pointer-events:none;user-select:none}
 .checkout-summary #summary-title{font-family:'Fraunces',Georgia,serif;font-size:24px;margin:0}
 .checkout-summary .checkout-item{padding:10px 12px;border-radius:16px;background:#faf7f1;border:1px solid #ece5d8;margin-bottom:14px}
 .checkout-summary .checkout-item-image{width:54px;height:54px;border-radius:12px;background:#ffffff;border:1px solid #e6dfd2}

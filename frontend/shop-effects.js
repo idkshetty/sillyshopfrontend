@@ -259,7 +259,7 @@ export function preloadPaymentOutcomeSvg(){
   if(!paymentBgPreloaded&&typeof Image==='function'){paymentBgPreloaded=true;const img=new Image();img.src=new URL('./assets/payment-truck-bg.webp',import.meta.url).href;}
   if(cachedPaymentSvgSource)return Promise.resolve(cachedPaymentSvgSource);
   if(!paymentSvgPromise){
-    paymentSvgPromise=fetch(new URL('./assets/payment-shipping.svg?v=red-truck-2',import.meta.url),{cache:'force-cache'})
+    paymentSvgPromise=fetch(new URL('./assets/payment-shipping.svg?v=red-truck-3',import.meta.url),{cache:'force-cache'})
       .then(response=>{if(!response.ok)throw new Error(`Could not load payment animation (${response.status}).`);return response.text();})
       .then(source=>{cachedPaymentSvgSource=source;return source;})
       .catch(error=>{paymentSvgPromise=null;throw error;});
@@ -309,7 +309,8 @@ function buildPaymentList(svg,orderedItems){
     const background=svg.ownerDocument.createElementNS(ns,'rect');
     background.setAttribute('data-item-face','front');
     background.setAttribute('x','.7');background.setAttribute('y','.63');background.setAttribute('width','185');
-    background.setAttribute('height',String(rowHeight));background.setAttribute('rx','5');background.setAttribute('fill','#F4F6F8');
+    background.setAttribute('height',String(rowHeight));background.setAttribute('rx','5');
+    background.setAttribute('fill','#FAF3E3');background.setAttribute('stroke','#E2D5BE');background.setAttribute('stroke-width','1');
     content.append(background);
 
     const fullTitle=svg.ownerDocument.createElementNS(ns,'title');
@@ -326,7 +327,7 @@ function buildPaymentList(svg,orderedItems){
     if(line)lines.push(line);
     if(lines.length>2){lines.length=2;lines[1]=`${lines[1].slice(0,21).trimEnd()}…`;}
     const titleY=lines.length>1?rowHeight/2-fontSize*.15:rowHeight/2+fontSize*.34;
-    title.setAttribute('x','10');title.setAttribute('y',String(titleY));title.setAttribute('fill','#43474b');
+    title.setAttribute('x','10');title.setAttribute('y',String(titleY));title.setAttribute('fill','#36312B');
     title.setAttribute('font-family','Arial, sans-serif');title.setAttribute('font-size',String(fontSize));
     lines.forEach((lineText,lineIndex)=>{
       const span=svg.ownerDocument.createElementNS(ns,'tspan');
@@ -337,7 +338,7 @@ function buildPaymentList(svg,orderedItems){
 
     const quantity=svg.ownerDocument.createElementNS(ns,'text');
     quantity.setAttribute('x','175');quantity.setAttribute('y',String(rowHeight/2+fontSize*.34));
-    quantity.setAttribute('text-anchor','end');quantity.setAttribute('fill','#43474b');
+    quantity.setAttribute('text-anchor','end');quantity.setAttribute('fill','#36312B');
     quantity.setAttribute('font-family','Arial, sans-serif');quantity.setAttribute('font-size',String(fontSize));
     quantity.setAttribute('font-weight','700');quantity.textContent=`× ${item.quantity}`;
     content.append(quantity);row.append(content);list.append(row);return row;
