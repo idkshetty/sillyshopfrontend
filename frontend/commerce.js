@@ -1,6 +1,6 @@
 import {validLocation} from './location-utils.js';
 import {validImageSource} from './image-data.js';
-export const MAX_CART_ITEMS = 5;
+export const MAX_ITEM_QUANTITY = 1;
 export const SHIPPING_CHARGE = 40;
 export const SHIPPING_PAISE = 4000;
 export const shippingForQuantity = qty => Math.max(0, Math.floor(Number(qty) || 0)) * SHIPPING_CHARGE;
@@ -175,7 +175,7 @@ export function cartLines(cart, products) {
     seen.add(item.id);
     const product = products.find(p => p.id === item.id && p.visible);
     if (!product || !Number.isInteger(item.quantity) || item.quantity < 1 || product.stock < 1) return [];
-    const quantity = Math.min(item.quantity, product.stock, 99);
+    const quantity = Math.min(item.quantity, product.stock, MAX_ITEM_QUANTITY);
     return [{ product, quantity, total: Math.round(product.price * 100) * quantity / 100 }];
   });
 }

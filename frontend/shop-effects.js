@@ -264,7 +264,7 @@ export function preloadPaymentOutcomeSvg(){
   }
   if(cachedPaymentSvgSource)return Promise.resolve(cachedPaymentSvgSource);
   if(!paymentSvgPromise){
-    paymentSvgPromise=fetch(new URL('./assets/payment-shipping.svg?v=cloud-drop-3',import.meta.url),{cache:'force-cache'})
+    paymentSvgPromise=fetch(new URL('./assets/payment-shipping.svg?v=cloud-drop-4',import.meta.url),{cache:'force-cache'})
       .then(response=>{if(!response.ok)throw new Error(`Could not load payment animation (${response.status}).`);return response.text();})
       .then(source=>{cachedPaymentSvgSource=source;return source;})
       .catch(error=>{paymentSvgPromise=null;throw error;});
@@ -288,22 +288,24 @@ function buildCloudDropItems(svg,orderedItems){
   const bucket=svg.querySelector('[data-anim="cloud-items"]');
   if(!bucket)return {cards:[],size:48};
   bucket.replaceChildren();
-  const source=Array.isArray(orderedItems)?orderedItems.slice(0,5):[];
+  const source=Array.isArray(orderedItems)?orderedItems:[];
   const items=(source.length?source:[{title:'Original artwork',image:'assets/paintings.svg',quantity:1}]).map(item=>({
     title:String(item?.title||'Item').trim().slice(0,120),
     image:String(item?.image||'assets/paintings.svg').trim()||'assets/paintings.svg',
     quantity:Number.isInteger(item?.quantity)&&item.quantity>0?item.quantity:1
   }));
-  const size=items.length===1?52:items.length===2?48:items.length===3?44:items.length===4?40:36;
-  const gap=items.length<=2?12:items.length===3?8:5;
-  const totalWidth=items.length*size+(items.length-1)*gap;
-  const startX=196-totalWidth/2;
+  const size=items.length===1?52:items.length===2?48:items.length===3?44:items.length<=5?40:36;
   const startY=74;
+  const minX=104,maxX=288-size,span=Math.max(0,maxX-minX);
   const defs=svg.querySelector('defs')||svg.insertBefore(doc.createElementNS(ns,'defs'),svg.firstChild);
   defs.querySelectorAll('[id^="cloud-item-clip-"]').forEach(node=>node.remove());
   const uid=Math.random().toString(36).slice(2,7);
 
   const cards=items.map((item,index)=>{
+    const cardX=items.length===1?196-size/2
+      :items.length===2?minX+span*[.22,.78][index]
+      :items.length===3?minX+span*[.16,.84,.5][index]
+      :minX+span*((index*.61803398875+.19)%1);
     const clipId=`cloud-item-clip-${uid}-${index}`;
     const clip=doc.createElementNS(ns,'clipPath');
     clip.setAttribute('id',clipId);
@@ -316,7 +318,7 @@ function buildCloudDropItems(svg,orderedItems){
 
     const card=doc.createElementNS(ns,'g');
     card.setAttribute('data-anim','cloud-item');
-    card.setAttribute('data-start-x',String(startX+index*(size+gap)));
+    card.setAttribute('data-start-x',String(Math.round(cardX*10)/10));
     card.setAttribute('data-start-y',String(startY));
     card.setAttribute('data-size',String(size));
 
@@ -448,9 +450,10 @@ function populatePaymentRain(container){
 function scheduleFailureDropPhysics(gsap,timeline,card,shadow,index,count,size,dropAt){
   const startX=Number(card.getAttribute('data-start-x')||170);
   const startY=Number(card.getAttribute('data-start-y')||74);
-  const groundY=368-size;
-  const spread=(index-(count-1)/2)*12+(index%2===0?-6:6);
-  const finalX=Math.max(58,Math.min(340-size,startX+spread));
+  const depthOffset=count>1?(index%3)*2:0;
+  const groundY=368-size-depthOffset;
+  const drift=count<=1?-6:(((index*.381966+.25)%1)-.5)*90;
+  const finalX=Math.max(54,Math.min(346-size,startX+drift));
   const dx=finalX-startX;
   const sign=index%2===0?-1:1;
   const startRot=sign*4;
@@ -507,16 +510,19 @@ async function animateOutcomeTruck(scene,success,orderedItems=[]){
     if(success){
       cards.forEach(card=>card.setAttribute('opacity','0'));
     }else{
-      const landingY=368-size;
       const tilts=[-6,5,-4,6,-5];
       const ns='http://www.w3.org/2000/svg';
       const layer=svg.querySelector('#truck-shipping')||svg;
       const shadows=svg.ownerDocument.createElementNS(ns,'g');
       if(rainBox){populatePaymentRain(rainBox);rainBox.classList.add('is-raining');}
       cards.forEach((card,index)=>{
-        const x=Number(card.getAttribute('data-start-x')||170);
+        const depthOffset=cards.length>1?(index%3)*2:0;
+        const landingY=368-size-depthOffset;
+        const rawX=Number(card.getAttribute('data-start-x')||170);
+        const drift=cards.length<=1?0:(((index*.381966+.25)%1)-.5)*90;
+        const x=Math.max(54,Math.min(346-size,rawX+drift));
         const s=svg.ownerDocument.createElementNS(ns,'ellipse');
-        s.setAttribute('cx',String(x+size/2));s.setAttribute('cy','369');
+        s.setAttribute('cx',String(x+size/2));s.setAttribute('cy',String(369-depthOffset));
         s.setAttribute('rx',String(Math.round(size*.44)));s.setAttribute('ry','4.2');
         s.setAttribute('fill','rgba(32,36,44,.32)');
         shadows.append(s);
@@ -537,24 +543,33 @@ async function animateOutcomeTruck(scene,success,orderedItems=[]){
   const timeline=gsap.timeline();
   const truckStart=.2;
   const at=seconds=>truckStart+seconds;
-  const truckDeparture=success?at(1.52):at(1.25);
+  const dropStart=.72,dropDur=.44,bedLandingY=279+Math.round((52-size)*.35);
+  const stagger=cards.length<=1?0:cards.length<=5?.15:Math.max(.085,Math.min(.14,1.8/cards.length));
+  const lastImpact=dropStart+Math.max(0,cards.length-1)*stagger+dropDur;
+  const truckDeparture=success?(cards.length?Math.max(at(1.52),lastImpact+.34):at(1.52)):at(1.25);
 
   if(cloud)gsap.set(cloud,{autoAlpha:1,x:0,y:0});
   if(success&&cards.length){
-    const dropStart=.72,dropDur=.44,bedLandingY=279+Math.round((52-size)*.35);
-    if(cloud)timeline.to(cloud,{y:-6,duration:.24,ease:'power1.out'},.18).to(cloud,{y:0,duration:.3,ease:'power1.inOut'},.42);
+    const durDown=stagger?Math.min(.035,stagger*.32):.04;
+    const durUp=stagger?Math.min(.05,stagger*.52):.06;
+    if(cloud){
+      const bobEnd=Math.max(.72,dropStart+Math.max(0,cards.length-1)*stagger+.2);
+      const bobCycles=Math.max(1,Math.round((bobEnd-.18)/.38));
+      timeline.to(cloud,{y:-6,duration:.19,repeat:bobCycles*2-1,yoyo:true,ease:'sine.inOut'},.18)
+        .to(cloud,{y:0,duration:.22,ease:'power1.out'},bobEnd+.02);
+    }
     cards.forEach((card,index)=>{
       const startX=Number(card.getAttribute('data-start-x')||170);
       const startY=Number(card.getAttribute('data-start-y')||74);
-      const tRelease=dropStart+index*.09;
+      const tRelease=dropStart+index*stagger;
       const tImpact=tRelease+dropDur;
       gsap.set(card,{x:startX,y:startY,rotation:0,scale:.76,autoAlpha:0,transformOrigin:'center top'});
       timeline.to(card,{autoAlpha:1,scale:1,y:startY+12,duration:.14,ease:'power1.out'},tRelease-.14)
         .to(card,{y:bedLandingY,rotation:index%2===0?-3:3,duration:dropDur,ease:'power2.in'},tRelease)
         .set(card,{autoAlpha:0},tImpact+.02);
       if(truckBtn){
-        timeline.to(truckBtn,{y:2.8,scaleY:.96,scaleX:1.015,transformOrigin:'center bottom',duration:.035,ease:'power2.out'},tImpact-.01)
-          .to(truckBtn,{y:0,scaleY:1,scaleX:1,duration:.05,ease:'power1.out'},tImpact+.025);
+        timeline.to(truckBtn,{y:2.8,scaleY:.96,scaleX:1.015,transformOrigin:'center bottom',duration:durDown,ease:'power2.out'},tImpact-.01)
+          .to(truckBtn,{y:0,scaleY:1,scaleX:1,duration:durUp,ease:'power1.out'},tImpact+durDown-.005);
       }
     });
   }else if(!success&&cards.length){
@@ -567,20 +582,22 @@ async function animateOutcomeTruck(scene,success,orderedItems=[]){
     fallingLayer.append(shadowLayer);
     (svg.querySelector('#truck-shipping')||svg).append(fallingLayer);
     if(rainBox)populatePaymentRain(rainBox);
-    const dropStart=truckDeparture+.25;
+    const failStagger=cards.length<=1?0:Math.max(.085,Math.min(.14,1.7/cards.length));
+    const failDropStart=truckDeparture+.22;
     if(cloud){
       timeline.to(cloud,{x:-4,y:3,duration:.07,repeat:5,yoyo:true,ease:'sine.inOut'},truckDeparture-.12)
         .to(cloud,{x:0,y:0,duration:.18,ease:'power1.out'},truckDeparture+.3);
     }
     if(rainBox)timeline.call(()=>rainBox.classList.add('is-raining'),[],truckDeparture-.06);
     cards.forEach((card,index)=>{
+      const depthOffset=cards.length>1?(index%3)*2:0;
       const shadow=doc.createElementNS(ns,'ellipse');
-      shadow.setAttribute('cx','0');shadow.setAttribute('cy','369');
+      shadow.setAttribute('cx','0');shadow.setAttribute('cy',String(369-depthOffset));
       shadow.setAttribute('rx',String(Math.round(size*.44)));shadow.setAttribute('ry','4.2');
       shadow.setAttribute('fill','rgba(32,36,44,.32)');
       shadowLayer.append(shadow);
       fallingLayer.append(card);
-      scheduleFailureDropPhysics(gsap,timeline,card,shadow,index,cards.length,size,dropStart+index*.1);
+      scheduleFailureDropPhysics(gsap,timeline,card,shadow,index,cards.length,size,failDropStart+index*failStagger);
     });
   }
 
@@ -601,7 +618,7 @@ async function animateOutcomeTruck(scene,success,orderedItems=[]){
     .to(frontWheelBack,{y:0,duration:.5},at(.8))
     .to(frontWheels,{y:0,duration:.5,ease:'back.out(5.4)'},at(.9))
     .set(frontWheels[1],{autoAlpha:1},at(1.05))
-    .set(shippedBtn,{autoAlpha:1},at(1.05))
+    .set(shippedBtn,{autoAlpha:1},success?Math.max(at(1.05),truckDeparture-.15):at(1.05))
     .fromTo(truckBtn,{x:0},{x:'+=1000',duration:1.2,ease:'back.in(.5)'},truckDeparture)
     .fromTo(truckBtn,{autoAlpha:1},{autoAlpha:0,duration:.5,ease:'power1.in'},truckDeparture+1.2);
 

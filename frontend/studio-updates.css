@@ -641,6 +641,7 @@ body[data-product-wash="true"]{background:#faf8f5}
 .cart-dark-sheet .quantity{border-color:rgba(255,255,255,.2);border-radius:999px;overflow:hidden;background:rgba(255,255,255,.06);color:#ffffff}
 .cart-dark-sheet .quantity input{background:transparent;color:#ffffff}
 .cart-dark-sheet .quantity button:hover{background:rgba(255,255,255,.14)}
+.cart-qty-pill{display:inline-flex;align-items:center;justify-content:center;padding:5px 12px;border-radius:999px;border:1px solid rgba(255,255,255,.18);background:rgba(255,255,255,.07);color:#e6dfd3;font:600 12px/1 'Plus Jakarta Sans',Arial,sans-serif}
 .cart-dark-sheet .remove-button{color:#b8b1a6}
 .cart-dark-sheet .remove-button:hover{color:#ffffff}
 .cart-dark-sheet .promo-code-box{background:rgba(255,255,255,.06);border-color:rgba(255,255,255,.14);color:#faf8f5}

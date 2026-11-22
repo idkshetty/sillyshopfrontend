@@ -1,3 +1,4 @@
+import {MAX_ITEM_QUANTITY} from './commerce.js';
 // Catalogue refreshes must never silently delete a customer's selected items.
 export function selectedCartLines(cart,products,remembered=[]){
   return cart.map(item=>{
@@ -47,13 +48,13 @@ export function pruneCart(cart, products, remembered = []) {
       continue;
     }
 
-    const maxQty = Math.min(99, product.stock);
+    const maxQty = Math.min(MAX_ITEM_QUANTITY, product.stock);
     const rawQty = item.quantity;
     const qty = Number.isInteger(rawQty) && rawQty > 0 ? rawQty : 1;
     if (qty > maxQty) {
       changed = true;
       nextCart.push({ id: item.id, quantity: maxQty });
-      notes.push(`"${name}" quantity was adjusted to ${maxQty} (all currently in stock).`);
+      notes.push(`"${name}" quantity was adjusted to ${maxQty} (limit ${MAX_ITEM_QUANTITY} per artwork).`);
     } else {
       if (qty !== rawQty) changed = true;
       nextCart.push({ id: item.id, quantity: qty });

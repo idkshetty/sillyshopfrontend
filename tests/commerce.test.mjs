@@ -2,22 +2,27 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {cartLines,subtotal,totalWithShipping,shippingForQuantity,shippingPaiseForQuantity,filterProducts,validateCustomer,safeImage,escapeHTML,CATEGORIES} from '../frontend/commerce.js';
 import {pruneCart} from '../frontend/cart-state.js';
-const products=[{id:'a',title:'Landscape',description:'Mountain painting',category:'paintings',price:10.10,stock:2,visible:true},{id:'b',title:'Clay friend',description:'Small clay model',category:'clay-models',price:0.20,stock:3,visible:true},{id:'hidden',title:'Hidden',price:20,stock:5,visible:false},{id:'sold',title:'Sold',price:30,stock:0,visible:true}];
-test('cart drops hidden, removed, sold out, duplicate and malformed lines; caps stock',()=>{
+const products=[{id:'a',title:'Landscape',description:'Mountain painting',category:'paintings',price:10.10,stock:2,visible:true},{id:'b',title:'Clay friend',description:'Small clay model',category:'clay-models',price:0.20,stock:3,visible:true},{id:'c',title:'Rock bird',description:'Painted river stone',category:'rock-paints',price:5.00,stock:2,visible:true},{id:'hidden',title:'Hidden',price:20,stock:5,visible:false},{id:'sold',title:'Sold',price:30,stock:0,visible:true}];
+test('cart drops hidden, removed, sold out, duplicate and malformed lines; caps qty to 1 and allows unlimited distinct items',()=>{
   const result=cartLines([{id:'a',quantity:8},{id:'a',quantity:1},{id:'b',quantity:1.2},{id:'hidden',quantity:1},{id:'sold',quantity:1},{id:'gone',quantity:1},null],products);
-  assert.equal(result.length,1);assert.equal(result[0].quantity,2);assert.equal(result[0].total,20.20);
+  assert.equal(result.length,1);assert.equal(result[0].quantity,1);assert.equal(result[0].total,10.10);
+  const manyProducts=Array.from({length:7},(_,i)=>({id:`p${i}`,title:`Art ${i}`,price:10,stock:2,visible:true}));
+  const manyCart=cartLines(manyProducts.map(p=>({id:p.id,quantity:3})),manyProducts);
+  assert.equal(manyCart.length,7);
+  assert.ok(manyCart.every(line=>line.quantity===1));
 });
-test('pruneCart removes unavailable or sold-out items, clamps stock, and emits user notes',()=>{
+test('pruneCart removes unavailable or sold-out items, clamps qty to 1, and emits user notes',()=>{
   const pruned=pruneCart(
     [{id:'a',quantity:5},{id:'b',quantity:2},{id:'hidden',quantity:1},{id:'sold',quantity:1},{id:'gone',quantity:1}],
     products,
     [{id:'gone',title:'Removed Sketch'}]
   );
   assert.equal(pruned.changed,true);
-  assert.deepEqual(pruned.cart,[{id:'a',quantity:2},{id:'b',quantity:2}]);
+  assert.deepEqual(pruned.cart,[{id:'a',quantity:1},{id:'b',quantity:1}]);
   assert.deepEqual(pruned.removedIds,['hidden','sold','gone']);
-  assert.equal(pruned.notes.length,4);
-  assert.ok(pruned.notes.some(n=>n.includes('Landscape')&&n.includes('adjusted to 2')));
+  assert.equal(pruned.notes.length,5);
+  assert.ok(pruned.notes.some(n=>n.includes('Landscape')&&n.includes('adjusted to 1')));
+  assert.ok(pruned.notes.some(n=>n.includes('Clay friend')&&n.includes('adjusted to 1')));
   assert.ok(pruned.notes.some(n=>n.includes('Sold')&&n.includes('sold out')));
   assert.ok(pruned.notes.some(n=>n.includes('Hidden')&&n.includes('no longer available')));
   assert.ok(pruned.notes.some(n=>n.includes('Removed Sketch')&&n.includes('no longer available')));
@@ -32,17 +37,17 @@ test('shipping multiplies ₹40 per total item quantity in totals and paise help
   assert.equal(shippingPaiseForQuantity(2),8000);
   assert.equal(shippingPaiseForQuantity(3),12000);
   const one=cartLines([{id:'a',quantity:1}],products);
-  const two=cartLines([{id:'a',quantity:2}],products);
-  const three=cartLines([{id:'a',quantity:2},{id:'b',quantity:1}],products);
+  const two=cartLines([{id:'a',quantity:1},{id:'b',quantity:1}],products);
+  const three=cartLines([{id:'a',quantity:1},{id:'b',quantity:1},{id:'c',quantity:1}],products);
   assert.equal(totalWithShipping(one),50.10);
-  assert.equal(totalWithShipping(two),100.20);
-  assert.equal(totalWithShipping(three),140.40);
+  assert.equal(totalWithShipping(two),90.30);
+  assert.equal(totalWithShipping(three),135.30);
   assert.equal(totalWithShipping([]),0);
 });
 test('public category, search, availability and price sorting compose',()=>{
   assert.deepEqual(filterProducts(products,{search:'CLAY',available:true}).map(p=>p.id),['b']);
   assert.deepEqual(filterProducts(products,{category:'paintings'}).map(p=>p.id),['a']);
-  assert.deepEqual(filterProducts(products,{sort:'price-asc',available:true}).map(p=>p.id),['b','a']);
+  assert.deepEqual(filterProducts(products,{sort:'price-asc',available:true}).map(p=>p.id),['b','c','a']);
   assert.equal(CATEGORIES.length,4);
 });
 const customer={email:'preview@example.com',phone:'+91 9876543210',firstName:'Sample',lastName:'Customer',address:'12 Example Lane',apartment:'',city:'Bengaluru',state:'Karnataka',postalCode:'560001',country:'India',notes:'',consent:true,location:{latitude:12.9716,longitude:77.5946,source:'pin',accuracy:0,formattedAddress:'Bengaluru',confirmed:true}};

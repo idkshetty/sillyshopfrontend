@@ -34,10 +34,15 @@ test('separately confirmed shipping payments require their own stored order and 
   assert.equal(verifiedPayment({...shipping,order_id:'order_items'},order,'shipping'),false);
   assert.equal(verifiedPayment(shipping,order,'items'),false);
 });
-test('quotes use current catalogue prices, reject duplicate items and insufficient stock',()=>{
-  const items=[{productId:'art',quantity:2,unitPrice:1}],products={art:{title:'Art',price:450.25,stock:2,visible:true,category:'paintings'}};
-  assert.equal(quoteItems(items,products,5000).amount,95050);
-  for(const [list,stock,shipping] of [[items,1,0],[[...items,...items],2,0],[items,2,-1],[items,2,0.2]])assert.throws(()=>quoteItems(list,{art:{...products.art,stock}},shipping));
+test('quotes use current catalogue prices, enforce qty 1, allow 6+ items, and reject duplicates or insufficient stock',()=>{
+  const items=[{productId:'art',quantity:1,unitPrice:1}],products={art:{title:'Art',price:450.25,stock:2,visible:true,category:'paintings'}};
+  assert.equal(quoteItems(items,products,5000).amount,50025);
+  assert.throws(()=>quoteItems([{productId:'art',quantity:2,unitPrice:1}],products,5000));
+  const manyProducts=Object.fromEntries(Array.from({length:6},(_,i)=>[`a${i}`,{title:`Art ${i}`,price:100,stock:1,visible:true,category:'paintings'}]));
+  const manyQuote=quoteItems(Object.keys(manyProducts).map(productId=>({productId,quantity:1})),manyProducts,24000);
+  assert.equal(manyQuote.items.length,6);
+  assert.equal(manyQuote.amount,84000);
+  for(const [list,stock,shipping] of [[items,0,0],[[...items,...items],2,0],[items,2,-1],[items,2,0.2]])assert.throws(()=>quoteItems(list,{art:{...products.art,stock}},shipping));
 });
 test('fulfilment cannot bypass payment or reopen a cancelled order',()=>{
   assert.equal(canTransition({status:'processing',paymentStatus:'not_started'},'shipped'),false);
