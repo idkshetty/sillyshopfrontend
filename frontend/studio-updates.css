@@ -611,6 +611,21 @@ body[data-product-wash="true"]{background:#faf8f5}
 #cart-dialog .empty-state{color:#faf8f5}
 #cart-dialog .empty-state p{color:#b8b1a6}
 #cart-dialog .empty-state .button{background:#ffffff;color:#181715;border-color:#ffffff;border-radius:999px}
+.empty-bag-state{display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:34px 16px 28px;max-width:360px;margin:0 auto}
+.checkout-empty-wrap{padding:48px 0 72px}
+.checkout-empty-wrap .empty-bag-state{background:#ffffff;border:1.5px solid #e7e0d4;border-radius:26px;padding:44px 28px;max-width:440px;box-shadow:0 18px 42px -26px rgba(24,23,21,.16)}
+.empty-bag-art{display:block;width:min(200px,62vw);height:auto;margin:0 auto 18px;color:#27292e;overflow:visible;--bag-face:#ffffff;--bag-hole:#3a3d42}
+.empty-bag-fly{animation:empty-bag-fly-float 2.6s ease-in-out infinite;transform-origin:169px 43px}
+@keyframes empty-bag-fly-float{0%,100%{transform:translate(0,0) rotate(0deg)}50%{transform:translate(2px,-4px) rotate(6deg)}}
+#cart-dialog .empty-bag-state{color:#faf8f5;padding:32px 12px 24px}
+#cart-dialog .empty-bag-art{color:#f5f1e8;--bag-face:#1c1b19;--bag-hole:#090908}
+.empty-bag-state h1,.empty-bag-state h2{font-family:'Fraunces',Georgia,serif;font-weight:700;font-size:clamp(24px,4.8vw,30px);line-height:1.18;letter-spacing:-.02em;margin:0 0 10px;color:inherit}
+.empty-bag-state p{margin:0 0 24px;font-size:13.5px;line-height:1.55;color:#78726a;max-width:290px}
+#cart-dialog .empty-bag-state p{color:#b5aea2}
+.empty-bag-cta{width:100%;max-width:310px;min-height:50px;border-radius:14px!important;font-weight:700;font-size:14.5px;background:#111111;border-color:#111111;color:#ffffff;box-shadow:0 10px 22px -10px rgba(0,0,0,.42)}
+.empty-bag-cta:hover{background:#2b2926;color:#ffffff}
+#cart-dialog .empty-bag-cta{background:#ffffff;border-color:#ffffff;color:#141413;border-radius:14px!important;box-shadow:0 12px 24px -10px rgba(0,0,0,.55)}
+#cart-dialog .empty-bag-cta:hover{background:#f3efe6;color:#141413}
 .cart-sheet-handle{width:42px;height:4px;border-radius:999px;background:rgba(255,255,255,.22);margin:4px auto 16px}
 .cart-dark-sheet .cart-checkout-card{background:transparent;border:0;box-shadow:none;padding:0;color:#faf8f5}
 .cart-dark-sheet .cart-checkout-confirmed{background:#1d1c1a;border:1px solid rgba(255,255,255,.12);border-radius:18px;padding:28px 20px;text-align:center}
@@ -1121,6 +1136,6 @@ button,a,.button,.cart-button,.quick-buy-btn,.home-filter-btn,.hero-banner-cta,.
 }
 
 @media(prefers-reduced-motion:reduce){
-  .hehe-wheel-and-hamster *{animation:none!important}
+  .hehe-wheel-and-hamster *,.empty-bag-fly{animation:none!important}
   .artist-pass-stage,.artist-pass-details,.artist-works-reveal,.artist-lanyard-pass,.artist-pass-flight,dialog.map-picker-dialog,.product-immersive-page{transition:none!important}
 }
