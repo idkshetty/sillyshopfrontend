@@ -3,26 +3,35 @@ import {escapeHTML as e} from './commerce.js';
 import {featureAddress,featureLabel,validCoordinates,validLocation} from './location-utils.js';
 import {loadScript} from './browser-library.js';
 
+const PIN_ICON='<svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21s-6.5-5.7-6.5-11a6.5 6.5 0 1 1 13 0c0 5.3-6.5 11-6.5 11Z"/><circle cx="12" cy="10" r="2.4"/></svg>';
+const SAT_ICON='<svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m13 7-3-3-6 6 3 3m4 4 3 3 6-6-3-3M9 15l6-6M4 19a3 3 0 0 1 3-3m0 4a6 6 0 0 1-6-6"/></svg>';
+const MAP_ICON='<svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6.5 9 4l6 2.5L21 4v13.5L15 20l-6-2.5L3 20V6.5Z"/><path d="M9 4v13.5M15 6.5V20"/></svg>';
+const HOUSE_ICON='<svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 10.5 12 3l9 7.5"/><path d="M5.5 9.5V20h13V9.5"/><path d="M9.5 20v-5.5h5V20"/></svg>';
+const NAV_ICON='<svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m3 11 18-8-8 18-2-7-8-3Z"/></svg>';
+const SEARCH_ICON='<svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 5 5"/></svg>';
+const COPY_ICON='<svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>';
+const CHECK_ICON='<svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m5 13 4 4L19 7"/></svg>';
+const RESET_ICON='<svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg>';
+
 export function mapPanel(location) {
   const hasPin = validLocation(location);
   const pillText = hasPin
     ? (location.formattedAddress || `${location.latitude.toFixed(4)}, ${location.longitude.toFixed(4)}`)
     : 'Locate me or choose your delivery spot on the map';
   return `<section class="delivery-pin delivery-pin-card${hasPin ? ' is-confirmed' : ''}" aria-label="Delivery location">
-    <div class="map-card-header">
-      <div>
-        <h2>Set Location</h2>
-        <p id="map-status" class="map-status" role="status">${hasPin ? '✓ Delivery pin confirmed.' : 'Confirm your delivery pin on the map.'}</p>
+    <div class="map-compact-bar">
+      <div class="map-compact-left">
+        <span class="map-floating-pin-dot" aria-hidden="true">${PIN_ICON}</span>
+        <div class="map-compact-info">
+          <strong class="map-pin-state-title">${hasPin ? 'Location set ✓' : 'Set delivery pin'}</strong>
+          <span id="map-floating-address-text" class="map-compact-addr">${e(pillText)}</span>
+          <p id="map-status" class="map-status" role="status"${hasPin ? ' hidden' : ''}>${hasPin ? '✓ Delivery pin confirmed.' : 'Tap Locate Me or open the map to pin your entrance.'}</p>
+        </div>
       </div>
-      <span class="map-summary-badge">${hasPin ? 'Pin confirmed ✓' : 'Required'}</span>
+      <button type="button" class="button outline map-pill-secondary" data-map="open">${hasPin ? 'Change' : 'Choose on map'}</button>
     </div>
-    <div class="map-summary-pill">
-      <span class="map-floating-pin-dot" aria-hidden="true"><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="7"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/><circle cx="12" cy="12" r="2" fill="currentColor" stroke="none"/></svg></span>
-      <span id="map-floating-address-text">${e(pillText)}</span>
-    </div>
-    <div class="map-actions map-primary-pills">
-      <button type="button" class="button map-pill-primary" data-map="device">⌖ Locate Me</button>
-      <button type="button" class="button outline map-pill-secondary" data-map="open">${hasPin ? 'Change location' : 'Choose on map'}</button>
+    <div class="map-actions map-primary-pills"${hasPin ? ' hidden' : ''}>
+      <button type="button" class="button map-pill-primary" data-map="device"${hasPin ? ' hidden' : ''}>⌖ Locate Me</button>
       <button type="button" class="button map-pill-confirm" data-map="confirm" hidden>Confirm pin ✓</button>
     </div>
   </section>`;
@@ -39,46 +48,56 @@ export function mountDeliveryMap(root,{getAddress,onChange,onAddress,initial}) {
     <div class="map-sheet-header">
       <div class="map-sheet-handle" aria-hidden="true"></div>
       <div class="map-sheet-toprow">
-        <div>
-          <h2>Set Delivery Location</h2>
-          <p id="map-sheet-status" class="map-status" role="status">Tap anywhere on the map or drag the pin to your entrance.</p>
-        </div>
-        <div class="map-sheet-head-actions">
-          <div class="map-layer-toggle" role="group" aria-label="Map view">
-            <button type="button" class="map-layer-btn is-active" data-map="layer-satellite" aria-pressed="true">Satellite</button>
-            <button type="button" class="map-layer-btn" data-map="layer-street" aria-pressed="false">Street</button>
+        <div class="map-sheet-titlewrap">
+          <span class="map-sheet-title-pin" aria-hidden="true">${PIN_ICON}</span>
+          <div>
+            <h2>Set Delivery Location</h2>
+            <p id="map-sheet-status" class="map-status" role="status">Confirm the pin to ensure accurate delivery. Drag to adjust if needed.</p>
           </div>
-          <button type="button" class="icon-button map-sheet-close" data-map="close" aria-label="Close map"><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button>
         </div>
+        <button type="button" class="icon-button map-sheet-close" data-map="close" aria-label="Close map"><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button>
       </div>
-      <div class="map-sheet-searchbar">
-        <input type="search" id="map-sheet-search" placeholder="Search street, area, landmark or PIN code…" autocomplete="off">
-        <button type="button" class="button small" data-map="search">Search</button>
+      <div class="map-sheet-controls">
+        <div class="map-layer-toggle" role="group" aria-label="Map view">
+          <button type="button" class="map-layer-btn is-active" data-map="layer-satellite" aria-pressed="true">${SAT_ICON}<span>Satellite</span></button>
+          <button type="button" class="map-layer-btn" data-map="layer-street" aria-pressed="false">${MAP_ICON}<span>Street</span></button>
+        </div>
+        <div class="map-sheet-searchbar">
+          <span class="map-search-lens" aria-hidden="true">${SEARCH_ICON}</span>
+          <input type="search" id="map-sheet-search" placeholder="Search for area, street, or pincode" autocomplete="off">
+          <button type="button" class="map-search-clear" data-map="clear-search" aria-label="Clear search"><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button>
+          <button type="button" class="button small map-search-submit" data-map="search">Search</button>
+        </div>
       </div>
       <div id="map-results" class="map-results" aria-label="Address matches"></div>
     </div>
     <div class="map-sheet-stage">
       <div id="delivery-map" aria-label="Delivery location map. Scroll to zoom or pinch with two fingers. Drag the pin or tap the map to mark your entrance."></div>
-      <div class="map-stage-fabs">
-        <button type="button" class="map-fab-btn" data-map="device" title="Use my current location">⌖ Locate Me</button>
+      <button type="button" class="map-stage-locate-btn" data-map="device" title="Use my current location" aria-label="Locate Me">${NAV_ICON}</button>
+      <div id="mapped-address" class="map-floating-card">
+        <div class="map-floating-card-left">
+          <span class="map-floating-home-icon" aria-hidden="true">${HOUSE_ICON}</span>
+          <div class="map-floating-copy">
+            <strong>Delivery pin</strong>
+            <p id="mapped-address-text" class="map-floating-addr">Tap anywhere on the map, search above, or tap Locate Me.</p>
+            <div class="map-coords-line">
+              <span id="pin-coordinates" class="map-coords-note"></span>
+              <button type="button" class="map-copy-btn" data-map="copy-coords" aria-label="Copy coordinates" title="Copy coordinates" hidden>${COPY_ICON}</button>
+            </div>
+          </div>
+        </div>
+        <button type="button" class="map-card-action-btn" data-map="apply-address" hidden>${PIN_ICON}<span>Use address</span></button>
+        <button type="button" class="map-card-locate-btn" data-map="device">⌖ Locate Me</button>
       </div>
     </div>
     <div class="map-sheet-footer">
-      <p id="pin-coordinates" class="small map-coords-note"></p>
-      <div id="mapped-address" class="mapped-address" hidden>
-        <span class="eyebrow">Nearby mapped address · please check</span>
-        <p id="mapped-address-text"></p>
-        <button type="button" class="text-link" data-map="apply-address">Use this address &amp; confirm pin ✓</button>
-        <p class="small muted">Check the house number and keep your apartment / landmark details.</p>
-      </div>
       <div class="map-sheet-confirm-row">
-        <button type="button" class="button map-confirm-cta" data-map="confirm" disabled>Confirm delivery pin ✓</button>
-        <button type="button" class="button outline small" data-map="clear">Reset</button>
+        <button type="button" class="button map-confirm-cta" data-map="confirm" disabled>${CHECK_ICON}<span>Confirm delivery location</span></button>
+        <button type="button" class="button outline map-reset-cta" data-map="clear">${RESET_ICON}<span>Reset</span></button>
       </div>
     </div>`;
   document.body.append(sheet);
 
-  const el=id=>sheet.querySelector(`#${id}`)||root.querySelector(`#${id}`);
   const status=text=>{
     if(disposed)return;
     const s1=root.querySelector('#map-status');
@@ -90,19 +109,26 @@ export function mountDeliveryMap(root,{getAddress,onChange,onAddress,initial}) {
     const isOk=validLocation(pending);
     const card=root.querySelector('.delivery-pin-card');
     if(card)card.classList.toggle('is-confirmed',isOk);
-    const badge=root.querySelector('.map-summary-badge');
-    if(badge)badge.textContent=isOk?'Pin confirmed ✓':pending?'Not confirmed':'Required';
+    const titleEl=root.querySelector('.map-pin-state-title');
+    if(titleEl)titleEl.textContent=isOk?'Location set ✓':pending?'Confirm pin below':'Set delivery pin';
     const openBtn=root.querySelector('[data-map="open"]');
-    if(openBtn)openBtn.textContent=isOk?'Change location':pending?'Adjust pin':'Choose on map';
+    if(openBtn)openBtn.textContent=isOk?'Change':pending?'Adjust pin':'Choose on map';
+    const actionsRow=root.querySelector('.map-primary-pills');
+    const deviceBtn=root.querySelector('[data-map="device"]');
     const inlineConfirm=root.querySelector('.map-pill-confirm');
+    const statusEl=root.querySelector('#map-status');
+    if(deviceBtn)deviceBtn.hidden=isOk;
     if(inlineConfirm){inlineConfirm.hidden=isOk||!pending;inlineConfirm.disabled=isOk||!pending;}
+    if(actionsRow)actionsRow.hidden=isOk;
+    if(statusEl)statusEl.hidden=isOk;
   };
   const enabled=()=>{
     const button=sheet.querySelector('[data-map="confirm"]');
     if(button){
-      button.disabled=!pending||pending.confirmed;
-      button.textContent=pending?.confirmed?'Delivery pin confirmed ✓':'Confirm delivery pin ✓';
+      button.disabled=!pending;
       button.classList.toggle('pin-confirmed',!!pending?.confirmed);
+      const label=button.querySelector('span');
+      if(label)label.textContent=pending?.confirmed?'Confirm delivery location':'Confirm delivery location';
     }
     const clearBtn=sheet.querySelector('[data-map="clear"]');
     if(clearBtn)clearBtn.disabled=!pending;
@@ -195,27 +221,33 @@ export function mountDeliveryMap(root,{getAddress,onChange,onAddress,initial}) {
   function placeMarker(){
     if(!map||!pending)return;
     const at=[pending.latitude,pending.longitude];
-    if(!marker){marker=window.L.marker(at,{draggable:true,title:'Drag to your delivery entrance',icon:window.L.divIcon({className:'delivery-marker',html:'<span aria-hidden="true">●</span>',iconSize:[34,44],iconAnchor:[17,44]})}).addTo(map);marker.on('dragend',()=>{const at=marker.getLatLng();setPoint(at.lat,at.lng,'pin');});}else marker.setLatLng(at);
+    const iconHtml='<span class="delivery-marker-pin" aria-hidden="true"><svg viewBox="0 0 36 44"><path d="M18 2C9.7 2 3 8.7 3 17c0 10.6 15 24 15 24s15-13.4 15-24C33 8.7 26.3 2 18 2Z" fill="#de6324" stroke="#ffffff" stroke-width="2.5"/><path d="M18 11.2 12 16v6.5h4.2v-3.8h3.6v3.8H24V16l-6-4.8Z" fill="#ffffff"/></svg></span>';
+    if(!marker){marker=window.L.marker(at,{draggable:true,title:'Drag to your delivery entrance',icon:window.L.divIcon({className:'delivery-marker',html:iconHtml,iconSize:[36,44],iconAnchor:[18,44]})}).addTo(map);marker.on('dragend',()=>{const next=marker.getLatLng();setPoint(next.lat,next.lng,'pin');});}else marker.setLatLng(at);
     if(accuracyCircle){accuracyCircle.remove();accuracyCircle=null;}
-    if(pending.accuracy)accuracyCircle=window.L.circle(at,{radius:pending.accuracy,color:'#ffffff',fillColor:'#d96b43',weight:2,fillOpacity:.2}).addTo(map);
+    accuracyCircle=window.L.circle(at,{radius:Math.max(Number(pending.accuracy)||0,24),color:'#de6324',fillColor:'#de6324',weight:1.5,fillOpacity:.2}).addTo(map);
   }
   function updatePointUI(){
     enabled();
     const coordsEl=sheet.querySelector('#pin-coordinates');
-    if(coordsEl)coordsEl.textContent=pending?`${pending.latitude.toFixed(6)}, ${pending.longitude.toFixed(6)}${pending.accuracy?` · Device accuracy about ${Math.round(pending.accuracy)} m`:''}`:'';
-    const mappedBox=sheet.querySelector('#mapped-address');
+    const copyBtn=sheet.querySelector('[data-map="copy-coords"]');
+    if(coordsEl)coordsEl.textContent=pending?`${pending.latitude.toFixed(4)}, ${pending.longitude.toFixed(4)}${pending.accuracy?` · ±${Math.round(pending.accuracy)}m`:''}`:'';
+    if(copyBtn)copyBtn.hidden=!pending;
     const mappedText=sheet.querySelector('#mapped-address-text');
-    if(mappedBox)mappedBox.hidden=!suggestion;
-    if(mappedText)mappedText.textContent=suggestion?featureLabel(suggestion):'';
-    const label=suggestion?featureLabel(suggestion):(pending?(pending.formattedAddress||`${pending.latitude.toFixed(4)}, ${pending.longitude.toFixed(4)}`):'Locate me or choose your delivery spot on the map');
+    const applyBtn=sheet.querySelector('[data-map="apply-address"]');
+    const locateInline=sheet.querySelector('.map-card-locate-btn');
+    const addrText=suggestion?featureLabel(suggestion):(pending?(pending.formattedAddress||'Pin placed — drag to adjust if needed'):'Tap anywhere on the map, search above, or tap Locate Me.');
+    if(mappedText)mappedText.textContent=addrText;
+    if(applyBtn)applyBtn.hidden=!suggestion;
+    if(locateInline)locateInline.hidden=Boolean(suggestion);
+    const pillLabel=suggestion?featureLabel(suggestion):(pending?(pending.formattedAddress||`${pending.latitude.toFixed(4)}, ${pending.longitude.toFixed(4)}`):'Locate me or choose your delivery spot on the map');
     const summaryText=root.querySelector('#map-floating-address-text');
-    if(summaryText)summaryText.textContent=label;
+    if(summaryText)summaryText.textContent=pillLabel;
   }
   function setPoint(latitude,longitude,source,accuracy=0,feature=null){
     if(!validCoordinates(latitude,longitude))return;
     version++;controller?.abort();clearTimeout(timer);
     pending={latitude:Number(latitude.toFixed(6)),longitude:Number(longitude.toFixed(6)),source,accuracy,formattedAddress:feature?featureLabel(feature):'',confirmed:false};suggestion=feature;
-    onChange({...pending});placeMarker();updatePointUI();status('Pin placed — drag to fine-tune, then tap Confirm.');
+    onChange({...pending});placeMarker();updatePointUI();status('Pin placed — drag to fine-tune, then tap Confirm delivery location.');
     if(!feature){const current=version;timer=setTimeout(()=>reverse(current),900);}
   }
   async function request(path,params){
@@ -231,7 +263,7 @@ export function mountDeliveryMap(root,{getAddress,onChange,onAddress,initial}) {
   async function reverse(current){
     const at=pending;if(!at)return;
     try{const found=await request('/reverse',{lat:at.latitude,lon:at.longitude,limit:1,lang:'en'});if(disposed||current!==version)return;suggestion=found[0]||null;if(pending){pending.formattedAddress=suggestion?featureLabel(suggestion):'';if(pending.confirmed)onChange({...pending});}updatePointUI();}
-    catch{if(current===version)status('Nearby address lookup is unavailable. Your pin still works; tap Confirm when ready.');}
+    catch{if(current===version)status('Nearby address lookup is unavailable. Your pin still works; confirm when ready.');}
   }
   async function search(){
     await openSheet();
@@ -259,7 +291,7 @@ export function mountDeliveryMap(root,{getAddress,onChange,onAddress,initial}) {
     await openSheet();
     if(!navigator.geolocation){status('This browser does not support location. Search above or tap the map directly.');return;}
     const current=++version;status('Waiting for your location permission…');
-    navigator.geolocation.getCurrentPosition(async position=>{if(disposed||current!==version)return;try{await ensureMap();if(disposed||current!==version)return;const {latitude,longitude,accuracy}=position.coords;setPoint(latitude,longitude,'device',Math.min(accuracy,1000000));map.setView([latitude,longitude],17);status('Location found. Drag the pin to your exact entrance, then confirm.');}catch{status('The map could not load. Please retry to confirm your delivery pin.');}},error=>{if(disposed||current!==version)return;status(error.code===1?'Location permission was not granted. Search above or tap the map.':'Your location could not be found. Search above or point on the map.');},{enableHighAccuracy:true,timeout:15000,maximumAge:0});
+    navigator.geolocation.getCurrentPosition(async position=>{if(disposed||current!==version)return;try{await ensureMap();if(disposed||current!==version)return;const {latitude,longitude,accuracy}=position.coords;setPoint(latitude,longitude,'device',Math.min(accuracy,1000000));map.setView([latitude,longitude],17);status('Location found. Drag the pin to adjust, then tap Confirm delivery location.');}catch{status('The map could not load. Please retry to confirm your delivery pin.');}},error=>{if(disposed||current!==version)return;status(error.code===1?'Location permission was not granted. Search above or tap the map.':'Your location could not be found. Search above or point on the map.');},{enableHighAccuracy:true,timeout:15000,maximumAge:0});
   }
   async function click(event){
     const target=event.target.closest('[data-map],[data-map-result]');
@@ -279,6 +311,16 @@ export function mountDeliveryMap(root,{getAddress,onChange,onAddress,initial}) {
       }
       else if(action==='open'){await openSheet();}
       else if(action==='close'){closeSheet();}
+      else if(action==='clear-search'){
+        const input=sheet.querySelector('#map-sheet-search'),resultsEl=sheet.querySelector('#map-results');
+        if(input){input.value='';input.focus();}
+        if(resultsEl)resultsEl.innerHTML='';
+      }
+      else if(action==='copy-coords'&&pending){
+        const text=`${pending.latitude.toFixed(6)}, ${pending.longitude.toFixed(6)}`;
+        await navigator.clipboard?.writeText(text).catch(()=>{});
+        status(`Copied coordinates (${text}).`);
+      }
       else if(action==='layer-satellite')setMapLayer('satellite');
       else if(action==='layer-street')setMapLayer('street');
       else if(action==='search')await search();
@@ -294,7 +336,7 @@ export function mountDeliveryMap(root,{getAddress,onChange,onAddress,initial}) {
         status('✓ Delivery pin confirmed.');
         closeSheet();
       }
-      else if(action==='apply-address'&&suggestion){
+      else if(action==='apply-address'&&suggestion&&pending){
         pending.confirmed=true;
         onChange({...pending});
         onAddress(featureAddress(suggestion));
@@ -349,9 +391,9 @@ export function mountDeliveryMap(root,{getAddress,onChange,onAddress,initial}) {
   headerEl?.addEventListener('pointermove',onHeaderPointerMove);
   headerEl?.addEventListener('pointerup',onHeaderPointerUp);
   headerEl?.addEventListener('pointercancel',onHeaderPointerUp);
-  if(pending?.confirmed)status('✓ Delivery pin confirmed. Tap Change location to adjust it.');
-  else if(pending&&!pending.confirmed)status('A pin is selected. Tap Choose on map to confirm it.');
-  else syncSummaryCard();
+  if(pending?.confirmed)status('✓ Delivery pin confirmed. Tap Change to adjust it.');
+  else if(pending&&!pending.confirmed)status('A pin is placed. Tap Confirm pin or Choose on map.');
+  syncSummaryCard();
   return {
     focus(){root.scrollIntoView({block:'center',behavior:'smooth'});},
     needsConfirmation(){return !validLocation(pending);},
@@ -361,7 +403,7 @@ export function mountDeliveryMap(root,{getAddress,onChange,onAddress,initial}) {
       onChange({...pending});
       if(map){map.setView([pending.latitude,pending.longitude],17);placeMarker();}
       updatePointUI();
-      status('✓ Saved delivery pin confirmed. Tap Change location to adjust it.');
+      status('✓ Saved delivery pin confirmed. Tap Change to adjust it.');
       return true;
     },
     invalidate(){
