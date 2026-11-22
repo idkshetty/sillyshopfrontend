@@ -91,6 +91,7 @@ export function artworkThemeStyle(product = {}, overrideHex = '') {
 export function normalizeProduct(raw = {}) {
   const category = categoryOf(raw.category) ? raw.category : 'paintings';
   const images = (Array.isArray(raw.images) ? raw.images : []).map(v => safeImage(v));
+  const backupImages = (Array.isArray(raw.backupImages) ? raw.backupImages : []).map(v => safeImage(v, '')).filter(Boolean).slice(0, 8);
   const bgColor = validHexColor(raw.bgColor) ? raw.bgColor.trim().toLowerCase() : '';
   const rawOrder = Number(raw.displayOrder ?? raw.sortOrder);
   const displayOrder = Number.isInteger(rawOrder) && rawOrder >= 0 ? rawOrder : 1000;
@@ -113,6 +114,7 @@ export function normalizeProduct(raw = {}) {
     visible: raw.visible === true,
     inBanner: raw.inBanner !== false,
     images,
+    backupImages,
     description: String(raw.description || '')
   };
 }

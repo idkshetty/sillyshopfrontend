@@ -2,6 +2,7 @@ import { backendURL } from '../backend-config.js';
 import { firebaseConfig, APP_CHECK_SITE_KEY } from '../firebase-config.js';
 import { encodeImage } from '../image-data.js';
 
+const MAX_FREEIMAGE_BYTES = 20 * 1024 * 1024;
 let sdkPromise = null;
 let sdk = null;
 
@@ -66,34 +67,39 @@ export async function signOutManager() {
   await a.signOut(auth);
 }
 
-export async function callManager(action, data = {}) {
+async function buildAuthHeaders(contentType, forceRefresh = false) {
   const { auth, app } = sdk || await managerFirebase();
   await auth.authStateReady();
   const current = auth.currentUser;
   if (!isGoogleSession(current)) {
     throw new Error('Sign in with a verified Google account to continue.');
   }
+  const token = await current.getIdToken(forceRefresh);
+  const headers = {
+    'Content-Type': contentType,
+    'X-Firebase-Project': firebaseConfig.projectId,
+    Authorization: `Bearer ${token}`
+  };
+  if (APP_CHECK_SITE_KEY) {
+    const check = await import('https://www.gstatic.com/firebasejs/12.3.0/firebase-app-check.js');
+    let instance;
+    try {
+      instance = check.getAppCheck(app);
+    } catch {
+      instance = check.initializeAppCheck(app, {
+        provider: new check.ReCaptchaEnterpriseProvider(APP_CHECK_SITE_KEY),
+        isTokenAutoRefreshEnabled: true
+      });
+    }
+    headers['X-Firebase-AppCheck'] = (await check.getToken(instance)).token;
+  }
+  return headers;
+}
+
+export async function callManager(action, data = {}) {
   const url = `${backendURL()}/api/${encodeURIComponent(action)}`;
   for (let attempt = 0; attempt < 2; attempt++) {
-    const token = await current.getIdToken(attempt === 1);
-    const headers = {
-      'Content-Type': 'application/json',
-      'X-Firebase-Project': firebaseConfig.projectId,
-      Authorization: `Bearer ${token}`
-    };
-    if (APP_CHECK_SITE_KEY) {
-      const check = await import('https://www.gstatic.com/firebasejs/12.3.0/firebase-app-check.js');
-      let instance;
-      try {
-        instance = check.getAppCheck(app);
-      } catch {
-        instance = check.initializeAppCheck(app, {
-          provider: new check.ReCaptchaEnterpriseProvider(APP_CHECK_SITE_KEY),
-          isTokenAutoRefreshEnabled: true
-        });
-      }
-      headers['X-Firebase-AppCheck'] = (await check.getToken(instance)).token;
-    }
+    const headers = await buildAuthHeaders('application/json', attempt === 1);
     let response;
     try {
       response = await fetch(url, {
@@ -116,11 +122,59 @@ export async function callManager(action, data = {}) {
   }
 }
 
-export async function compressArtworkFiles(fileList) {
-  const files = [...(fileList || [])].slice(0, 4);
-  const out = [];
-  for (const file of files) {
-    out.push(await encodeImage(file));
+export async function uploadManagerImage(file) {
+  if (!file || !['image/jpeg', 'image/png', 'image/webp'].includes(file.type) || !file.size || file.size > MAX_FREEIMAGE_BYTES) {
+    throw new Error('Choose a JPG, PNG, or WebP photo under 20 MB.');
   }
-  return out;
+  const url = `${backendURL()}/api/managerUploadImage`;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const headers = await buildAuthHeaders(file.type, attempt === 1);
+    const response = await fetch(url, {
+      method: 'POST',
+      headers,
+      body: file,
+      signal: AbortSignal.timeout(120000)
+    });
+    const result = await response.json().catch(() => ({}));
+    if (response.status === 401 && attempt === 0) continue;
+    if (!response.ok) {
+      const err = new Error(result?.error?.message || 'Freeimage.host upload failed.');
+      err.code = result?.error?.code;
+      throw err;
+    }
+    return result?.data?.url || '';
+  }
 }
+
+/**
+ * Dual-storage upload:
+ * 1. Uploads full-resolution original image to Freeimage.host (https://iili.io/...)
+ * 2. Generates a bounded Firebase Base64 backup copy for automatic redundancy fallback.
+ * If Freeimage.host is unreachable or FREEIMAGE_API_KEY is missing, falls back to Base64 automatically.
+ */
+export async function uploadArtworkFiles(fileList, onProgress = () => {}) {
+  const files = [...(fileList || [])].slice(0, 4);
+  const images = [];
+  const backupImages = [];
+  let hostedCount = 0;
+  let fallbackUsed = false;
+
+  for (let idx = 0; idx < files.length; idx++) {
+    const file = files[idx];
+    onProgress(`Preparing photo ${idx + 1} of ${files.length} (Freeimage.host HD + Firebase backup)…`);
+    const base64Backup = await encodeImage(file);
+    let primaryUrl = '';
+    try {
+      primaryUrl = await uploadManagerImage(file);
+      if (primaryUrl) hostedCount += 1;
+    } catch {
+      fallbackUsed = true;
+    }
+    images.push(primaryUrl || base64Backup);
+    backupImages.push(base64Backup);
+  }
+  onProgress('');
+  return { images, backupImages, hostedCount, fallbackUsed };
+}
+
+export const compressArtworkFiles = uploadArtworkFiles;

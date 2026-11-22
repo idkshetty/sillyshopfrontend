@@ -76,6 +76,12 @@ export const INLINE_CONTENT_TARGETS = [
   T('story.text2', '.story-copy > p:nth-of-type(3)', ['home', 'about'], { multiline: true }),
   T('story.button', '.story-copy > a .story-cta-label', ['home', 'about'], { required: true }),
   T('story.caption', '.story-symbol > span', ['home', 'about']),
+  T('footer.trust1Title', '#footer .footer-trust-item[data-trust-card="1"] strong', null, { required: true }),
+  T('footer.trust1Text', '#footer .footer-trust-item[data-trust-card="1"] span'),
+  T('footer.trust2Title', '#footer .footer-trust-item[data-trust-card="2"] strong', null, { required: true }),
+  T('footer.trust2Text', '#footer .footer-trust-item[data-trust-card="2"] span'),
+  T('footer.trust3Title', '#footer .footer-trust-item[data-trust-card="3"] strong', null, { required: true }),
+  T('footer.trust3Text', '#footer .footer-trust-item[data-trust-card="3"] span'),
   T('footer.description', '#footer .footer-top > div:first-child p'),
   T('footer.heading1', '#footer .footer-top > div:nth-of-type(2) h3', null, { required: true }),
   T('footer.heading2', '#footer .footer-top > div:nth-of-type(3) h3', null, { required: true }),
@@ -121,7 +127,11 @@ const HIGHLIGHT_EXTRAS = {
   'collections.rocksImage': { page: 'home', selector: '.home-artworks-section' },
   'sections.collections': { page: 'home', selector: '.home-artworks-section' },
   'sections.story': { page: 'home', selector: '.story-block' },
-  'sections.footer': { page: null, selector: '#footer' }
+  'sections.footer': { page: null, selector: '#footer' },
+  'footer.showTrustStrip': { page: null, selector: '#footer .footer-trust-strip' },
+  'footer.trust1Visible': { page: null, selector: '#footer .footer-trust-item[data-trust-card="1"]' },
+  'footer.trust2Visible': { page: null, selector: '#footer .footer-trust-item[data-trust-card="2"]' },
+  'footer.trust3Visible': { page: null, selector: '#footer .footer-trust-item[data-trust-card="3"]' }
 };
 
 /** Where in the preview a content field appears (page = null keeps the current preview page). */

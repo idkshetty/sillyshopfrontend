@@ -3,7 +3,7 @@ import {
   signInWithGoogle,
   signOutManager,
   callManager,
-  compressArtworkFiles
+  uploadArtworkFiles
 } from './manager-store.js';
 import {
   revenueTrendChartMarkup,
@@ -31,7 +31,7 @@ const STAGES = [
   ['curated', 'Curated'],
   ['delivery_bin', 'Pickup bin'],
   ['at_cafe', 'At café'],
-  ['live_online', 'Live on site'],
+  ['live_online', 'In hehe.cafe'],
   ['sold', 'Sold'],
   ['returned', 'Returned']
 ];
@@ -42,7 +42,7 @@ const KANBAN_COLUMNS = [
   ['curated', 'Curated'],
   ['delivery_bin', 'Pickup Bin'],
   ['at_cafe', 'At Café'],
-  ['live_online', 'Live on Site'],
+  ['live_online', 'In hehe.cafe'],
   ['returned', 'Returned'],
   ['sold', 'Sold']
 ];
@@ -75,6 +75,7 @@ const state = {
   tab: 'analytics',
   range: 'all',
   loadingData: false,
+  busy: false,
   dataError: '',
   analytics: null,
   payoutData: null,
@@ -92,6 +93,10 @@ const state = {
   artView: typeof window !== 'undefined' && window.innerWidth >= 900 ? 'kanban' : 'grid',
   selectedArtIds: new Set(),
   selectedUploadImages: [],
+  selectedUploadBackups: [],
+  uploadingPhotosText: '',
+  curateImages: [],
+  curateBackups: [],
   uploadPanelOpen: false,
   uploadGenreDraft: 'Fridge Magnet',
   dragArtId: '',
@@ -99,17 +104,53 @@ const state = {
   reconModal: null
 };
 
+function setBusy(active) {
+  state.busy = Boolean(active);
+  const bar = $('mgr-busy-bar');
+  if (bar) bar.hidden = !state.busy;
+}
+
+function showModalError(msg) {
+  const alertEl = $('mgr-modal-alert');
+  if (alertEl) {
+    alertEl.textContent = msg;
+    alertEl.hidden = !msg;
+  }
+}
+
 let toastTimer = null;
-function toast(msg) {
+function toast(msg, { isError = false } = {}) {
+  if ($('mgr-dialog')?.open && isError) {
+    showModalError(msg);
+  }
   const el = $('mgr-toast');
   if (!el) return;
   clearTimeout(toastTimer);
   el.textContent = msg;
   el.hidden = false;
-  toastTimer = setTimeout(() => { el.hidden = true; }, 4500);
+  toastTimer = setTimeout(() => { el.hidden = true; }, 4800);
 }
 
 const getRefCode = a => a?.refNumber || a?.storeRefNumber || '';
+
+function artImgTag(a, idx = 0, extra = '') {
+  const src = a?.images?.[idx] || '';
+  if (!src) return '';
+  const fb = a?.backupImages?.[idx] || '';
+  const fbAttr = (fb && fb !== src) ? ` data-fallback-src="${esc(fb)}"` : '';
+  return `<img src="${esc(src)}"${fbAttr} ${extra}>`;
+}
+
+// Automatic runtime fallback to Firebase Base64 backup if a Freeimage.host link ever breaks
+document.addEventListener('error', event => {
+  const img = event.target;
+  if (!img || img.tagName !== 'IMG' || img.dataset.fallbackApplied === '1') return;
+  const fb = img.dataset.fallbackSrc;
+  if (fb && img.getAttribute('src') !== fb) {
+    img.dataset.fallbackApplied = '1';
+    img.src = fb;
+  }
+}, true);
 
 function refPillMarkup(refNum, artworkId = '') {
   const code = String(refNum || '').trim();
@@ -180,7 +221,7 @@ async function loadWorkspaceData() {
   if (state.me?.status !== 'approved') return;
   state.loadingData = true;
   state.dataError = '';
-  render();
+  setBusy(true);
   try {
     const isAdmin = state.me.role === 'admin';
     const [analytics, artworks, cafeData, payoutData, users, orders] = await Promise.all([
@@ -213,6 +254,7 @@ async function loadWorkspaceData() {
     state.dataError = error?.message || 'Failed to load workspace data.';
   } finally {
     state.loadingData = false;
+    setBusy(false);
     render();
   }
 }
@@ -245,7 +287,7 @@ function renderLookupPopoverHtml() {
     return '<div class="mgr-lookup-pop"><p class="mgr-muted" style="padding:10px;font-size:12px">No artwork matches "#' + esc(q.replace(/^#/, '')) + '".</p></div>';
   }
   return `<div class="mgr-lookup-pop">${hits.map(a => `<button type="button" class="mgr-lookup-item" data-action="lookup-pick" data-id="${esc(a.id)}">
-    ${a.images?.[0] ? `<img src="${esc(a.images[0])}" alt="">` : '<div style="width:34px;height:34px;border-radius:6px;background:var(--surface-soft)"></div>'}
+    ${a.images?.[0] ? artImgTag(a, 0, 'alt=""') : '<div style="width:34px;height:34px;border-radius:6px;background:var(--surface-soft)"></div>'}
     <div style="flex:1;min-width:0">
       <div style="display:flex;align-items:center;gap:6px">
         <span class="mono" style="font-size:11px;font-weight:600">#${esc(getRefCode(a) || '—')}</span>
@@ -288,9 +330,10 @@ function renderDrawer() {
   drawer.hidden = false;
   drawer.innerHTML = `<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px">
       <div>
-        <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">
+        <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;flex-wrap:wrap">
           <span class="mgr-ref-pill">#${esc(ref || '—')}</span>
           <span class="mgr-pill is-${esc(art.stage || 'intake')}">${esc(STAGE_LABEL[art.stage] || art.stage)}</span>
+          ${art.storeProductId ? '<span class="mgr-store-badge">In hehe.cafe Artworks</span>' : ''}
         </div>
         <h2 style="font-size:18px">${esc(art.title)}</h2>
         <p class="mgr-muted">${esc(art.artistName)} · ${esc(art.genre)}</p>
@@ -298,7 +341,7 @@ function renderDrawer() {
       <button type="button" class="mgr-btn outline small" data-action="close-drawer">Close</button>
     </div>
 
-    ${art.images?.[0] ? `<img class="mgr-drawer-photo" src="${esc(art.images[0])}" alt="${esc(art.title)}">` : ''}
+    ${art.images?.[0] ? artImgTag(art, 0, `class="mgr-drawer-photo" alt="${esc(art.title)}"`) : ''}
 
     <div class="mgr-spec-grid">
       <div><span>Selling price</span><strong>${art.price > 0 ? money(art.price) : 'Price TBD'}</strong></div>
@@ -306,7 +349,7 @@ function renderDrawer() {
       <div><span>Material</span><strong>${esc(art.material || '—')}</strong></div>
       <div><span>Dimensions</span><strong>${esc(art.dimensions || '—')}</strong></div>
       <div><span>Current location</span><strong>${esc(art.assignedCafeName || (art.stage === 'delivery_bin' ? (art.binTargetCustomerName ? `Order #${art.binTargetOrderRef}` : art.binTargetCafeName || 'Pickup bin') : STAGE_LABEL[art.stage] || art.stage))}</strong></div>
-      <div><span>Online store link</span><strong>${art.storeProductId ? `Live (#${esc(art.storeRefNumber || ref)})` : 'Not published'}</strong></div>
+      <div><span>hehe.cafe Artworks</span><strong>${art.storeProductId ? `Added (#${esc(art.storeRefNumber || ref)})` : 'Not added yet'}</strong></div>
     </div>
 
     ${art.stage === 'delivery_bin' ? `<div class="mgr-panel" style="margin:0;padding:12px">
@@ -327,7 +370,7 @@ function renderDrawer() {
       <button type="button" class="mgr-btn outline small" data-action="edit-mgr-art" data-id="${esc(art.id)}">Curate details</button>
       ${!['sold', 'at_cafe'].includes(art.stage) ? `<button type="button" class="mgr-btn outline small" data-action="open-bin-modal" data-id="${esc(art.id)}">Put in Pickup Bin</button>` : ''}
       ${!['sold', 'at_cafe'].includes(art.stage) && state.cafes.length ? `<button type="button" class="mgr-btn outline small" data-action="send-one-cafe" data-id="${esc(art.id)}">Send to Café</button>` : ''}
-      ${art.price > 0 && art.stage !== 'sold' ? `<button type="button" class="mgr-btn accent small" data-action="publish-mgr-art" data-id="${esc(art.id)}">${art.storeProductId ? 'Sync hehe.cafe' : 'Publish online'}</button>` : ''}
+      ${art.price > 0 && art.stage !== 'sold' ? `<button type="button" class="mgr-btn accent small" data-action="publish-mgr-art" data-id="${esc(art.id)}">${art.storeProductId ? 'Sync hehe.cafe ↻' : 'Add to hehe.cafe →'}</button>` : ''}
     </div>` : ''}
 
     ${stockHist.length ? `<div>
@@ -517,16 +560,16 @@ function renderArtworksTab(isAdmin) {
 
   const uploaderHtml = state.uploadPanelOpen ? `<section class="mgr-panel">
       <h2>Upload 1-of-1 artwork to intake</h2>
-      <p class="mgr-muted" style="margin-bottom:14px">${isAdmin ? 'Auto-assigns a unique 6-digit #Ref number immediately on upload.' : `Uploading 1-of-1 artwork as <strong>${esc(state.me.artistName)}</strong> — auto-gets a 6-digit #Ref.`}</p>
+      <p class="mgr-muted" style="margin-bottom:14px">${isAdmin ? 'Uploads full-resolution images to Freeimage.host with automatic Firebase Base64 backup redundancy.' : `Uploading 1-of-1 artwork as <strong>${esc(state.me.artistName)}</strong> (Freeimage.host HD + Firebase Base64 backup).`}</p>
       <form id="mgr-upload-form" class="mgr-form-grid">
-        <label class="mgr-field wide">1–4 photos (photo #1 becomes Cover)
+        <label class="mgr-field wide">1–4 photos (photo #1 becomes Cover · up to 20 MB each)
           <label class="mgr-dropzone">
-            <strong>Tap to choose or capture artwork photos</strong>
-            <span class="mgr-muted">JPG, PNG, or WebP · automatically resized</span>
-            <input id="mgr-upload-files" type="file" accept="image/jpeg,image/png,image/webp" multiple>
+            <strong>${esc(state.uploadingPhotosText || 'Tap to choose or capture high-res artwork photos')}</strong>
+            <span class="mgr-muted">JPG, PNG, or WebP · hosted on Freeimage.host with Firebase Base64 backup</span>
+            <input id="mgr-upload-files" type="file" accept="image/jpeg,image/png,image/webp" multiple ${state.uploadingPhotosText ? 'disabled' : ''}>
           </label>
         </label>
-        ${state.selectedUploadImages.length ? `<div class="mgr-preview-imgs mgr-field wide" id="mgr-upload-preview">${state.selectedUploadImages.map((src, i) => `<div class="mgr-preview-thumb"><img src="${esc(src)}" alt="Preview ${i + 1}">${i === 0 ? '<span class="mgr-cover-tag">COVER</span>' : ''}<button type="button" class="mgr-thumb-del" data-action="remove-upload-thumb" data-idx="${i}" aria-label="Remove photo ${i + 1}">×</button></div>`).join('')}</div>` : '<div id="mgr-upload-preview"></div>'}
+        ${state.selectedUploadImages.length ? `<div class="mgr-preview-imgs mgr-field wide" id="mgr-upload-preview">${state.selectedUploadImages.map((src, i) => `<div class="mgr-preview-thumb"><img src="${esc(src)}" ${state.selectedUploadBackups[i] && state.selectedUploadBackups[i] !== src ? `data-fallback-src="${esc(state.selectedUploadBackups[i])}"` : ''} alt="Preview ${i + 1}">${i === 0 ? '<span class="mgr-cover-tag">COVER</span>' : ''}<button type="button" class="mgr-thumb-del" data-action="remove-upload-thumb" data-idx="${i}" aria-label="Remove photo ${i + 1}">×</button></div>`).join('')}</div>` : '<div id="mgr-upload-preview"></div>'}
         <label class="mgr-field">Artwork title<input name="title" required minlength="2" maxlength="120" placeholder="e.g. Rainy Chai Magnet"></label>
         ${isAdmin ? `<label class="mgr-field">Artist name<input name="artistName" required maxlength="120" value="Suprita Chatterjee"></label>` : ''}
         <div class="mgr-field wide">
@@ -540,7 +583,7 @@ function renderArtworksTab(isAdmin) {
         <label class="mgr-field">Dimensions (optional)<input name="dimensions" maxlength="150" placeholder="e.g. 6 × 6 cm"></label>
         <label class="mgr-field wide">Artist story / notes for Admin<textarea name="notes" maxlength="1000" placeholder="Mention medium, glazes, story, or suggested price…"></textarea></label>
         <div class="mgr-field wide" style="display:flex;justify-content:flex-end;gap:10px">
-          <button type="submit" class="mgr-btn">Upload 1-of-1 piece →</button>
+          <button type="submit" class="mgr-btn" ${state.uploadingPhotosText ? 'disabled' : ''}>Upload 1-of-1 piece →</button>
         </div>
       </form>
     </section>` : '';
@@ -548,7 +591,7 @@ function renderArtworksTab(isAdmin) {
   const dropDockHtml = isAdmin ? `<div class="mgr-drop-dock" aria-label="Drag and drop targets">
       <span class="mgr-drop-dock-label">Drag artwork onto →</span>
       <div class="mgr-drop-zone" data-drop-target="pickup_bin">Pickup Bin (Assign Café / Order)</div>
-      <div class="mgr-drop-zone" data-drop-target="live_online">Publish to hehe.cafe</div>
+      <div class="mgr-drop-zone" data-drop-target="live_online">Add to hehe.cafe Artworks</div>
       ${activeCafes.map(c => {
         const count = state.cafeStock.filter(s => s.cafeId === c.id && ['at_cafe', 'return_requested'].includes(s.status)).length;
         return `<div class="mgr-drop-zone" data-drop-cafe="${esc(c.id)}">${esc(c.name)} <small class="mgr-muted">(${count})</small></div>`;
@@ -565,27 +608,28 @@ function renderArtworksTab(isAdmin) {
             const ref = getRefCode(a);
             return `<article class="mgr-kcard ${checked ? 'is-selected' : ''}" draggable="true" data-drag-art="${esc(a.id)}">
               <div class="mgr-kcard-top">
-                ${a.images?.[0] ? `<img src="${esc(a.images[0])}" alt="" loading="lazy">` : ''}
+                ${a.images?.[0] ? artImgTag(a, 0, 'alt="" loading="lazy"') : ''}
                 <div style="min-width:0;flex:1">
-                  <div style="display:flex;align-items:center;justify-content:space-between;gap:4px">
+                  <div style="display:flex;align-items:center;justify-content:space-between;gap:4px;flex-wrap:wrap">
                     ${refPillMarkup(ref, a.id)}
-                    ${a.price > 0 ? `<strong style="font-size:12px">${money(a.price)}</strong>` : '<small class="mgr-muted">TBD</small>'}
+                    ${a.price > 0 ? `<strong style="font-size:11.5px">${money(a.price)}</strong>` : '<small class="mgr-muted">TBD</small>'}
                   </div>
                   <div class="mgr-kcard-title">${esc(a.title)}</div>
                   <div class="mgr-art-meta">${esc(a.artistName)} · ${esc(a.genre)}</div>
-                  ${stage === 'delivery_bin' ? `<div style="margin-top:4px">${binDestinationBadge(a)}</div>` : ''}
+                  ${a.storeProductId ? '<div style="margin-top:3px"><span class="mgr-store-badge">In hehe.cafe</span></div>' : ''}
+                  ${stage === 'delivery_bin' ? `<div style="margin-top:3px">${binDestinationBadge(a)}</div>` : ''}
                   ${a.assignedCafeName ? `<div class="mgr-art-meta">At ${esc(a.assignedCafeName)}</div>` : ''}
                 </div>
               </div>
               <div class="mgr-kcard-foot">
                 <label class="mgr-select-box"><input type="checkbox" data-select-art="${esc(a.id)}" ${checked ? 'checked' : ''}><span>Select</span></label>
-                <div style="display:flex;gap:4px">
+                <div style="display:flex;gap:4px;flex-wrap:wrap">
                   <button type="button" class="mgr-btn outline small" data-action="edit-mgr-art" data-id="${esc(a.id)}">Curate</button>
-                  ${a.price > 0 && stage !== 'sold' ? `<button type="button" class="mgr-btn accent small" data-action="publish-mgr-art" data-id="${esc(a.id)}">${a.storeProductId ? 'Sync' : 'Live'}</button>` : ''}
+                  ${stage !== 'sold' ? `<button type="button" class="mgr-btn accent small" data-action="publish-mgr-art" data-id="${esc(a.id)}" title="Add to hehe.cafe Admin Artworks (off homepage)">${a.storeProductId ? 'Sync' : '+ Site'}</button>` : ''}
                 </div>
               </div>
             </article>`;
-          }).join('') || '<p class="mgr-muted" style="font-size:12px;margin:4px 0">Drop pieces here</p>'}
+          }).join('') || '<p class="mgr-muted" style="font-size:11.5px;margin:4px 0">Drop pieces here</p>'}
         </section>`;
       }).join('')}</div>`
     : (filtered.length
@@ -594,7 +638,7 @@ function renderArtworksTab(isAdmin) {
           const ref = getRefCode(a);
           return `<article class="mgr-art-card ${checked ? 'is-selected' : ''}" ${isAdmin ? `draggable="true" data-drag-art="${esc(a.id)}"` : ''}>
             <div class="mgr-art-thumb">
-              ${a.images?.[0] ? `<img src="${esc(a.images[0])}" alt="${esc(a.title)}" loading="lazy">` : ''}
+              ${a.images?.[0] ? artImgTag(a, 0, `alt="${esc(a.title)}" loading="lazy"`) : ''}
               ${isAdmin ? `<label class="mgr-card-check"><input type="checkbox" data-select-art="${esc(a.id)}" ${checked ? 'checked' : ''}><span>Select</span></label>` : ''}
             </div>
             <div class="mgr-art-body">
@@ -606,11 +650,16 @@ function renderArtworksTab(isAdmin) {
                 <h3>${esc(a.title)}</h3>
                 ${a.price > 0 ? `<strong>${money(a.price)}</strong>` : '<small class="mgr-muted">TBD</small>'}
               </div>
-              <div class="mgr-art-meta">${esc(a.genre)} · ${esc(a.artistName)}${a.stage === 'delivery_bin' ? `<div style="margin-top:5px">${binDestinationBadge(a)}</div>` : ''}${a.assignedCafeName ? `<br>At café: <strong>${esc(a.assignedCafeName)}</strong>` : ''}</div>
+              <div class="mgr-art-meta">
+                ${esc(a.genre)} · ${esc(a.artistName)}
+                ${a.storeProductId ? '<div style="margin-top:4px"><span class="mgr-store-badge">In hehe.cafe Artworks</span></div>' : ''}
+                ${a.stage === 'delivery_bin' ? `<div style="margin-top:5px">${binDestinationBadge(a)}</div>` : ''}
+                ${a.assignedCafeName ? `<br>At café: <strong>${esc(a.assignedCafeName)}</strong>` : ''}
+              </div>
               ${isAdmin ? `<div class="mgr-art-actions">
                 <button type="button" class="mgr-btn outline small" data-action="edit-mgr-art" data-id="${esc(a.id)}">Curate</button>
                 ${!['sold', 'at_cafe'].includes(a.stage) ? `<button type="button" class="mgr-btn outline small" data-action="open-bin-modal" data-id="${esc(a.id)}">Pickup Bin</button>` : ''}
-                ${a.price > 0 && a.stage !== 'sold' ? `<button type="button" class="mgr-btn accent small" data-action="publish-mgr-art" data-id="${esc(a.id)}">${a.storeProductId ? 'Sync ↻' : 'hehe.cafe →'}</button>` : ''}
+                ${a.stage !== 'sold' ? `<button type="button" class="mgr-btn accent small" data-action="publish-mgr-art" data-id="${esc(a.id)}">${a.storeProductId ? 'Sync hehe.cafe ↻' : 'Add to hehe.cafe →'}</button>` : ''}
               </div>` : ''}
             </div>
           </article>`;
@@ -623,7 +672,7 @@ function renderArtworksTab(isAdmin) {
         <div class="mgr-bulk-actions">
           <button type="button" class="mgr-btn outline small" data-action="bulk-assign-bin">Put in Pickup Bin…</button>
           ${state.cafes.length ? `<button type="button" class="mgr-btn accent small" data-action="bulk-assign-cafe">Send to Café →</button>` : ''}
-          <button type="button" class="mgr-btn outline small" data-action="bulk-publish-store">Publish to hehe.cafe ↗</button>
+          <button type="button" class="mgr-btn outline small" data-action="bulk-publish-store">Add to hehe.cafe Artworks ↗</button>
         </div>
       </div>` : '';
 
@@ -683,7 +732,7 @@ function renderBinsTab(isAdmin) {
         const ref = getRefCode(item);
         return `<div class="mgr-bin-item">
           <div class="mgr-bin-row">
-            ${item.images?.[0] ? `<img src="${esc(item.images[0])}" alt="">` : ''}
+            ${item.images?.[0] ? artImgTag(item, 0, 'alt=""') : ''}
             <div style="flex:1;min-width:0">
               <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
                 ${refPillMarkup(ref, item.id)}
@@ -1163,6 +1212,7 @@ function render() {
         <div class="mgr-topbar-right">
           ${isAdmin ? `<button type="button" class="mgr-btn small outline" data-action="quick-upload">+ Intake piece</button>` : ''}
         </div>
+        <div id="mgr-busy-bar" class="mgr-busy-bar" ${state.busy ? '' : 'hidden'}></div>
       </header>
       <main class="mgr-main">${bodyHtml}</main>
     </div>
@@ -1181,23 +1231,41 @@ function render() {
 function openCurationModal(artworkId) {
   const art = state.artworks.find(a => a.id === artworkId);
   if (!art) return;
+  state.curateImages = Array.isArray(art.images) ? [...art.images] : [];
+  state.curateBackups = Array.isArray(art.backupImages) ? [...art.backupImages] : [];
+  renderCurationModalBody(art);
+  $('mgr-dialog').showModal();
+}
+
+function renderCurationModalBody(art) {
   const dlg = $('mgr-dialog');
   dlg.innerHTML = `<div class="mgr-dialog-head">
       <div><p class="mgr-eyebrow">Admin Curation · #${esc(getRefCode(art) || '—')}</p><h2>${esc(art.title)}</h2></div>
       <button type="button" class="mgr-btn outline small" data-action="close-modal">Close</button>
     </div>
+    <p id="mgr-modal-alert" class="mgr-modal-alert" role="alert" hidden></p>
     <form id="mgr-curate-form" data-id="${esc(art.id)}" class="mgr-form-grid">
+      <div class="mgr-field wide">
+        <span>Artwork photos (Freeimage.host HD + Firebase Base64 backup)</span>
+        <div class="mgr-preview-imgs" style="margin-bottom:6px">
+          ${state.curateImages.map((src, i) => `<div class="mgr-preview-thumb"><img src="${esc(src)}" ${state.curateBackups[i] && state.curateBackups[i] !== src ? `data-fallback-src="${esc(state.curateBackups[i])}"` : ''} alt="">${i === 0 ? '<span class="mgr-cover-tag">COVER</span>' : ''}${state.curateImages.length > 1 ? `<button type="button" class="mgr-thumb-del" data-action="remove-curate-thumb" data-id="${esc(art.id)}" data-idx="${i}">×</button>` : ''}</div>`).join('')}
+        </div>
+        <label class="mgr-dropzone" style="padding:10px">
+          <strong>${esc(state.uploadingPhotosText || '+ Add / replace high-res photos (Freeimage.host + Base64 backup)')}</strong>
+          <input id="mgr-curate-files" data-id="${esc(art.id)}" type="file" accept="image/jpeg,image/png,image/webp" multiple ${state.uploadingPhotosText ? 'disabled' : ''}>
+        </label>
+      </div>
       <label class="mgr-field">Title<input name="title" required maxlength="120" value="${esc(art.title)}"></label>
       <label class="mgr-field">Artist<input name="artistName" required maxlength="120" value="${esc(art.artistName)}"></label>
       <label class="mgr-field">Genre / product type<input name="genre" required maxlength="60" value="${esc(art.genre)}"></label>
-      <label class="mgr-field">Selling price (₹)<input name="price" type="number" min="0" step="0.01" value="${art.price || 0}"></label>
+      <label class="mgr-field">Selling price (₹)<input id="mgr-curate-price" name="price" type="number" min="0" step="0.01" value="${art.price || 0}"></label>
       <label class="mgr-field">Pipeline stage<select name="stage">${STAGES.filter(([k]) => k !== 'all').map(([k, label]) => `<option value="${k}" ${art.stage === k ? 'selected' : ''}>${esc(label)}</option>`).join('')}</select></label>
       <label class="mgr-field">1-of-1 availability<select name="stock"><option value="1" ${art.stock !== 0 ? 'selected' : ''}>Available (1-of-1)</option><option value="0" ${art.stock === 0 ? 'selected' : ''}>Sold out (0)</option></select></label>
       <label class="mgr-field">Assigned pickup bin artist<input name="assignedBinArtist" maxlength="120" value="${esc(art.assignedBinArtist || art.artistName)}"></label>
       <label class="mgr-field">Pickup batch / tag<input name="binBatch" maxlength="60" value="${esc(art.binBatch || '')}" placeholder="e.g. Nov Pickup #2"></label>
       <label class="mgr-field">Material<input name="material" maxlength="150" value="${esc(art.material || '')}"></label>
       <label class="mgr-field">Dimensions<input name="dimensions" maxlength="150" value="${esc(art.dimensions || '')}"></label>
-      <label class="mgr-field wide">Store description &amp; story<textarea name="description" maxlength="3000" placeholder="Full description used when publishing to hehe.cafe…">${esc(art.description || art.artistNotes || '')}</textarea></label>
+      <label class="mgr-field wide">Store description &amp; story<textarea name="description" maxlength="3000" placeholder="Full description used when adding to hehe.cafe Artworks…">${esc(art.description || art.artistNotes || '')}</textarea></label>
       <label class="mgr-field">Badge (optional)<input name="tag" maxlength="60" value="${esc(art.tag || '')}"></label>
       <label class="mgr-field">Care / bin note<input name="binNote" maxlength="300" value="${esc(art.binNote || art.care || '')}" placeholder="Pickup or packaging instructions"></label>
       <div class="mgr-field wide" style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;padding-top:6px">
@@ -1205,11 +1273,10 @@ function openCurationModal(artworkId) {
         <div style="display:flex;gap:8px;flex-wrap:wrap">
           <button type="button" class="mgr-btn outline small" data-action="open-bin-modal" data-id="${esc(art.id)}">Bin destination…</button>
           <button type="submit" class="mgr-btn outline">Save curation</button>
-          <button type="button" class="mgr-btn accent" data-action="publish-from-modal" data-id="${esc(art.id)}">${art.storeProductId ? 'Update on hehe.cafe ↻' : 'Send to hehe.cafe →'}</button>
+          <button type="button" class="mgr-btn accent" data-action="publish-from-modal" data-id="${esc(art.id)}">${art.storeProductId ? 'Sync hehe.cafe Artworks ↻' : 'Add to hehe.cafe Artworks →'}</button>
         </div>
       </div>
     </form>`;
-  dlg.showModal();
 }
 
 function renderOrderPickerListHtml(bm) {
@@ -1265,6 +1332,7 @@ function renderBinDestinationModalBody() {
       <div><p class="mgr-eyebrow">Pickup Delivery Bin Assignment</p><h2>${single ? esc(firstArt?.title || 'Artwork') : `Assign ${arts.length} artworks to pickup bin`}</h2></div>
       <button type="button" class="mgr-btn outline small" data-action="close-modal">Close</button>
     </div>
+    <p id="mgr-modal-alert" class="mgr-modal-alert" role="alert" hidden></p>
     <form id="mgr-bin-dest-form" style="display:grid;gap:12px">
       <div style="display:flex;flex-wrap:wrap;gap:5px">
         ${arts.map(a => `<span class="mgr-ref-pill">#${esc(getRefCode(a) || '—')} ${esc(a.title)}</span>`).join('')}
@@ -1328,6 +1396,7 @@ function openCafeModal(cafeId = '') {
       <div><p class="mgr-eyebrow">Partner Café Network</p><h2>${cafe ? `Edit ${esc(cafe.name)}` : 'Add partner café'}</h2></div>
       <button type="button" class="mgr-btn outline small" data-action="close-modal">Close</button>
     </div>
+    <p id="mgr-modal-alert" class="mgr-modal-alert" role="alert" hidden></p>
     <form id="mgr-cafe-form" data-id="${esc(cafe?.id || '')}" class="mgr-form-grid">
       <label class="mgr-field">Café name<input name="name" required maxlength="100" value="${esc(cafe?.name || '')}" placeholder="e.g. Third Wave Coffee Indiranagar"></label>
       <label class="mgr-field">City<input name="city" maxlength="80" value="${esc(cafe?.city || '')}" placeholder="e.g. Bengaluru"></label>
@@ -1354,6 +1423,7 @@ function openAssignCafeModal(preselectedIds = null, preselectedCafeId = '') {
       <div><p class="mgr-eyebrow">Consignment Batch Dispatch</p><h2>Send batch to partner café</h2></div>
       <button type="button" class="mgr-btn outline small" data-action="close-modal">Close</button>
     </div>
+    <p id="mgr-modal-alert" class="mgr-modal-alert" role="alert" hidden></p>
     <form id="mgr-assign-cafe-form" style="display:grid;gap:12px">
       <div class="mgr-form-grid">
         <label class="mgr-field">Choose partner café<select name="cafeId" required>${activeCafes.map(c => `<option value="${esc(c.id)}" ${preselectedCafeId === c.id ? 'selected' : ''}>${esc(c.name)} (${esc(c.city || 'India')} · ${Number(c.commissionPct) || 0}% fee)</option>`).join('')}</select></label>
@@ -1395,6 +1465,7 @@ function renderReconcileModalBody() {
       </div>
       <button type="button" class="mgr-btn outline small" data-action="close-modal">Close</button>
     </div>
+    <p id="mgr-modal-alert" class="mgr-modal-alert" role="alert" hidden></p>
     <p class="mgr-muted" style="margin-bottom:10px">Check or scan every piece that came back <strong>unsold</strong>. Unchecked pieces in this batch will automatically be inferred and logged as <strong>Sold at Café</strong>.</p>
     <form id="mgr-reconcile-form" style="display:grid;gap:12px">
       <div class="mgr-field">Quick #Ref return check (type 6-digit #Ref and press Enter to toggle Returned)
@@ -1450,6 +1521,7 @@ function openBatchReturnRequestModal(cafeId, batchId) {
       <div><p class="mgr-eyebrow">Partner Café Return Call</p><h2>Request unsold return · ${esc(cafe?.name || 'Café')}</h2></div>
       <button type="button" class="mgr-btn outline small" data-action="close-modal">Close</button>
     </div>
+    <p id="mgr-modal-alert" class="mgr-modal-alert" role="alert" hidden></p>
     <form id="mgr-req-return-form" data-cafe="${esc(cafeId)}" data-batch="${esc(batchId)}" style="display:grid;gap:12px">
       <p class="mgr-muted">Marks every active artwork in this batch as <strong>Return requested</strong> until the box arrives back at the studio for reconciliation.</p>
       <label class="mgr-field">Return note<input name="note" maxlength="250" value="Unsold stock rotation"></label>
@@ -1468,6 +1540,7 @@ function openBinReceiveModal(artworkId) {
       <div><p class="mgr-eyebrow">Pickup Bin Check-In · #${esc(getRefCode(art) || '—')}</p><h2>${esc(art.title)}</h2></div>
       <button type="button" class="mgr-btn outline small" data-action="close-modal">Close</button>
     </div>
+    <p id="mgr-modal-alert" class="mgr-modal-alert" role="alert" hidden></p>
     <p class="mgr-muted" style="margin-bottom:14px">Confirm how to update this artwork after physical hand-off to the studio.</p>
     <div style="display:flex;justify-content:flex-end;gap:8px;flex-wrap:wrap">
       <button type="button" class="mgr-btn outline" data-action="bin-receive-exec" data-id="${esc(artworkId)}" data-curated="0">Keep in bin (Received)</button>
@@ -1485,6 +1558,7 @@ function openCafeSaleModal(stock) {
       <div><p class="mgr-eyebrow">Log Single Café Sale · ${esc(stock.cafeName)}</p><h2>${esc(stock.title)}</h2></div>
       <button type="button" class="mgr-btn outline small" data-action="close-modal">Close</button>
     </div>
+    <p id="mgr-modal-alert" class="mgr-modal-alert" role="alert" hidden></p>
     <form id="mgr-cafe-sale-form" data-id="${esc(stock.id)}" class="mgr-form-grid">
       <label class="mgr-field">Final sale price (₹)<input id="sale-price-in" name="salePrice" type="number" required min="1" step="0.01" value="${stock.price > 0 ? stock.price : ''}"></label>
       <label class="mgr-field">Café commission (%)<input id="sale-comm-in" name="commissionPct" type="number" min="0" max="60" step="0.5" value="${defaultComm}"></label>
@@ -1517,6 +1591,7 @@ function openPayoutModal(artistName = '', dueAmount = '') {
       <div><p class="mgr-eyebrow">Artist Settlement</p><h2>Record artist payout</h2></div>
       <button type="button" class="mgr-btn outline small" data-action="close-modal">Close</button>
     </div>
+    <p id="mgr-modal-alert" class="mgr-modal-alert" role="alert" hidden></p>
     <form id="mgr-payout-form" class="mgr-form-grid">
       <label class="mgr-field wide">Artist<input name="artistName" list="mgr-payout-artists" required maxlength="120" value="${esc(artistName)}" placeholder="Select or type artist name"><datalist id="mgr-payout-artists">${options.map(a => `<option value="${esc(a)}">`).join('')}</datalist></label>
       <label class="mgr-field">Amount paid (₹)<input name="amount" type="number" required min="1" step="0.01" value="${dueAmount > 0 ? Number(dueAmount).toFixed(2) : ''}"></label>
@@ -1535,6 +1610,7 @@ function openEditUserModal(u) {
       <div><p class="mgr-eyebrow">Team Member</p><h2>${esc(u.email)}</h2></div>
       <button type="button" class="mgr-btn outline small" data-action="close-modal">Close</button>
     </div>
+    <p id="mgr-modal-alert" class="mgr-modal-alert" role="alert" hidden></p>
     <form id="mgr-edit-user-form" data-email="${esc(u.email)}" class="mgr-form-grid">
       <label class="mgr-field">Status<select name="status"><option value="approved" ${(u.status === 'approved' || u.status === 'pending') ? 'selected' : ''}>Approved</option><option value="pending">Pending</option><option value="revoked" ${u.status === 'revoked' ? 'selected' : ''}>Revoked</option></select></label>
       <label class="mgr-field">Role<select name="role"><option value="artist" ${u.role !== 'admin' ? 'selected' : ''}>Artist</option><option value="admin" ${u.role === 'admin' ? 'selected' : ''}>Admin</option></select></label>
@@ -1551,6 +1627,7 @@ function openConfirmModal({ eyebrow = 'Confirm action', title, message, confirmL
       <div><p class="mgr-eyebrow">${esc(eyebrow)}</p><h2>${esc(title)}</h2></div>
       <button type="button" class="mgr-btn outline small" data-action="close-modal">Cancel</button>
     </div>
+    <p id="mgr-modal-alert" class="mgr-modal-alert" role="alert" hidden></p>
     <p class="mgr-muted" style="margin-bottom:16px">${esc(message)}</p>
     <div style="display:flex;justify-content:flex-end;gap:8px">
       <button type="button" class="mgr-btn outline small" data-action="close-modal">Cancel</button>
@@ -1579,7 +1656,7 @@ document.addEventListener('keydown', event => {
       && (state.reconModal.batchId === 'legacy' ? !s.batchId : s.batchId === state.reconModal.batchId)
       && (s.refNumber === q || String(s.refNumber || '').endsWith(q))
     );
-    if (!match) return toast(`No piece with Ref #${q} found in this batch.`);
+    if (!match) return toast(`No piece with Ref #${q} found in this batch.`, { isError: true });
     if (state.reconModal.returnedIds.has(match.id)) state.reconModal.returnedIds.delete(match.id);
     else state.reconModal.returnedIds.add(match.id);
     state.reconModal.scanQuery = '';
@@ -1597,6 +1674,7 @@ document.addEventListener('click', async event => {
   if (!btn || btn.disabled) return;
   const action = btn.dataset.action;
   const id = btn.dataset.id;
+  const origText = btn.textContent;
   try {
     if (action === 'google-signin' || action === 'google-signin-redirect') {
       btn.disabled = true;
@@ -1604,6 +1682,7 @@ document.addEventListener('click', async event => {
     } else if (action === 'mgr-signout') {
       await signOutManager();
     } else if (action === 'recheck-access' || action === 'refresh-all') {
+      btn.disabled = true;
       await refreshAccess();
     } else if (action === 'nav-tab') {
       state.tab = btn.dataset.tab || 'analytics';
@@ -1641,8 +1720,16 @@ document.addEventListener('click', async event => {
       if (inp) inp.value = state.uploadGenreDraft;
       document.querySelectorAll('[data-action="pick-upload-genre"]').forEach(c => c.classList.toggle('is-active', c.dataset.genre === state.uploadGenreDraft));
     } else if (action === 'remove-upload-thumb') {
-      state.selectedUploadImages.splice(Number(btn.dataset.idx), 1);
+      const idx = Number(btn.dataset.idx);
+      state.selectedUploadImages.splice(idx, 1);
+      state.selectedUploadBackups.splice(idx, 1);
       render();
+    } else if (action === 'remove-curate-thumb') {
+      const idx = Number(btn.dataset.idx);
+      state.curateImages.splice(idx, 1);
+      state.curateBackups.splice(idx, 1);
+      const art = state.artworks.find(a => a.id === id);
+      if (art) renderCurationModalBody(art);
     } else if (action === 'set-stage-filter') {
       state.stageFilter = btn.dataset.stage || 'all';
       render();
@@ -1667,18 +1754,21 @@ document.addEventListener('click', async event => {
       const ids = [...state.selectedArtIds];
       const readyCount = ids.filter(x => (state.artworks.find(a => a.id === x)?.price || 0) > 0).length;
       openConfirmModal({
-        eyebrow: 'Bulk Publish',
-        title: `Publish ${readyCount} priced piece(s) to hehe.cafe?`,
-        message: `${ids.length - readyCount} unpriced piece(s) without a price will be skipped automatically.`,
-        confirmLabel: 'Publish now →',
+        eyebrow: 'Bulk Add to hehe.cafe Artworks',
+        title: `Add ${readyCount} priced piece(s) to hehe.cafe Artworks?`,
+        message: `Pieces are added to the hehe.cafe Admin Artworks section (hidden from homepage until Admin enables them). ${ids.length - readyCount} unpriced piece(s) will be skipped.`,
+        confirmLabel: 'Add to Artworks →',
         onConfirmAction: 'exec-bulk-publish'
       });
     } else if (action === 'exec-bulk-publish') {
+      btn.disabled = true;
+      btn.textContent = 'Adding to hehe.cafe…';
+      setBusy(true);
       const ids = [...state.selectedArtIds];
       const res = await callManager('managerBulkUpdateArtworks', { artworkIds: ids, action: 'publish_store' });
       state.selectedArtIds.clear();
       $('mgr-dialog')?.close();
-      toast(`Published ${res.updatedCount} piece(s) to hehe.cafe${res.skippedCount ? ` (${res.skippedCount} skipped)` : ''}.`);
+      toast(`Added ${res.updatedCount} piece(s) to hehe.cafe Artworks${res.skippedCount ? ` (${res.skippedCount} skipped)` : ''}.`);
       await loadWorkspaceData();
     } else if (action === 'close-modal') {
       $('mgr-dialog')?.close();
@@ -1696,22 +1786,36 @@ document.addEventListener('click', async event => {
         dataAttrs: `data-id="${esc(id)}"`
       });
     } else if (action === 'exec-delete-art') {
+      btn.disabled = true;
+      btn.textContent = 'Removing…';
+      setBusy(true);
       await callManager('managerDeleteArtwork', { artworkId: id });
       $('mgr-dialog')?.close();
       if (state.drawerArtworkId === id) state.drawerArtworkId = '';
       toast('Artwork removed.');
       await loadWorkspaceData();
     } else if (action === 'publish-mgr-art' || action === 'publish-from-modal') {
+      const art = state.artworks.find(a => a.id === id);
       if (action === 'publish-from-modal') {
         const form = $('mgr-curate-form');
         const fd = new FormData(form);
+        const priceVal = Number(fd.get('price') || 0);
+        if (!Number.isFinite(priceVal) || priceVal <= 0) {
+          showModalError('Enter a selling price greater than ₹0 before adding to hehe.cafe Artworks.');
+          $('mgr-curate-price')?.focus();
+          return;
+        }
+        showModalError('');
+        btn.disabled = true;
+        btn.textContent = art?.storeProductId ? 'Syncing to hehe.cafe…' : 'Adding to hehe.cafe…';
+        setBusy(true);
         await callManager('managerUpdateArtwork', {
           artworkId: id,
           patch: {
             title: fd.get('title'),
             artistName: fd.get('artistName'),
             genre: fd.get('genre'),
-            price: Number(fd.get('price') || 0),
+            price: priceVal,
             stage: fd.get('stage'),
             stock: Number(fd.get('stock') ?? 1),
             assignedBinArtist: fd.get('assignedBinArtist'),
@@ -1720,21 +1824,39 @@ document.addEventListener('click', async event => {
             material: fd.get('material'),
             dimensions: fd.get('dimensions'),
             tag: fd.get('tag'),
-            description: fd.get('description')
+            description: fd.get('description'),
+            images: state.curateImages,
+            backupImages: state.curateBackups
           }
         });
+      } else {
+        if (!art || !(art.price > 0)) {
+          openCurationModal(id);
+          showModalError('Set a selling price (> ₹0) and description, then click "Add to hehe.cafe Artworks →".');
+          $('mgr-curate-price')?.focus();
+          return;
+        }
+        btn.disabled = true;
+        btn.textContent = art.storeProductId ? 'Syncing…' : 'Adding…';
+        setBusy(true);
       }
-      const res = await callManager('managerPublishToStore', { artworkId: id, visible: true, inBanner: true });
+      const res = await callManager('managerPublishToStore', { artworkId: id });
       $('mgr-dialog')?.close();
-      toast(`Live on hehe.cafe! Ref #${res.refNumber}`);
+      toast(`Added #${res.refNumber} to hehe.cafe Artworks (off homepage until Admin enables it).`);
       await loadWorkspaceData();
     } else if (action === 'bin-step') {
+      btn.disabled = true;
+      btn.textContent = 'Updating…';
+      setBusy(true);
       await callManager('managerUpdateBinStatus', { artworkId: id, binStatus: btn.dataset.status });
       toast(`Marked ${btn.dataset.status.replace('_', ' ')}!`);
       await loadWorkspaceData();
     } else if (action === 'bin-receive-modal') {
       openBinReceiveModal(id);
     } else if (action === 'bin-receive-exec') {
+      btn.disabled = true;
+      btn.textContent = 'Confirming…';
+      setBusy(true);
       const moveToCurated = btn.dataset.curated === '1';
       await callManager('managerUpdateBinStatus', { artworkId: id, binStatus: 'received_at_studio', moveToCurated });
       $('mgr-dialog')?.close();
@@ -1780,6 +1902,9 @@ document.addEventListener('click', async event => {
         dataAttrs: `data-id="${esc(id)}"`
       });
     } else if (action === 'exec-delete-payout') {
+      btn.disabled = true;
+      btn.textContent = 'Removing…';
+      setBusy(true);
       await callManager('managerDeletePayout', { payoutId: id });
       $('mgr-dialog')?.close();
       toast('Payout record removed.');
@@ -1807,6 +1932,9 @@ document.addEventListener('click', async event => {
         dataAttrs: `data-email="${esc(email)}"`
       });
     } else if (action === 'exec-revoke-user') {
+      btn.disabled = true;
+      btn.textContent = 'Revoking…';
+      setBusy(true);
       const email = btn.dataset.email;
       await callManager('managerApproveUser', { email, status: 'revoked', role: 'artist' });
       $('mgr-dialog')?.close();
@@ -1814,9 +1942,13 @@ document.addEventListener('click', async event => {
       await loadWorkspaceData();
     }
   } catch (error) {
-    toast(error?.message || 'Action failed.');
+    toast(error?.message || 'Action failed.', { isError: true });
   } finally {
-    if (btn.isConnected) btn.disabled = false;
+    setBusy(false);
+    if (btn.isConnected) {
+      btn.disabled = false;
+      btn.textContent = origText;
+    }
   }
 });
 
@@ -1878,33 +2010,73 @@ document.addEventListener('drop', async event => {
       openAssignCafeModal([artId]);
     } else if (zone.dataset.dropTarget === 'live_online' || zone.dataset.dropStage === 'live_online') {
       if (art.price > 0 && art.stage !== 'sold') {
-        const res = await callManager('managerPublishToStore', { artworkId: artId, visible: true, inBanner: true });
-        toast(`Published #${res.refNumber} live on hehe.cafe!`);
+        setBusy(true);
+        const res = await callManager('managerPublishToStore', { artworkId: artId });
+        toast(`Added #${res.refNumber} to hehe.cafe Artworks (off homepage until Admin enables it).`);
         await loadWorkspaceData();
       } else {
-        toast('Set a selling price before publishing to hehe.cafe.');
         openCurationModal(artId);
+        showModalError('Set a selling price (> ₹0), then click "Add to hehe.cafe Artworks →".');
       }
     } else if (zone.dataset.dropStage) {
       const targetStage = zone.dataset.dropStage;
       if (art.stage === targetStage) return;
+      setBusy(true);
       await callManager('managerUpdateArtwork', { artworkId: artId, patch: { stage: targetStage } });
       toast(`Moved #${getRefCode(art)} to ${STAGE_LABEL[targetStage] || targetStage}.`);
       await loadWorkspaceData();
     }
   } catch (error) {
-    toast(error?.message || 'Drop action failed.');
+    toast(error?.message || 'Drop action failed.', { isError: true });
+  } finally {
+    setBusy(false);
   }
 });
 
 document.addEventListener('change', async event => {
   if (event.target.id === 'mgr-upload-files') {
     try {
-      const next = await compressArtworkFiles(event.target.files);
-      state.selectedUploadImages = [...state.selectedUploadImages, ...next].slice(0, 4);
+      setBusy(true);
+      const res = await uploadArtworkFiles(event.target.files, text => {
+        state.uploadingPhotosText = text;
+        render();
+      });
+      state.selectedUploadImages = [...state.selectedUploadImages, ...res.images].slice(0, 4);
+      state.selectedUploadBackups = [...state.selectedUploadBackups, ...res.backupImages].slice(0, 4);
+      state.uploadingPhotosText = '';
+      if (res.fallbackUsed) {
+        toast('Uploaded using Firebase Base64 backup (configure FREEIMAGE_API_KEY on Worker for Freeimage.host HD links).');
+      } else if (res.hostedCount) {
+        toast(`Uploaded ${res.hostedCount} HD photo(s) to Freeimage.host + Firebase Base64 backup.`);
+      }
       render();
     } catch (error) {
-      toast(error?.message || 'Could not process image.');
+      state.uploadingPhotosText = '';
+      render();
+      toast(error?.message || 'Could not process image.', { isError: true });
+    } finally {
+      setBusy(false);
+    }
+  } else if (event.target.id === 'mgr-curate-files') {
+    const artId = event.target.dataset.id;
+    const art = state.artworks.find(a => a.id === artId);
+    if (!art) return;
+    try {
+      setBusy(true);
+      const res = await uploadArtworkFiles(event.target.files, text => {
+        state.uploadingPhotosText = text;
+      });
+      state.curateImages = [...state.curateImages, ...res.images].slice(0, 4);
+      state.curateBackups = [...state.curateBackups, ...res.backupImages].slice(0, 4);
+      state.uploadingPhotosText = '';
+      renderCurationModalBody(art);
+      toast(res.fallbackUsed ? 'Photo saved with Firebase Base64 backup.' : 'Uploaded HD photo to Freeimage.host + Base64 backup.');
+    } catch (error) {
+      state.uploadingPhotosText = '';
+      renderCurationModalBody(art);
+      toast(error?.message || 'Could not upload photo.', { isError: true });
+    } finally {
+      setBusy(false);
     }
   } else if (event.target.dataset?.selectArt) {
     const id = event.target.dataset.selectArt;
@@ -1946,7 +2118,13 @@ document.addEventListener('submit', async event => {
   event.preventDefault();
   const form = event.target;
   const submitBtn = form.querySelector('button[type="submit"]');
-  if (submitBtn) submitBtn.disabled = true;
+  const origLabel = submitBtn ? submitBtn.textContent : '';
+  if (submitBtn) {
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Saving…';
+  }
+  showModalError('');
+  setBusy(true);
   try {
     const fd = new FormData(form);
     if (form.id === 'mgr-request-access-form') {
@@ -1962,9 +2140,11 @@ document.addEventListener('submit', async event => {
         material: fd.get('material'),
         dimensions: fd.get('dimensions'),
         notes: fd.get('notes'),
-        images: state.selectedUploadImages
+        images: state.selectedUploadImages,
+        backupImages: state.selectedUploadBackups
       });
       state.selectedUploadImages = [];
+      state.selectedUploadBackups = [];
       state.uploadPanelOpen = false;
       toast(`Uploaded to intake · Ref #${up.refNumber || up.artwork?.refNumber || ''}`);
       await loadWorkspaceData();
@@ -1984,7 +2164,9 @@ document.addEventListener('submit', async event => {
           material: fd.get('material'),
           dimensions: fd.get('dimensions'),
           tag: fd.get('tag'),
-          description: fd.get('description')
+          description: fd.get('description'),
+          images: state.curateImages,
+          backupImages: state.curateBackups
         }
       });
       $('mgr-dialog')?.close();
@@ -2105,9 +2287,13 @@ document.addEventListener('submit', async event => {
       await loadWorkspaceData();
     }
   } catch (error) {
-    toast(error?.message || 'Could not save changes.');
+    toast(error?.message || 'Could not save changes.', { isError: true });
   } finally {
-    if (submitBtn?.isConnected) submitBtn.disabled = false;
+    setBusy(false);
+    if (submitBtn?.isConnected) {
+      submitBtn.disabled = false;
+      submitBtn.textContent = origLabel;
+    }
   }
 });
 

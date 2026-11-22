@@ -51,3 +51,16 @@ test('sign-in mascot is editable, can be hidden, and legacy policy copy becomes 
  assert.equal(panel.querySelector('img').getAttribute('src'),'assets/custom-studio.webp');
  assert.equal(normalizeContent({brand:{showAccountMascot:true}}).brand.showAccountMascot,true);
 });
+test('footer highlight strip renders Made by artists · Unique pieces, removes location pill, and is editable and toggleable',()=>{
+ const defHtml=footerMarkup(DEFAULT_CONTENT);
+ assert.match(defHtml,/Original handmade art/);
+ assert.match(defHtml,/Made by artists · Unique pieces/);
+ assert(!defHtml.includes('Vagamon, Kerala'));
+ const custom=normalizeContent({footer:{trust1Title:'Hand-sculpted works',trust1Text:'Crafted one piece at a time',trust2Visible:false}});
+ const customHtml=footerMarkup(custom);
+ assert.match(customHtml,/Hand-sculpted works/);
+ assert.match(customHtml,/Crafted one piece at a time/);
+ assert.match(customHtml,/data-trust-card="2" hidden/);
+ const hiddenStrip=normalizeContent({footer:{showTrustStrip:false}});
+ assert.match(footerMarkup(hiddenStrip),/footer-trust-strip"[^>]*hidden/);
+});

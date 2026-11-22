@@ -52,7 +52,7 @@ const pendingCheckoutKey='silly-shop-pending-payment-v1';
 const STARTER_PRODUCTS = FALLBACK_BANNER_ARTWORKS.map((item, idx) => normalizeProduct({...item, displayOrder: idx + 1, stock: 1, visible: true}));
 let products = [...STARTER_PRODUCTS], artists = [...DEFAULT_ARTISTS], cart = [], user = null, isAdmin = false, isMasterAdmin = false, catalogReady = true, catalogSynced = false, catalogError = '', unsubscribeProducts, catalogGeneration = 0;
 let filter = {sort:'',available:false,discounted:false,productType:'',search:''}, adminTab = 'products', adminSearch = '', adminCategory = '';
-let requestList = [], requestsLoaded = false, requestsError = '', requestsCursor = null, requestsHasMore = false, requestsLoadingMore = false, editingId = null, editingImages = [], editingArtistId = null, artistPromptDismissed = false;
+let requestList = [], requestsLoaded = false, requestsError = '', requestsCursor = null, requestsHasMore = false, requestsLoadingMore = false, editingId = null, editingImages = [], editingBackups = [], editingArtistId = null, artistPromptDismissed = false;
 const selectedLabelOrders = new Set();
 let cartCleanupNotes = [], smoothCheckoutNav = false;
 let ordersMapController = null, labelTemplateController = null, settingsDirty = false;
@@ -1884,12 +1884,12 @@ function renderOrdersCards(){
   }
 }
 function openEditor(id){
-  if(!isAdmin)return;editingId=id||null;const ordered=sortArtworks(products);const currentIndex=id?ordered.findIndex(item=>item.id===id):-1;const defaultOrder=currentIndex>=0?(Number.isInteger(ordered[currentIndex].displayOrder)&&ordered[currentIndex].displayOrder<1000?ordered[currentIndex].displayOrder:currentIndex+1):ordered.length+1;const p=products.find(p=>p.id===id)||{title:'',artist:'Suprita Chatterjee',productType:'Fridge Magnet',tag:'',displayOrder:defaultOrder,bgColor:'',description:'',category:'paintings',price:'',stock:1,visible:true,inBanner:true,images:[],material:'',dimensions:'',care:'',sku:''};editingImages=[...p.images];
+  if(!isAdmin)return;editingId=id||null;const ordered=sortArtworks(products);const currentIndex=id?ordered.findIndex(item=>item.id===id):-1;const defaultOrder=currentIndex>=0?(Number.isInteger(ordered[currentIndex].displayOrder)&&ordered[currentIndex].displayOrder<1000?ordered[currentIndex].displayOrder:currentIndex+1):ordered.length+1;const p=products.find(p=>p.id===id)||{title:'',artist:'Suprita Chatterjee',productType:'Fridge Magnet',tag:'',displayOrder:defaultOrder,bgColor:'',description:'',category:'paintings',price:'',stock:1,visible:true,inBanner:true,images:[],backupImages:[],material:'',dimensions:'',care:'',sku:''};editingImages=[...p.images];editingBackups=Array.isArray(p.backupImages)&&p.backupImages.length?[...p.backupImages]:p.images.map(img=>String(img||'').startsWith('data:')?img:'');
   const orderVal=Number.isInteger(p.displayOrder)&&p.displayOrder<1000?p.displayOrder:defaultOrder;
   const artistChoices=mergeArtistsWithProducts(artists,products,{includeHidden:true});
   $('editor-dialog').innerHTML=`<div class="drawer-header"><div><p class="eyebrow">hehe.cafe / Artworks</p><h2 id="editor-title">${id?'Edit artwork':'Add artwork'}</h2></div><button class="icon-button" data-action="close-dialog" aria-label="Close artwork editor"><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button></div><form id="product-form"><input type="hidden" name="category" value="${e(p.category||'paintings')}"><input type="hidden" id="product-bg-color" name="bgColor" value="${e(p.bgColor||'')}"><datalist id="artist-name-options">${artistChoices.map(a=>`<option value="${e(a.name)}">`).join('')}</datalist><div class="editor-modal-layout"><div class="editor-form-col"><fieldset class="editor-section"><legend>Artwork basics</legend><div class="form-grid"><label class="field">Artwork name<input name="title" required maxlength="120" value="${e(p.title)}" placeholder="e.g. Monsoon Window II"></label><label class="field">Artist name<input name="artist" list="artist-name-options" required maxlength="120" value="${e(p.artist||'Suprita Chatterjee')}" placeholder="e.g. Suprita Chatterjee"></label><label class="field">Category (shown on card)<input name="productType" list="product-type-options" required maxlength="60" value="${e(p.productType||'Fridge Magnet')}" placeholder="e.g. Fridge Magnet"><datalist id="product-type-options"><option value="Fridge Magnet"><option value="Clay Frame"><option value="Original Painting"><option value="Coaster"><option value="Keychain"></datalist></label><label class="field">Product tag / badge (optional)<input name="tag" maxlength="60" value="${e(p.tag||'')}" placeholder="e.g. Special edition (leave blank for none)"></label><label class="field wide">Artwork description &amp; story<textarea name="description" maxlength="3000" placeholder="Describe the artwork, inspiration, texture and story…">${e(p.description)}</textarea></label></div></fieldset><fieldset class="editor-section"><legend>Pricing &amp; inventory</legend><div class="form-grid"><label class="field">Price (₹)<input name="price" type="number" required min="0.01" max="10000000" step="0.01" value="${e(p.price)}"></label><label class="field">Compare-at price (₹, optional)<input name="comparePrice" type="number" min="0" max="10000000" step="0.01" value="${p.comparePrice||''}"></label><label class="field">Available quantity (0 = Sold out, 1 = In stock)<input name="stock" type="number" required min="0" max="100000" step="1" value="${p.stock}"></label><label class="field">Display order (1 = first)<input name="displayOrder" type="number" min="1" max="10000" step="1" value="${e(orderVal)}"></label><label class="field">Artwork reference<input value="${e(p.refNumber||'Assigned after save')}" readonly aria-label="Artwork reference"></label><label class="field">Catalogue ref / SKU (optional)<input name="sku" maxlength="80" value="${e(p.sku)}"></label></div></fieldset><fieldset class="editor-section"><legend>Materials &amp; care</legend><div class="form-grid"><label class="field">Medium / Material (optional)<input name="material" maxlength="150" value="${e(p.material)}" placeholder="e.g. Gouache on 300gsm cotton paper"></label><label class="field">Dimensions (optional)<input name="dimensions" maxlength="150" value="${e(p.dimensions)}" placeholder="e.g. 12 × 16 inches"></label><label class="field wide">Care &amp; framing notes (optional)<input name="care" maxlength="500" value="${e(p.care)}"></label></div></fieldset><fieldset class="editor-section"><legend>Artwork photos</legend><div class="form-grid"><label class="field wide">Additional image URLs (one per line)<textarea id="product-image-urls" name="imageUrls" placeholder="https://…"></textarea></label><label class="field wide">Or upload artwork photos · JPG, PNG, WebP · up to 6 MB each<input id="product-files" name="images" type="file" accept="image/jpeg,image/png,image/webp" multiple ></label></div><div id="editor-saved-images" class="image-preview-grid"></div><div id="editor-image-preview" class="image-preview-grid"></div><p class="small muted" style="margin-top:10px">Up to 8 images. The first image is your cover — its background color is detected automatically.</p></fieldset></div><div class="editor-preview-col"><section class="editor-card-preview-wrap" aria-label="Live artwork card preview"><p class="eyebrow">Live storefront card preview</p><div id="editor-card-preview" class="editor-card-preview"></div></section><div class="editor-visibility-box"><label class="checkbox"><input type="checkbox" name="visible" ${p.visible?'checked':''}>Show on homepage</label><label class="checkbox"><input type="checkbox" name="inBanner" ${p.inBanner!==false?'checked':''}>Show in homepage banner</label><label class="checkbox"><input type="checkbox" name="featured" ${p.featured?'checked':''}>Feature on homepage</label></div><div class="editor-actions">${id?`<div class="admin-title-actions"><button type="button" class="danger-link" data-action="archive-product" data-id="${e(id)}">Archive artwork</button><button type="button" class="danger-link" data-action="delete-product" data-id="${e(id)}">Remove artwork</button></div>`:'<span></span>'}<button id="save-product" class="button" type="submit">${id?'Save changes':'Add artwork'} →</button></div><p id="product-notice" class="notice" role="alert"></p></div></div></form>`;renderSavedProductImages();renderEditorCardPreview();openDialog('editor-dialog');
   const fileLabel=$('product-files').closest('label');
-  fileLabel.firstChild.textContent=storeSettings.productImageStorage==='firebase'?'Upload artwork photos · JPG, PNG, WebP · up to 6 MB each':'Upload artwork photos · JPG, PNG, WebP · up to 20 MB each (Freeimage.host)';
+  fileLabel.firstChild.textContent='Upload artwork photos · JPG, PNG, WebP · Freeimage.host HD + Firebase Base64 backup';
 }
 function renderEditorCardPreview(){
   const host=$('editor-card-preview'),form=$('product-form');
@@ -1918,7 +1918,7 @@ function renderEditorCardPreview(){
   host.innerHTML=productCardMarkup(draft,siteContent);
 }
 function renderSavedProductImages(){
-  $('editor-saved-images').innerHTML=editingImages.map((img,i)=>`<div class="saved-product-image"><img src="${e(safeImage(img))}" alt="Saved product photo ${i+1}"><button type="button" class="text-link" data-action="remove-product-image" data-index="${i}" aria-label="Remove saved photo ${i+1}">Remove</button></div>`).join('');
+  $('editor-saved-images').innerHTML=editingImages.map((img,i)=>`<div class="saved-product-image"><img src="${e(safeImage(img))}" ${editingBackups[i]&&editingBackups[i]!==img?`data-fallback-src="${e(safeImage(editingBackups[i]))}"`:''} alt="Saved product photo ${i+1}"><button type="button" class="text-link" data-action="remove-product-image" data-index="${i}" aria-label="Remove saved photo ${i+1}">Remove</button></div>`).join('');
 }
 async function submitProduct(event){event.preventDefault();if(!isAdmin)return;const form=event.target;const data=new FormData(form);const price=Number(data.get('price')),comparePrice=Number(data.get('comparePrice')||0),stock=Number(data.get('stock'));
   const urls=String(data.get('imageUrls')||'').split(/\r?\n/).map(v=>v.trim()).filter(Boolean);const files=[...$('product-files').files];
@@ -1931,11 +1931,22 @@ async function submitProduct(event){event.preventDefault();if(!isAdmin)return;co
   const button=$('save-product');button.disabled=true;button.textContent='Saving…';fail('');
   try{
     await withSavingOverlay('Saving artwork…',async()=>{
-      const id=editingId||randomId();const uploaded=[];for(const file of files)uploaded.push(await (storeSettings.productImageStorage==='freeimage'?store.uploadProductImage(file,'freeimage'):store.uploadImage(file)));
+      const id=editingId||randomId();
+      const uploaded=[];
+      const uploadedBackups=[];
+      for(const file of files){
+        const base64Backup=await store.uploadImage(file);
+        let remoteUrl='';
+        try{remoteUrl=await store.uploadProductImage(file,'freeimage');}catch{}
+        uploaded.push(remoteUrl||base64Backup);
+        uploadedBackups.push(base64Backup);
+      }
       const existing=editingId?products.find(item=>item.id===editingId):null;
       const rawOrder=Number(data.get('displayOrder'));
       const displayOrder=Number.isInteger(rawOrder)&&rawOrder>=1&&rawOrder<=100000?rawOrder:(existing?.displayOrder??products.length+1);
-      const p={title:String(data.get('title')).trim(),artist:String(data.get('artist')||'Suprita Chatterjee').trim()||'Suprita Chatterjee',productType:String(data.get('productType')||'Fridge Magnet').trim().slice(0,60)||'Fridge Magnet',tag:String(data.get('tag')||'').trim().slice(0,60),displayOrder,bgColor:String(data.get('bgColor')||'').trim(),description:String(data.get('description')).trim(),category:data.get('category')||'paintings',price,comparePrice,stock,sku:String(data.get('sku')).trim(),material:String(data.get('material')).trim(),dimensions:String(data.get('dimensions')).trim(),care:String(data.get('care')).trim(),visible:data.get('visible')==='on',inBanner:data.get('inBanner')==='on',featured:data.get('featured')==='on',archived:false,images:[...editingImages,...urls,...uploaded],...(existing?.updatedAt?{updatedAt:existing.updatedAt}:{})};
+      const finalImages=[...editingImages,...urls,...uploaded];
+      const finalBackups=[...editingBackups,...urls.map(()=>''),...uploadedBackups].map((b,idx)=>b||(String(finalImages[idx]||'').startsWith('data:')?finalImages[idx]:'')).filter(Boolean);
+      const p={title:String(data.get('title')).trim(),artist:String(data.get('artist')||'Suprita Chatterjee').trim()||'Suprita Chatterjee',productType:String(data.get('productType')||'Fridge Magnet').trim().slice(0,60)||'Fridge Magnet',tag:String(data.get('tag')||'').trim().slice(0,60),displayOrder,bgColor:String(data.get('bgColor')||'').trim(),description:String(data.get('description')).trim(),category:data.get('category')||'paintings',price,comparePrice,stock,sku:String(data.get('sku')).trim(),material:String(data.get('material')).trim(),dimensions:String(data.get('dimensions')).trim(),care:String(data.get('care')).trim(),visible:data.get('visible')==='on',inBanner:data.get('inBanner')==='on',featured:data.get('featured')==='on',archived:false,images:finalImages,backupImages:finalBackups,...(existing?.updatedAt?{updatedAt:existing.updatedAt}:{})};
       if(!editingId)p.createdAt=Date.now();
       await store.saveProduct(p,id);
     });
@@ -2261,7 +2272,7 @@ document.addEventListener('click',async event=>{
       }
     }
     else if(action==='zoom'){$('zoom-image').src=$('product-main-image').src;$('zoom-image').alt=$('product-main-image').alt;openDialog('image-dialog');}
-    else if(action==='remove-product-image'){editingImages.splice(Number(target.dataset.index),1);renderSavedProductImages();renderEditorCardPreview();}
+    else if(action==='remove-product-image'){const rmIdx=Number(target.dataset.index);editingImages.splice(rmIdx,1);editingBackups.splice(rmIdx,1);renderSavedProductImages();renderEditorCardPreview();}
     else if(action==='product-tab'){
       const next=target.dataset.tab||'desc';
       activeProductTab=next;
@@ -2966,4 +2977,27 @@ store.observeContent(value=>{
   if(contentEditor){contentEditor.updatePublished(value);return;}
   if(changed&&!submitting&&!isAnimationPlaying()&&!['checkout','account','admin'].includes(route().page))render();
 },()=>{contentError='Published page content could not load. Check your connection and deploy the updated Realtime Database rules, then reload. Publishing is disabled until the content loads.';if(!submitting&&!isAnimationPlaying()&&!['checkout','account','admin'].includes(route().page))render();}).catch(()=>{contentError='The page editor could not connect. Reload to try again.';if(!submitting&&!isAnimationPlaying()&&!['checkout','account','admin'].includes(route().page))render();});
+
+// Automatic Firebase Base64 fallback if an external hosted image (e.g. Freeimage.host) fails to load.
+document.addEventListener('error',event=>{
+  const img=event.target;
+  if(!img||img.tagName!=='IMG'||img.dataset.fallbackApplied==='1')return;
+  const failedSrc=img.getAttribute('src')||'';
+  if(!failedSrc||failedSrc.startsWith('data:'))return;
+  if(img.dataset.fallbackSrc){
+    img.dataset.fallbackApplied='1';
+    img.src=img.dataset.fallbackSrc;
+    return;
+  }
+  for(const p of products){
+    if(!Array.isArray(p?.images)||!Array.isArray(p?.backupImages))continue;
+    const idx=p.images.indexOf(failedSrc);
+    if(idx>=0&&p.backupImages[idx]&&p.backupImages[idx]!==failedSrc){
+      img.dataset.fallbackApplied='1';
+      img.src=p.backupImages[idx];
+      return;
+    }
+  }
+},true);
+
 
