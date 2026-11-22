@@ -6,7 +6,7 @@ import './image-loading.js';
 import {pageSkeleton,skeletonMarkup} from './skeletons.js';
 import {deferPageRender} from './page-loading.js';
 import {mountSalesDashboard} from './sales-dashboard.js';
-import {payRequest} from './payments.js';
+import {payRequest,preloadRazorpay} from './payments.js';
 import {mountReviewEditor,collectReviews} from './review-editor.js';
 import {MAX_CART_ITEMS,CATEGORIES,categoryOf,money,SHIPPING_CHARGE,totalWithShipping,artworkColorFor,artworkThemeStyle,contrastColorFor,normalizeProduct,sortArtworks,ARTWORK_SORT_MODES,escapeHTML as e,safeImage,cartLines,subtotal,filterProducts,validateCustomer} from './commerce.js';
 import {DEFAULT_ARTISTS,artistSlug,normalizeArtists,mergeArtistsWithProducts} from './artists.js';
@@ -16,7 +16,7 @@ import {validLocation,locationLink} from './location-utils.js';
 import {openLabel,openBatchLabels,mountLabelTemplate} from './labels.js';
 import {mountOrdersMap} from './orders-map.js';
 import {POLICY_TABS,normalizeAdminTab,countActionableOrders,adminSidebarMarkup,policySubnavMarkup,filterOrders,orderFilterCounts,ordersToolbarMarkup,orderCardMarkup} from './admin-ui.js';
-import {decorateCartButtons,animateCart,animateCartCheckout,playPaymentOutcome,reviewSection,mountReviews,mountHeroBanner,mountArtistScrollPrompt,sampleArtworkBgFromImage} from './shop-effects.js';
+import {decorateCartButtons,animateCart,animateCartCheckout,playPaymentOutcome,preloadPaymentOutcomeSvg,reviewSection,mountReviews,mountHeroBanner,mountArtistScrollPrompt,sampleArtworkBgFromImage} from './shop-effects.js';
 import {accountMarkup,ordersListMarkup} from './customer-dashboard.js';
 import {steppedProgress} from './stepped-progress.js';
 import {normalizeProfile,validateProfile,checkoutDefaults} from './profile.js';
@@ -115,6 +115,25 @@ async function withSavingOverlay(message,fn){
   setBusyOverlay(true,message);
   try{return await fn();}
   finally{setBusyOverlay(false);}
+}
+function createLoaderController(){
+  let visible=false;
+  return {
+    show(message){
+      if(!visible){
+        visible=true;
+        setBusyOverlay(true,message);
+        return;
+      }
+      const label=$('admin-saving-overlay')?.querySelector('.saving-overlay-text');
+      if(label)label.textContent=message;
+    },
+    hide(){
+      if(!visible)return;
+      visible=false;
+      setBusyOverlay(false);
+    }
+  };
 }
 function persistCart(){try{localStorage.setItem(cartKey,JSON.stringify(cart));}catch{toast('Your browser could not save the cart. Keep this tab open.');}updateCartBadge();}
 function clearPendingCheckout(){try{localStorage.removeItem(pendingCheckoutKey);}catch{}}
@@ -439,7 +458,7 @@ function applyCheckoutProfile(profile=accountState.profile){
     deliveryMap?.setSavedLocation(checkoutDraft.location);
   }
   captureCheckout();
-  if(checkoutStep===3)renderCheckoutReview();
+  if(checkoutStep===3){renderCheckoutReview();preloadRazorpay();preloadPaymentOutcomeSvg().catch(()=>{});}
 }
 function renderCheckout(){
   if(deferPageRender(render))return;
@@ -475,7 +494,7 @@ function setCheckoutStep(step,{focus=true}={}){
   captureCheckout();
   const pages=[...form.querySelectorAll('[data-checkout-step]')],from=pages.find(page=>!page.hidden&&Number(page.dataset.checkoutStep)===previousStep)||pages.find(page=>!page.hidden),to=pages.find(page=>Number(page.dataset.checkoutStep)===nextStep);
   cancelCheckoutStepMotion(form);checkoutStep=nextStep;updateCheckoutProgress(checkoutStep);
-  if(checkoutStep===3)renderCheckoutReview();
+  if(checkoutStep===3){renderCheckoutReview();preloadRazorpay();preloadPaymentOutcomeSvg().catch(()=>{});}
   const stage=form.querySelector('.checkout-step-stage'),canAnimate=previousStep!==nextStep&&from&&to&&stage&&typeof from.animate==='function'&&!matchMedia('(prefers-reduced-motion: reduce)').matches;
   if(canAnimate){
     pages.forEach(page=>{page.hidden=page!==from&&page!==to;});to.hidden=false;
@@ -555,16 +574,6 @@ function showPaymentPreviewChoice(){
   if(typeof dialog.showModal==='function')dialog.showModal();else dialog.setAttribute('open','');
   dialog.querySelector('[data-outcome="success"]')?.focus();
 }
-async function waitForCheckoutButtonAnimation(button){
-  const pause=ms=>new Promise(resolve=>window.setTimeout(resolve,ms));
-  if(window.matchMedia?.('(prefers-reduced-motion: reduce)').matches){await pause(80);return;}
-  if(typeof button.getAnimations!=='function'||typeof window.requestAnimationFrame!=='function'){await pause(1650);return;}
-  await new Promise(resolve=>window.requestAnimationFrame(()=>window.requestAnimationFrame(resolve)));
-  const animations=button.getAnimations({subtree:true}).filter(animation=>animation.playState==='running'||animation.playState==='pending');
-  if(animations.length){await Promise.race([Promise.all(animations.map(animation=>animation.finished.catch(()=>{}))),pause(2000)]);}
-  else await pause(1650);
-  if(button.isConnected)await pause(280);
-}
 async function submitCheckout(event){
   event.preventDefault();if(submitting)return;
   if(checkoutStep<3){if(checkoutStepValid())setCheckoutStep(checkoutStep+1);return;}
@@ -577,12 +586,14 @@ async function submitCheckout(event){
   // Snapshot names and quantities before payment reserves stock and live catalogue updates can hide cart lines.
   const cartSnapshot=cart.map(item=>({...item}));
   const animationItems=paymentAnimationItems(null,cartSnapshot);
-  submitting=true;const button=$('checkout-submit');button.disabled=true;button.setAttribute('aria-busy','true');button.classList.add('is-animating');$('checkout-notice').textContent='';
-  await waitForCheckoutButtonAnimation(button);
-  button.classList.remove('is-animating');button.removeAttribute('aria-busy');
+  submitting=true;const button=$('checkout-submit');button.disabled=true;button.setAttribute('aria-busy','true');$('checkout-notice').textContent='';
+  const loader=createLoaderController();
+  loader.show('Opening secure checkout…');
+  preloadPaymentOutcomeSvg().catch(()=>{});
   try{
     const paymentConfig=await store.checkoutPaymentConfig();
     if(paymentConfig.paymentPreviewEnabled){
+      loader.hide();
       showPaymentPreviewChoice();
       return;
     }
@@ -604,6 +615,7 @@ async function submitCheckout(event){
     }
     if(['cancel_requested','closed'].includes(saved.status))throw new Error('This checkout has a pending cancellation. Wait for the studio to release it before starting another order.');
     if(saved.paymentStatus==='captured'){
+      loader.hide();
       clearPendingCheckout();completedRequest=saved;deliveryMap?.destroy();deliveryMap=null;
       paymentSceneActive=true;
       try{await playPaymentOutcome('success',{items:animationItems});}finally{paymentSceneActive=false;}
@@ -611,11 +623,14 @@ async function submitCheckout(event){
     }
     try{localStorage.setItem(pendingCheckoutKey,JSON.stringify({id:saved.id,uid:user.uid,fingerprint}));}catch{}
     completedRequest=saved;requestsLoaded=false;accountState.loaded=false;
+    loader.show('Opening secure checkout…');
     try{
-      await payRequest(saved.id,'items');
+      await payRequest(saved.id,'items',{onOpen:()=>loader.hide(),onVerifying:()=>loader.show('Verifying payment…')});
     }catch(paymentError){
+      loader.show('Checking payment status…');
       const cancelResult=await store.callBackend('cancelFailedPayment',{requestId:saved.id,purpose:'items',reason:paymentError?.message||'Payment failed'}).catch(()=>null);
       if(cancelResult?.paid===true){
+        loader.hide();
         deliveryMap?.destroy();deliveryMap=null;
         paymentSceneActive=true;
         try{await playPaymentOutcome('success',{items:animationItems});}finally{paymentSceneActive=false;}
@@ -624,12 +639,14 @@ async function submitCheckout(event){
         else{render();toast('Payment successful. Thank you!');}
         return;
       }
+      loader.hide();
       clearPendingCheckout();completedRequest=null;checkoutId=crypto.randomUUID();requestsLoaded=false;accountState.loaded=false;
       deliveryMap?.destroy();deliveryMap=null;
       paymentSceneActive=true;
       try{await playPaymentOutcome('failure',{message:'Payment failed. This order was cancelled and your items are still in your cart if you want to try again.',items:animationItems});}finally{paymentSceneActive=false;}
       return;
     }
+    loader.hide();
     deliveryMap?.destroy();deliveryMap=null;
     paymentSceneActive=true;
     try{await playPaymentOutcome('success',{items:animationItems});}finally{paymentSceneActive=false;}
@@ -639,6 +656,7 @@ async function submitCheckout(event){
   }catch(error){
     if($('checkout-notice'))$('checkout-notice').textContent=store.friendlyError(error);else toast(store.friendlyError(error));
   }finally{
+    loader.hide();
     submitting=false;
     $('checkout-submit')?.removeAttribute('aria-busy');
     $('checkout-submit')?.classList.remove('is-paying');
@@ -1770,16 +1788,20 @@ document.addEventListener('click',async event=>{
     else if(action==='pay-request'){
       target.disabled=true;
       const purpose=target.dataset.purpose||'items';
+      const loader=createLoaderController();
+      loader.show('Opening secure checkout…');
       try{
-        await payRequest(id,purpose);
+        await payRequest(id,purpose,{onOpen:()=>loader.hide(),onVerifying:()=>loader.show('Verifying payment…')});
         await fetchCustomerAccount();
         toast(purpose==='shipping'?'Shipping payment successful. Thank you!':'Payment successful. Thank you!');
       }catch(err){
+        loader.show('Checking payment status…');
         const cancelResult=await store.callBackend('cancelFailedPayment',{requestId:id,purpose,reason:err?.message||'Payment failed'}).catch(()=>null);
         await fetchCustomerAccount();
         if(cancelResult?.paid===true)toast(purpose==='shipping'?'Shipping payment successful. Thank you!':'Payment successful. Thank you!');
         else toast(purpose==='shipping'?'Shipping payment failed.':'Payment failed. Order cancelled.');
       }finally{
+        loader.hide();
         if(target.isConnected)target.disabled=false;
       }
     }

@@ -91,20 +91,23 @@
 .checkout-payment-dialog p{margin:0 0 18px;color:#666;line-height:1.6}
 .checkout-payment-dialog-actions{display:grid;gap:10px}
 .checkout-payment-dialog-actions button{min-height:46px}
-.payment-outcome-scene{max-width:820px;margin:48px auto;padding:24px;border:1px solid var(--line);border-radius:20px;background:var(--paper);text-align:center;overflow:hidden;scroll-margin-top:120px}
-.payment-truck-stage{position:relative;width:min(100%,560px);aspect-ratio:1;margin:auto;overflow:hidden;border:1px solid var(--line);border-radius:12px;background:var(--canvas)}
-/* Keep the payment animation centered inside its theme-colored stage. */
-.payment-truck-stage #ship-it{position:absolute;z-index:1;top:50%;left:50%;display:block;width:100%;max-width:600px;height:auto;overflow:visible;transform:translate(-50%,-50%)}
+.payment-outcome-scene{max-width:560px;margin:36px auto;padding:28px 24px 32px;border:1px solid #e9e4db;border-radius:26px;background:#fff;box-shadow:0 22px 54px -28px rgba(24,23,21,.16);text-align:center;overflow:hidden;scroll-margin-top:120px}
+.payment-outcome-pill{display:inline-flex;align-items:center;justify-content:center;padding:6px 14px;margin:0 auto 6px;border-radius:999px;font:700 11px/1 'Plus Jakarta Sans',Arial,sans-serif;letter-spacing:.08em;text-transform:uppercase}
+.payment-outcome-scene.is-success .payment-outcome-pill{background:#e9f6ee;color:#166534}
+.payment-outcome-scene.is-failure .payment-outcome-pill{background:#fceceb;color:#9b392f}
+.payment-truck-stage{position:relative;width:min(100%,440px);aspect-ratio:1;margin:0 auto;overflow:hidden;border:0;border-radius:0;background:transparent}
+/* Keep the payment animation centered inside its clean stage. */
+.payment-truck-stage #ship-it{position:absolute;z-index:1;top:50%;left:50%;display:block;width:100%;max-width:540px;height:auto;overflow:visible;transform:translate(-50%,-50%)}
 .payment-truck-stage #ship-it .hidden{visibility:hidden}
 .payment-truck-stage #ship-it .wip{opacity:.5}
 .payment-truck-stage #ship-it .clickable{cursor:pointer;opacity:.01;pointer-events:none}
-.payment-road{position:absolute;z-index:0;right:12%;bottom:14%;left:12%;height:5px;border-radius:3px;background:#d8d4c6}
-.payment-outcome-copy{min-height:95px;padding-top:12px}
-.payment-outcome-copy h1{margin:0 0 8px;font-size:clamp(23px,4vw,32px)}
-.payment-outcome-copy p{max-width:520px;margin:0 auto 16px;line-height:1.65;color:#666}
-.payment-outcome-copy button{margin:4px auto 0}
-@media(max-width:600px){.payment-outcome-scene{margin:28px 12px;padding:16px;border-radius:16px}.payment-truck-stage{width:min(100%,84vw,420px);border-radius:10px}.payment-road{height:4px}.payment-outcome-copy{min-height:0;padding-top:10px}}
-@media(max-width:380px){.payment-outcome-scene{margin:20px 8px;padding:12px}.payment-truck-stage{width:min(100%,82vw,300px)}.payment-road{height:3px}.payment-outcome-copy h1{font-size:23px}.payment-outcome-copy p{font-size:13px}}
+.payment-road{position:absolute;z-index:0;right:10%;bottom:12%;left:10%;height:4px;border-radius:999px;background:#e7e2d8}
+.payment-outcome-copy{min-height:84px;padding-top:8px}
+.payment-outcome-copy h1{margin:0 0 8px;font-size:clamp(24px,4vw,32px);letter-spacing:-.02em}
+.payment-outcome-copy p{max-width:440px;margin:0 auto 18px;font-size:14.5px;line-height:1.6;color:#625c54}
+.payment-outcome-copy button{margin:4px auto 0;border-radius:999px;padding:13px 26px}
+@media(max-width:600px){.payment-outcome-scene{margin:24px 12px;padding:22px 16px 26px;border-radius:22px}.payment-truck-stage{width:min(100%,86vw,380px)}.payment-road{height:4px}.payment-outcome-copy{min-height:0;padding-top:6px}}
+@media(max-width:380px){.payment-outcome-scene{margin:18px 8px;padding:18px 12px 22px;border-radius:18px}.payment-truck-stage{width:min(100%,84vw,300px)}.payment-road{height:3px}.payment-outcome-copy h1{font-size:23px}.payment-outcome-copy p{font-size:13.5px}}
 .request-order-progress{margin:20px 0 24px;padding:18px 18px 14px;border:1px solid var(--line);border-radius:14px;background:#fffefb}
 .request-order-progress .checkout-progress{margin:0;padding:0}
 .request-progress-note{margin:0;padding:12px 14px;border:1px solid #e2ddd2;border-radius:10px;background:#f6f2e8;color:var(--ink);font-size:12px;line-height:1.6}

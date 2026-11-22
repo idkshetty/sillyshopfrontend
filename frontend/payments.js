@@ -1,8 +1,8 @@
 import {callBackend} from './store.js';
 import {loadScript} from './browser-library.js';
-export async function payRequest(id,purpose='items'){
-  const order=await callBackend('createRazorpayOrder',{requestId:id,purpose});
-  await loadScript('https://checkout.razorpay.com/v1/checkout.js');
+export const preloadRazorpay=()=>loadScript('https://checkout.razorpay.com/v1/checkout.js').catch(()=>{});
+export async function payRequest(id,purpose='items',{onOpen,onVerifying}={}){
+  const [order]=await Promise.all([callBackend('createRazorpayOrder',{requestId:id,purpose}),loadScript('https://checkout.razorpay.com/v1/checkout.js')]);
   return new Promise((resolve,reject)=>{
     let settled=false;
     const fail=(message='Payment failed or was cancelled.')=>{
@@ -16,6 +16,7 @@ export async function payRequest(id,purpose='items'){
       modal:{ondismiss:()=>fail('Payment failed or was cancelled.')},
       handler:async response=>{
         if(settled)return;
+        onVerifying?.();
         try{
           const result=await callBackend('verifyRazorpayPayment',{requestId:id,purpose,paymentId:response.razorpay_payment_id,signature:response.razorpay_signature});
           if(!result.paid){fail('Payment failed or was not completed.');return;}
@@ -34,6 +35,7 @@ export async function payRequest(id,purpose='items'){
       fail(reason);
       try{checkout.close?.();}catch{}
     });
+    onOpen?.();
     checkout.open();
   });
 }
