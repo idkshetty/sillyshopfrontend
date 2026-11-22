@@ -670,7 +670,6 @@ main:has(.checkout-wrap){overflow-x:clip}
 .checkout-wrap{position:relative;width:min(1120px,calc(100% - 48px));margin:0 auto;padding:24px 0 72px}
 .checkout-page-head{position:relative;z-index:2;margin-bottom:24px;padding-right:0}
 .checkout-page-head h1{display:inline-flex;align-items:center;gap:8px;font-family:'Fraunces',Georgia,serif;font-size:clamp(32px,4.2vw,44px);margin:4px 0 6px}
-.checkout-title-sparkle{width:22px;height:22px;color:#de6324;flex-shrink:0;transform:translateY(-4px)}
 .checkout-layout{position:relative;z-index:2;display:grid;grid-template-columns:minmax(0,1.22fr) minmax(300px,.85fr);gap:28px;align-items:start}
 .checkout-form{position:relative;margin-top:0;background:#ffffff;border:1.5px solid #e7e0d4;border-top:1.5px solid #e7e0d4;padding:28px 30px;border-radius:26px;box-shadow:0 18px 42px -26px rgba(24,23,21,.16);overflow:hidden}
 .checkout-form .form-grid input,.checkout-form .form-grid select,.checkout-note-field textarea{border-radius:14px;border:1.5px solid #e2dacd;background:#ffffff;padding:11px 14px}
@@ -696,8 +695,6 @@ main:has(.checkout-wrap){overflow-x:clip}
 .checkout-signin-cat{width:84px;height:auto;flex-shrink:0;pointer-events:none;user-select:none}
 .checkout-signin-copy{flex:1 1 220px;min-width:0}
 .checkout-success-cat{display:block;width:112px;max-width:36vw;height:auto;margin:0 auto 10px;pointer-events:none;user-select:none}
-.checkout-total-sparkle{display:none}
-.checkout-summary .checkout-total-sparkle{display:inline-block;width:16px;height:16px;color:#de6324;vertical-align:top;margin-left:3px;transform:translateY(-4px)}
 .checkout-summary #summary-title{font-family:'Fraunces',Georgia,serif;font-size:24px;margin:0}
 .checkout-summary .checkout-item{padding:10px 12px;border-radius:16px;background:#faf7f1;border:1px solid #ece5d8;margin-bottom:14px}
 .checkout-summary .checkout-item-image{width:54px;height:54px;border-radius:12px;background:#ffffff;border:1px solid #e6dfd2}
