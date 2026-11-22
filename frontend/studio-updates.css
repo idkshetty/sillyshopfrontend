@@ -424,7 +424,8 @@ html{min-height:100%}body{min-height:100vh;min-height:100dvh;display:flex;flex-d
 .bundle-savings-pill.is-unlocked span{color:#2c6e49}
 
 .promo-code-box{margin:10px 0 14px;padding:12px;border-radius:12px;border:1px solid #e2ddd2;background:#faf8f5;display:grid;gap:7px}
-.promo-code-label{font-size:12px;font-weight:700;color:#3d3832}
+.promo-code-label{display:flex;align-items:center;gap:6px;font-size:12px;font-weight:700;color:#3d3832}
+.promo-code-label svg{width:15px;height:15px;fill:none;stroke:currentColor;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round;flex-shrink:0}
 .promo-code-row{display:flex;align-items:center;gap:8px}
 .promo-code-row input{flex:1;min-width:0;min-height:38px;padding:6px 11px;border-radius:9px;border:1px solid #cfc7b7;background:#ffffff;font:600 12.5px/1.2 'JetBrains Mono',monospace;text-transform:uppercase;color:#181715}
 .promo-code-row input::placeholder{text-transform:none;font-family:'Plus Jakarta Sans',Arial,sans-serif;font-weight:400;color:#867e73}
@@ -596,14 +597,17 @@ body[data-product-wash="true"]{background:#faf8f5}
 .product-buy-link{padding:8px 12px;color:#f8e57e;font:600 12.5px/1 'Plus Jakarta Sans',Arial,sans-serif;text-decoration:underline;text-underline-offset:4px}
 
 /* Sculpted Dark Cart Drawer & Warm Butter Ticket Card */
-#cart-dialog.cart-drawer{background:#141413;color:#faf8f5;padding:0;flex-direction:column;border-radius:24px 0 0 24px;overflow:hidden}
+#cart-dialog.cart-drawer{background:#141413;color:#faf8f5;padding:0;flex-direction:column;border:0;border-radius:24px 0 0 24px;overflow:hidden}
 #cart-dialog.cart-drawer[open]{display:flex}
-#cart-dialog .drawer-header{background:#ffffff;color:#181715;margin:0;padding:20px 24px 18px;border-bottom-left-radius:0;border-bottom-right-radius:0}
+#cart-dialog .drawer-header{background:#ffffff;color:#181715;margin:0;padding:18px 22px 16px;border-bottom:1px solid rgba(24,23,21,.08);flex-shrink:0}
 .cart-header-title-wrap{display:flex;align-items:center;gap:12px}
 #cart-dialog #cart-title{font-size:24px;margin:0;color:#181715}
 .cart-header-count{display:inline-grid;place-items:center;min-width:30px;height:30px;padding:0 8px;border-radius:999px;background:#f8e57e;color:#181715;font:700 13px/1 'Plus Jakarta Sans',Arial,sans-serif}
 #cart-dialog .drawer-header .icon-button{color:#181715}
-#cart-dialog #cart-content{padding:10px 22px 24px;overflow-y:auto;flex:1;background:#141413;border-radius:26px 26px 0 0;margin-top:-12px}
+#cart-dialog #cart-content{padding:14px 22px 24px;overflow-y:auto;flex:1;background:#141413;border-radius:0;margin-top:0;scrollbar-width:thin;scrollbar-color:rgba(255,255,255,.24) #141413}
+#cart-dialog #cart-content::-webkit-scrollbar{width:6px}
+#cart-dialog #cart-content::-webkit-scrollbar-track{background:#141413}
+#cart-dialog #cart-content::-webkit-scrollbar-thumb{background:rgba(255,255,255,.24);border-radius:999px}
 #cart-dialog .empty-state{color:#faf8f5}
 #cart-dialog .empty-state p{color:#b8b1a6}
 #cart-dialog .empty-state .button{background:#ffffff;color:#181715;border-color:#ffffff;border-radius:999px}
@@ -627,7 +631,8 @@ body[data-product-wash="true"]{background:#faf8f5}
 .cart-dark-sheet .promo-code-box{background:rgba(255,255,255,.06);border-color:rgba(255,255,255,.14);color:#faf8f5}
 .cart-dark-sheet .promo-code-label{color:#e6dfd3}
 .cart-dark-sheet .promo-code-row input{background:#1f1e1c;border-color:rgba(255,255,255,.22);color:#ffffff}
-.cart-dark-sheet .promo-code-row .button.outline{color:#faf8f5;border-color:rgba(255,255,255,.3)}
+.cart-dark-sheet .promo-code-row .button.outline{background:rgba(255,255,255,.12)!important;color:#faf8f5!important;border-color:rgba(255,255,255,.32)!important;border-radius:999px}
+.cart-dark-sheet .promo-code-row .button.outline:hover{background:rgba(255,255,255,.22)!important}
 .cart-dark-sheet .promo-feedback.is-ok{color:#8ad4a5}
 .cart-dark-sheet .promo-feedback.is-err{color:#ff9b8f}
 .cart-dark-sheet .bundle-savings-pill{background:rgba(255,255,255,.06);border-color:rgba(255,255,255,.14);color:#faf8f5}
@@ -679,7 +684,7 @@ main:has(.checkout-wrap){overflow-x:clip}
 .checkout-back-btn:hover{background:#f7f3eb!important}
 .checkout-next-btn{border-radius:999px!important;background:#181715!important;color:#ffffff!important;border:1.5px solid #181715!important;min-height:48px;padding:0 26px;font-weight:700;box-shadow:0 4px 0 #e79b63,0 10px 20px -8px rgba(24,23,21,.25)}
 .checkout-next-btn:hover{background:#2d2b27!important}
-.checkout-summary{position:relative;margin-top:0;background:#fffdf9;border:1.5px solid #e7e0d4;border-top:1.5px solid #e7e0d4;border-radius:26px;padding:24px 24px 0;box-shadow:0 18px 42px -26px rgba(24,23,21,.16);overflow:visible}
+.checkout-summary{position:relative;top:auto;margin-top:0;background:#fffdf9;border:1.5px solid #e7e0d4;border-top:1.5px solid #e7e0d4;border-radius:26px;padding:24px 24px 0;box-shadow:0 18px 42px -26px rgba(24,23,21,.16);overflow:visible}
 .checkout-cat-art{position:absolute;top:6px;right:14px;width:196px;max-width:56%;height:auto;transform:translateY(-92%);pointer-events:none;user-select:none;z-index:3;filter:drop-shadow(0 8px 14px rgba(24,23,21,.12))}
 .checkout-meadow-wrap{position:relative;margin:16px -24px 0 -24px;padding-top:16px;border-radius:0 0 24px 24px;overflow:hidden;background:linear-gradient(180deg,rgba(255,253,249,0) 0%,rgba(237,242,210,.5) 48%,#849326 100%);pointer-events:none;user-select:none}
 .checkout-meadow-ground{position:absolute;left:0;right:0;bottom:0;width:100%;height:46px;display:block;z-index:1}
@@ -715,14 +720,14 @@ main:has(.checkout-wrap){overflow-x:clip}
 @media(max-width:760px){
   .checkout-wrap{width:min(100%,calc(100% - 28px));padding:12px 0 48px}
   .checkout-page-head{margin-bottom:16px}
-  .checkout-layout{display:flex;flex-direction:column-reverse;gap:16px}
+  .checkout-layout{display:flex;flex-direction:column-reverse;gap:18px}
   .checkout-form{margin-top:0;padding:20px 16px 0;border-radius:22px;overflow:hidden}
   .checkout-form .form-grid{grid-template-columns:1fr 1fr;gap:10px 12px}
   .checkout-form .form-grid .field.wide{grid-column:1 / -1}
-  .checkout-form .checkout-step-actions{flex-wrap:wrap;gap:10px}
-  .checkout-form .checkout-step-actions .button{width:auto!important}
+  .checkout-form .checkout-step-actions{flex-wrap:nowrap;gap:8px;align-items:center}
+  .checkout-form .checkout-step-actions .button{width:auto!important;white-space:nowrap;flex:0 0 auto}
   .checkout-cat-art{display:none}
-  .checkout-summary{margin-top:0;padding:16px 16px 14px;border-radius:20px}
+  .checkout-summary{position:static;top:auto;margin-top:0;padding:16px 16px 14px;border-radius:20px}
   .checkout-summary.summary-collapsed .checkout-meadow-wrap{display:none}
   .checkout-meadow-wrap{margin:12px -16px -14px -16px;border-radius:0 0 18px 18px}
   .checkout-meadow-ground{height:40px}
@@ -733,8 +738,15 @@ main:has(.checkout-wrap){overflow-x:clip}
   .checkout-mobile-mid{width:40%;height:auto;flex-shrink:0;margin-right:-9%;display:block}
   .checkout-mobile-cat{width:44%;height:auto;flex-shrink:0;display:block}
 }
+@media(max-width:480px){
+  .checkout-back-btn{min-height:46px;padding:0 14px;font-size:13px}
+  .checkout-next-btn{min-height:46px;padding:0 20px;font-size:13.5px}
+}
 @media(max-width:420px){
   .checkout-signin-cat{width:68px}
+}
+@media(max-width:380px){
+  .checkout-back-btn{padding:0 12px;font-size:12.5px}
 }
 
 /* Compact Location Summary Card & Rounded Floating Map Picker */

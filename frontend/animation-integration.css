@@ -83,7 +83,7 @@
 .pos-transaction-container.is-animating-reverse .card{animation:slide-top 1.2s cubic-bezier(.645,.045,.355,1) both reverse}
 .pos-transaction-container.is-animating-reverse .post{animation:slide-post 1s cubic-bezier(.165,.84,.44,1) both reverse}
 .pos-transaction-container.is-animating-reverse .dollar{animation:fade-in-fwd .3s 0s both reverse}
-@media(max-width:480px){.pos-transaction-container{width:min(220px,100%);height:48px;min-height:48px;flex-basis:220px;margin:0 0 0 auto}.pos-transaction-container .left-side{width:82px;flex-basis:82px}.pos-transaction-container .right-side{gap:4px;padding:0 6px}.pos-transaction-container .new{font-size:13px}.pos-transaction-container .arrow{width:12px;height:12px;flex-basis:12px}.pos-transaction-container .post{top:48px}}
+@media(max-width:480px){.pos-transaction-container{width:auto;height:46px;min-height:46px;max-width:224px;min-width:0;flex:1 1 auto;margin:0 0 0 auto}.pos-transaction-container .left-side{width:64px;flex:0 0 64px}.pos-transaction-container .right-side{gap:4px;padding:0 10px 0 8px}.pos-transaction-container .new{font-size:clamp(12px,3.4vw,13.5px);overflow:hidden;text-overflow:ellipsis}.pos-transaction-container .arrow{width:12px;height:12px;flex:0 0 12px}.pos-transaction-container .post{top:46px}}
 .pos-transaction-container.is-animating,.pos-transaction-container.is-animating-reverse{opacity:1!important;filter:none!important;pointer-events:none}
 .checkout-payment-dialog{width:min(440px,calc(100% - 32px));margin:auto;padding:26px;border:1px solid var(--line);border-radius:18px;background:#fffefa;color:var(--ink);box-shadow:0 20px 70px #0003}
 .checkout-payment-dialog::backdrop{background:#1b1b18a6;backdrop-filter:blur(3px)}
