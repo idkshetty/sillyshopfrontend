@@ -23,8 +23,76 @@ async function realtimeBackend(){
  if(!url){const config=await loadPublicConfig();url=config.databaseURL;}
  if(!url)throw new Error('Set FIREBASE_DB_URL on the backend.');return {r,db:r.getDatabase(app,url)};})().catch(error=>{realtimePromise=null;throw error;});return realtimePromise;
 }
-function cachedPublic(path,onData){const key='silly-public-v2:'+path;try{const cache=JSON.parse(localStorage.getItem(key));if(cache&&Date.now()-cache.time<86400000)onData(cache.value);}catch{}return value=>{try{localStorage.setItem(key,JSON.stringify({time:Date.now(),value}));}catch{}onData(value);};}
-async function observePublic(path,onData,onError){const publish=cachedPublic(path,onData);const {r,db}=await realtimeBackend();return r.onValue(r.ref(db,'publicStore/'+path),snapshot=>publish(snapshot.val()||{}),onError);}
+function cachedPublic(path,onData){const key='silly-public-v2:'+path;let initialValue=null,hasCached=false;try{const cache=JSON.parse(localStorage.getItem(key));if(cache&&Date.now()-cache.time<86400000){initialValue=cache.value;hasCached=true;onData(cache.value);}}catch{}const publish=value=>{try{localStorage.setItem(key,JSON.stringify({time:Date.now(),value}));}catch{}onData(value);};return {publish,initialJson:hasCached?JSON.stringify(initialValue??{}):''};}
+const PUBLIC_STORE_REFRESH_MS=60000;
+const publicSubscribers=new Map();
+let publicStoreSnapshot=null,publicStoreLoadedAt=0,publicStorePromise=null,publicPollTimer=null;
+function deliverPublicPath(path,value){
+  const set=publicSubscribers.get(path);
+  if(!set?.size)return;
+  const payload=value??{};
+  const serialized=JSON.stringify(payload);
+  for(const sub of set){
+    if(sub.lastJson===serialized)continue;
+    sub.lastJson=serialized;
+    sub.publish(payload);
+  }
+}
+async function fetchPublicStore({force=false}={}){
+  if(!force&&publicStoreSnapshot&&Date.now()-publicStoreLoadedAt<PUBLIC_STORE_REFRESH_MS)return publicStoreSnapshot;
+  if(!publicStorePromise){
+    publicStorePromise=(async()=>{
+      const response=await fetch(backendURL()+'/public-store',{...(force?{cache:'no-cache'}:{}),signal:AbortSignal.timeout(15000)});
+      if(!response.ok)throw new Error('Could not load public store.');
+      const data=await response.json();
+      publicStoreSnapshot=data;
+      publicStoreLoadedAt=Date.now();
+      for(const path of publicSubscribers.keys())deliverPublicPath(path,data?.[path]??{});
+      return data;
+    })().finally(()=>{publicStorePromise=null;});
+  }
+  return publicStorePromise;
+}
+function ensurePublicPolling(){
+  if(publicPollTimer||typeof setInterval!=='function')return;
+  publicPollTimer=setInterval(()=>{
+    if(!publicSubscribers.size){clearInterval(publicPollTimer);publicPollTimer=null;return;}
+    if(typeof document==='undefined'||document.visibilityState==='visible')void fetchPublicStore({force:true}).catch(()=>{});
+  },PUBLIC_STORE_REFRESH_MS);
+}
+async function refreshPublicStore(){
+  try{await fetchPublicStore({force:true});}catch{}
+}
+async function observePublic(path,onData,onError){
+  const {publish,initialJson}=cachedPublic(path,onData);
+  const sub={publish,onError,lastJson:initialJson};
+  if(!publicSubscribers.has(path))publicSubscribers.set(path,new Set());
+  publicSubscribers.get(path).add(sub);
+  ensurePublicPolling();
+  const hasSnapshot=publicStoreSnapshot&&Date.now()-publicStoreLoadedAt<PUBLIC_STORE_REFRESH_MS;
+  if(hasSnapshot){
+    deliverPublicPath(path,publicStoreSnapshot?.[path]??{});
+  }else{
+    void fetchPublicStore().catch(async error=>{
+      if(!publicSubscribers.get(path)?.has(sub))return;
+      try{
+        const {r,db}=await realtimeBackend();
+        const snap=await r.get(r.ref(db,'publicStore/'+path));
+        const val=snap.val()||{};
+        const serialized=JSON.stringify(val);
+        if(sub.lastJson!==serialized){sub.lastJson=serialized;sub.publish(val);}
+      }catch(fallbackError){
+        if(!sub.lastJson)sub.onError?.(fallbackError||error);
+      }
+    });
+  }
+  return ()=>{
+    const set=publicSubscribers.get(path);
+    set?.delete(sub);
+    if(set&&!set.size)publicSubscribers.delete(path);
+    if(!publicSubscribers.size&&publicPollTimer){clearInterval(publicPollTimer);publicPollTimer=null;}
+  };
+}
 export async function observeAuth(callback) {
   const {a,auth} = await backend();
   try {
@@ -162,13 +230,13 @@ export async function resetPassword(email=''){
   await a.sendPasswordResetEmail(auth,cleanEmail);
 }
 export async function observeSettings(onData,onError){return observePublic('settings',v=>onData(normalizeSettings(v)),onError);}
-export async function saveSettings(value){return callBackend('saveStoreData',{kind:'settings',value:normalizeSettings(value)});}
+export async function saveSettings(value){const r=await callBackend('saveStoreData',{kind:'settings',value:normalizeSettings(value)});void refreshPublicStore();return r;}
 export async function observeArtists(onData,onError){return observePublic('artists',v=>onData(normalizeArtists(v)),onError);}
-export async function saveArtists(value){return callBackend('saveStoreData',{kind:'artists',value:normalizeArtists(value)});}
+export async function saveArtists(value){const r=await callBackend('saveStoreData',{kind:'artists',value:normalizeArtists(value)});void refreshPublicStore();return r;}
 export async function observeContent(onData,onError){return observePublic('content',v=>onData(normalizeContent(v)),onError);}
-export async function saveContent(value){const error=validateContent(value);if(error)throw new Error(error);return callBackend('saveStoreData',{kind:'content',value:normalizeContent(value)});}
+export async function saveContent(value){const error=validateContent(value);if(error)throw new Error(error);const r=await callBackend('saveStoreData',{kind:'content',value:normalizeContent(value)});void refreshPublicStore();return r;}
 export async function observePromos(onData,onError){return observePublic('promos',v=>onData(normalizePromos(v)),onError);}
-export async function savePromos(value){return callBackend('saveStoreData',{kind:'promos',value:normalizePromos(value)});}
+export async function savePromos(value){const r=await callBackend('saveStoreData',{kind:'promos',value:normalizePromos(value)});void refreshPublicStore();return r;}
 export async function observeProducts(admin,onData,onError){
  let publicLoaded=false,lastJson='';
  const emit=rows=>{
@@ -201,17 +269,20 @@ export async function saveProduct(product,id){
   const existingUpdatedAt=id?(adminProducts.find(p=>p.id===id)?.updatedAt??product?.updatedAt??null):null;
   const result=await callBackend('saveProduct',{product,id:id||null,expectedUpdatedAt:existingUpdatedAt});
   try{localStorage.removeItem('silly-public-v2:products');}catch{}
+  void refreshPublicStore();
   for(const refresh of productListeners)await refresh();
   return result.id;
 }
 export async function archiveProduct(id){
   await callBackend('archiveProduct',{id});
   try{localStorage.removeItem('silly-public-v2:products');}catch{}
+  void refreshPublicStore();
   for(const refresh of productListeners)await refresh();
 }
 export async function deleteProduct(id){
   await callBackend('deleteProduct',{id});
   try{localStorage.removeItem('silly-public-v2:products');}catch{}
+  void refreshPublicStore();
   for(const refresh of productListeners)await refresh();
 }
 export async function uploadImage(file){return encodeImage(file);}
