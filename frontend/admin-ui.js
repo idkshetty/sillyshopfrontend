@@ -279,6 +279,8 @@ export function orderCardMarkup(o, {
     ? `<span class="order-print-pill is-printed" title="Printed${o.labelPrintCount > 1 ? ` (${o.labelPrintCount}×)` : ''}">Printed</span>`
     : (printable ? '<span class="order-print-pill is-unprinted">Unprinted</span>' : '');
   const canDownloadInvoice = ['captured', 'refunded'].includes(o.paymentStatus);
+  const canRazorpayRefund = o.paymentStatus === 'captured' && o.paymentMethod !== 'manual' && Math.max(0, (Number(o.quote?.amount) || 0) - (Number(o.refundedAmount) || 0)) >= 100;
+  const refundDue = canRazorpayRefund && o.refundStatus === 'required';
   const canCancel = ['details_received', 'reviewed', 'contacted', 'processing'].includes(o.status);
   const shippingIncluded = Boolean(o.quote?.shipping > 0 || o.quote?.freeShipping);
   const canSetQuote = o.checkoutPayment
@@ -300,6 +302,7 @@ export function orderCardMarkup(o, {
         <span class="status-pill order-stage-pill">${e(stageLabel)}</span>
         ${printBadge}
         ${printable ? `<button type="button" class="button outline small order-summary-print" data-action="print-label" data-id="${e(o.id)}">Print label ↗</button>` : ''}
+        ${canRazorpayRefund ? `<button type="button" class="button outline small danger-button order-summary-refund" data-action="open-razorpay-refund" data-id="${e(o.id)}">${refundDue ? 'Refund due · Issue refund' : 'Refund ↩'}</button>` : ''}
         <button type="button" class="icon-button order-expand-chevron" data-action="toggle-order-card" data-id="${e(o.id)}" aria-expanded="${open ? 'true' : 'false'}" aria-label="${open ? 'Collapse order details' : 'Expand order details'}"><svg viewBox="0 0 24 24" class="ui-chevron" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></button>
       </div>
     </div>
@@ -319,6 +322,7 @@ export function orderCardMarkup(o, {
       <div class="order-label-actions">
         ${canDownloadInvoice ? `<button type="button" class="button outline small" data-action="download-invoice" data-id="${e(o.id)}">Download invoice</button>` : ''}
         ${printable ? `<button type="button" class="button outline small" data-action="print-label" data-id="${e(o.id)}">Print label ↗</button>` : ''}
+        ${canRazorpayRefund ? `<button type="button" class="button outline small danger-button" data-action="open-razorpay-refund" data-id="${e(o.id)}">Issue Razorpay refund</button>` : ''}
         ${isPrinted && printable ? `<button type="button" class="text-link" data-action="reset-label-printed" data-id="${e(o.id)}">Mark unprinted</button>` : ''}
         <a class="text-link" href="${e(locationUrl)}" target="_blank" rel="noopener">${hasPin ? 'View delivery pin ↗' : 'Search address ↗'}</a>
       </div>

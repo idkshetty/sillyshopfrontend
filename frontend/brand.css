@@ -1856,13 +1856,14 @@ button[data-action="add-detail"]:disabled:not([aria-busy="true"]) {
     font-size: 16px;
   }
   .product-card-actions {
-    grid-template-columns: 1fr auto;
+    grid-template-columns: minmax(136px, 1fr) auto;
     gap: 8px;
   }
   .product-card .cart-button,
   .product-card .artwork-cart-btn {
     height: 44px;
     min-height: 44px;
+    min-width: 136px;
     padding: 0 14px;
     font-size: 13px !important;
   }
@@ -1871,5 +1872,13 @@ button[data-action="add-detail"]:disabled:not([aria-busy="true"]) {
     padding: 0 14px;
     font-size: 12.5px;
     width: auto;
+  }
+}
+@media (max-width: 359px) {
+  .product-card-actions {
+    grid-template-columns: 1fr;
+  }
+  .product-card .quick-buy-btn {
+    width: 100%;
   }
 }

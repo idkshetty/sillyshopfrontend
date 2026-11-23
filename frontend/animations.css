@@ -30,6 +30,8 @@
   font-size: 1.35em;
   color: var(--artwork-fg, #181715);
   transform: translate(-50%, -50%);
+  opacity: 0;
+  pointer-events: none;
 }
 
 .cart-button .fa-box {
@@ -40,6 +42,13 @@
   font-size: 0.95em;
   color: var(--artwork-fg, #181715);
   transform: translate(-50%, -50%);
+  opacity: 0;
+  pointer-events: none;
+}
+
+.cart-button.clicked .fa-shopping-cart,
+.cart-button.clicked .fa-box {
+  opacity: 1;
 }
 
 .cart-button span {

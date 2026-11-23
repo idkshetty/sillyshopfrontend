@@ -908,6 +908,12 @@ async function submitCheckout(event){
         else{render();toast('Payment successful. Thank you!');}
         return;
       }
+      if(cancelResult?.pendingCapture===true){
+        loader.hide();
+        toast('Your UPI payment is being confirmed by Razorpay. Check My account → Orders in a moment.');
+        location.hash='account/requests';
+        return;
+      }
       loader.hide();
       cartCleanupNotes.length=0;
       cart=cartSnapshot.map(item=>({...item}));persistCart();
