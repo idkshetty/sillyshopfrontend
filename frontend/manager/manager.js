@@ -668,16 +668,17 @@ function renderArtworksTab(isAdmin) {
       <form id="mgr-upload-form" class="mgr-form-grid">
         <div class="mgr-field wide"><span>Photos (required · 1–4 photos · photo #1 becomes Cover)</span>
           <div class="mgr-photo-bar">
-            <label class="mgr-btn accent mgr-camera-btn">
-              <span>📷 ${esc(state.uploadingPhotosText || 'Take photo (Camera)')}</span>
+            <label class="mgr-btn accent mgr-camera-btn ${state.uploadingPhotosText ? 'is-disabled' : ''}">
+              <span>📷 ${state.uploadingPhotosText ? 'Uploading…' : 'Take photo (Camera)'}</span>
               <input id="mgr-upload-camera" type="file" accept="image/*" capture="environment" ${state.uploadingPhotosText ? 'disabled' : ''}>
             </label>
-            <label class="mgr-dropzone" style="flex:1;padding:12px">
-              <strong>${esc(state.uploadingPhotosText || 'Choose from gallery / files')}</strong>
+            <label class="mgr-dropzone ${state.uploadingPhotosText ? 'is-disabled' : ''}">
+              <strong>Choose from gallery / files</strong>
               <span class="mgr-muted">JPG, PNG, or WebP · hosted HD + Firebase backup</span>
               <input id="mgr-upload-files" type="file" accept="image/jpeg,image/png,image/webp" multiple ${state.uploadingPhotosText ? 'disabled' : ''}>
             </label>
           </div>
+          ${state.uploadingPhotosText ? `<div class="mgr-upload-progress" role="status">${esc(state.uploadingPhotosText)}</div>` : ''}
         </div>
         ${state.selectedUploadImages.length ? `<div class="mgr-preview-imgs mgr-field wide" id="mgr-upload-preview">${state.selectedUploadImages.map((src, i) => `<div class="mgr-preview-thumb"><img src="${esc(src)}" ${state.selectedUploadBackups[i] && state.selectedUploadBackups[i] !== src ? `data-fallback-src="${esc(state.selectedUploadBackups[i])}"` : ''} alt="Preview ${i + 1}">${i === 0 ? '<span class="mgr-cover-tag">COVER</span>' : ''}<button type="button" class="mgr-thumb-del" data-action="remove-upload-thumb" data-idx="${i}" aria-label="Remove photo ${i + 1}">×</button></div>`).join('')}</div>` : '<div id="mgr-upload-preview"></div>'}
         <label class="mgr-field">Artwork title (optional)<input name="title" maxlength="120" placeholder="Optional — auto-named if left blank"></label>
@@ -1710,16 +1711,17 @@ function renderCurationModalBody(art) {
         <div class="mgr-preview-imgs" style="margin-bottom:6px">
           ${state.curateImages.map((src, i) => `<div class="mgr-preview-thumb"><img src="${esc(src)}" ${state.curateBackups[i] && state.curateBackups[i] !== src ? `data-fallback-src="${esc(state.curateBackups[i])}"` : ''} alt="">${i === 0 ? '<span class="mgr-cover-tag">COVER</span>' : ''}${state.curateImages.length > 1 ? `<button type="button" class="mgr-thumb-del" data-action="remove-curate-thumb" data-id="${esc(art.id)}" data-idx="${i}">×</button>` : ''}</div>`).join('')}
         </div>
-        <div style="display:flex;gap:8px;flex-wrap:wrap">
-          <label class="mgr-btn accent small mgr-camera-btn">
-            <span>📷 ${esc(state.uploadingPhotosText || 'Take photo')}</span>
+        <div class="mgr-photo-bar">
+          <label class="mgr-btn accent small mgr-camera-btn ${state.uploadingPhotosText ? 'is-disabled' : ''}">
+            <span>📷 ${state.uploadingPhotosText ? 'Uploading…' : 'Take photo'}</span>
             <input id="mgr-curate-camera" data-id="${esc(art.id)}" type="file" accept="image/*" capture="environment" ${state.uploadingPhotosText ? 'disabled' : ''}>
           </label>
-          <label class="mgr-dropzone" style="flex:1;padding:10px">
-            <strong>${esc(state.uploadingPhotosText || '+ Choose from gallery (HD + Base64 backup)')}</strong>
+          <label class="mgr-dropzone ${state.uploadingPhotosText ? 'is-disabled' : ''}">
+            <strong>+ Choose from gallery (HD + Base64 backup)</strong>
             <input id="mgr-curate-files" data-id="${esc(art.id)}" type="file" accept="image/jpeg,image/png,image/webp" multiple ${state.uploadingPhotosText ? 'disabled' : ''}>
           </label>
         </div>
+        ${state.uploadingPhotosText ? `<div class="mgr-upload-progress" role="status">${esc(state.uploadingPhotosText)}</div>` : ''}
       </div>
       <label class="mgr-field">Title (optional)<input name="title" maxlength="120" value="${esc(art.title)}"></label>
       <label class="mgr-field">Artist<input name="artistName" required maxlength="120" value="${esc(art.artistName)}"></label>
@@ -2607,6 +2609,7 @@ document.addEventListener('change', async event => {
       setBusy(true);
       const res = await uploadArtworkFiles(event.target.files, text => {
         state.uploadingPhotosText = text;
+        renderCurationModalBody(art);
       });
       state.curateImages = [...state.curateImages, ...res.images].slice(0, 4);
       state.curateBackups = [...state.curateBackups, ...res.backupImages].slice(0, 4);

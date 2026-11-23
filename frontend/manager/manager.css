@@ -396,6 +396,7 @@ code, .mono {
   font-size: 12px;
   font-weight: 500;
   color: var(--ink-2);
+  min-width: 0;
 }
 .mgr-field.wide { grid-column: 1 / -1; }
 .mgr-field input, .mgr-field select, .mgr-field textarea {
@@ -426,6 +427,7 @@ code, .mono {
   border-radius: var(--radius);
   padding: 18px 20px;
   margin-bottom: 16px;
+  min-width: 0;
 }
 .mgr-panel h2 { font-size: 15px; font-weight: 600; margin-bottom: 4px; }
 
@@ -957,17 +959,24 @@ code, .mono {
 
 /* Mobile Dropzone & Camera Capture */
 .mgr-photo-bar {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  align-items: stretch;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 10px;
+  align-items: center;
+  width: 100%;
+  min-width: 0;
 }
 .mgr-camera-btn {
   position: relative;
   overflow: hidden;
   min-height: 44px;
-  padding: 0 16px;
+  padding: 10px 16px;
+  white-space: normal;
+  text-align: center;
+  line-height: 1.3;
+  max-width: 100%;
 }
+.mgr-camera-btn.is-disabled { opacity: 0.55; pointer-events: none; }
 .mgr-camera-btn input {
   position: absolute;
   inset: 0;
@@ -979,14 +988,34 @@ code, .mono {
 .mgr-dropzone {
   border: 1.5px dashed var(--line-strong);
   border-radius: 10px;
-  padding: 18px 14px;
+  padding: 12px 14px;
   background: var(--surface-soft);
   text-align: center;
   cursor: pointer;
   display: grid;
   gap: 4px;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
 }
+.mgr-dropzone.is-disabled { opacity: 0.55; pointer-events: none; }
 .mgr-dropzone input { display: none; }
+.mgr-upload-progress {
+  margin-top: 4px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: var(--accent-bg);
+  border: 1px solid #a7f3d0;
+  color: #065f46;
+  font-size: 12px;
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+@media (max-width: 560px) {
+  .mgr-photo-bar { grid-template-columns: 1fr; }
+  .mgr-camera-btn { width: 100%; }
+}
 .mgr-preview-imgs { display: flex; flex-wrap: wrap; gap: 10px; }
 .mgr-cycle-pill {
   display: inline-flex;
