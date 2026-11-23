@@ -22,7 +22,7 @@ import {accountMarkup,ordersListMarkup,emailAuthCardMarkup} from './customer-das
 import {steppedProgress} from './stepped-progress.js';
 import {normalizeProfile,validateProfile,checkoutDefaults} from './profile.js';
 import {logoutMarkup,mountLogout,animateLogout} from './logout.js';
-import {DEFAULT_SETTINGS,FALLBACK_BANNER_ARTWORKS,normalizeSettings,safeStoreLink,bannerMarkup,settingsForm} from './store-settings.js';
+import {DEFAULT_SETTINGS,FALLBACK_BANNER_ARTWORKS,MOBILE_BREAKPOINT_OPTIONS,mobileGridBreakpointCss,normalizeSettings,safeStoreLink,bannerMarkup,settingsForm} from './store-settings.js';
 import {DEFAULT_CONTENT,normalizeContent,contentCategories,applyStoreContent,footerMarkup} from './store-content.js';
 import {homeMarkup,homeFilterPanelMarkup,artistsPageMarkup,artistDetailMarkup,storyMarkup,infoMarkup,productCardMarkup} from './storefront-view.js';
 import {mountContentEditor} from './content-editor.js';
@@ -89,7 +89,73 @@ function applyAboutPageVisibility(){
   const show=Boolean(storeSettings.aboutVisible);
   document.querySelectorAll('.desktop-nav a[href="#about"],#mobile-menu a[href="#about"],#collection-menu a[href="#about"],#footer a[href="#about"]').forEach(el=>{el.hidden=!show;});
 }
+function applyMobileBreakpoint(){
+  const rawBp=Math.round(Number(storeSettings.mobileBreakpoint));
+  const bp=Number.isInteger(rawBp)&&rawBp>=320&&rawBp<=840?rawBp:580;
+  let styleEl=$('dynamic-mobile-breakpoint');
+  if(!styleEl){
+    styleEl=document.createElement('style');
+    styleEl.id='dynamic-mobile-breakpoint';
+    document.head.append(styleEl);
+  }
+  const nextCss=mobileGridBreakpointCss(bp);
+  if(styleEl.textContent!==nextCss)styleEl.textContent=nextCss;
+  const width=Math.round(Number(window.innerWidth||document.documentElement?.clientWidth||0));
+  document.body.dataset.mobileBreakpoint=String(bp);
+  if(width>0){
+    document.body.dataset.viewportMode=width<=bp?'mobile':width<=900?'tablet':'desktop';
+  }
+}
 applyAboutPageVisibility();
+applyMobileBreakpoint();
+window.addEventListener('resize',applyMobileBreakpoint,{passive:true});
+window.addEventListener('orientationchange',applyMobileBreakpoint,{passive:true});
+window.visualViewport?.addEventListener('resize',applyMobileBreakpoint,{passive:true});
+
+const scrollStorageKey='silly-shop-scroll-v1';
+const routeScrollMemory=new Map();
+try{
+  if(typeof history!=='undefined'&&'scrollRestoration' in history)history.scrollRestoration='manual';
+  const savedScroll=JSON.parse(sessionStorage.getItem(scrollStorageKey)||'{}');
+  if(savedScroll&&typeof savedScroll==='object'){
+    for(const [k,v] of Object.entries(savedScroll)){
+      if(Number.isFinite(v)&&v>=0)routeScrollMemory.set(k,Math.round(v));
+    }
+  }
+}catch{}
+function routeScrollKey(rawHash=location.hash){
+  const h=String(rawHash||'').replace(/^#/,'').trim();
+  if(!h||h==='home'||h==='artworks'||h==='main')return 'home';
+  return h;
+}
+let activeScrollRouteKey=routeScrollKey(),lastRenderedRouteKey='',lastBrowseHash='#home',isRestoringScroll=false,scrollSaveTimer=null;
+function persistScrollMemory(){
+  clearTimeout(scrollSaveTimer);
+  scrollSaveTimer=setTimeout(()=>{
+    try{sessionStorage.setItem(scrollStorageKey,JSON.stringify(Object.fromEntries(routeScrollMemory)));}catch{}
+  },120);
+}
+function saveRouteScroll(key=activeScrollRouteKey,y=window.scrollY){
+  if(!key||isRestoringScroll)return;
+  const mainEl=$('main');
+  if(mainEl&&(mainEl.hasAttribute('data-loading')||mainEl.querySelector('.loading-skeleton')))return;
+  const cleanY=Math.max(0,Math.round(Number(y)||0));
+  routeScrollMemory.set(key,cleanY);
+  persistScrollMemory();
+}
+function restoreRouteScroll(key=activeScrollRouteKey,{fallbackTop=null}={}){
+  const saved=routeScrollMemory.get(key);
+  const targetY=Number.isFinite(saved)?saved:(fallbackTop!==null?fallbackTop:null);
+  if(targetY===null)return;
+  isRestoringScroll=true;
+  window.scrollTo({top:targetY,behavior:'instant'});
+  requestAnimationFrame(()=>{
+    window.scrollTo({top:targetY,behavior:'instant'});
+    requestAnimationFrame(()=>{isRestoringScroll=false;});
+  });
+}
+window.addEventListener('scroll',()=>{if(!isRestoringScroll)saveRouteScroll(activeScrollRouteKey,window.scrollY);},{passive:true});
+window.addEventListener('pagehide',()=>{saveRouteScroll(activeScrollRouteKey,window.scrollY);try{sessionStorage.setItem(scrollStorageKey,JSON.stringify(Object.fromEntries(routeScrollMemory)));}catch{}});
 
 function toast(message) {clearTimeout(toastTimer);$('toast').textContent=message;$('toast').hidden=false;toastTimer=setTimeout(()=>$('toast').hidden=true,5000);}
 let busyDepth=0;
@@ -388,7 +454,7 @@ function renderProduct(){
   $('main').innerHTML=`<div class="product-immersive-page" style="${themeStyle};--art-accent:${e(bgColor)};--art-ink:${e(inkColor)}">
     <div class="product-immersive-hero"><div class="container">
       <div class="product-topbar">
-        <a href="#home" class="product-float-btn" aria-label="Back to all artworks"><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M19 12H5"/><path d="m12 19-7-7 7-7"/></svg></a>
+        <a href="${e(lastBrowseHash||'#home')}" class="product-float-btn" aria-label="Back to all artworks"><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M19 12H5"/><path d="m12 19-7-7 7-7"/></svg></a>
         <span class="product-topbar-title">${e(p.title)}</span>
         <div class="product-topbar-right">
           <button type="button" class="product-float-btn" data-action="share-page" data-share-title="${e(`${p.title} by ${artist}`)}" data-share-text="${e(`Look at "${p.title}" (${productType}) by ${artist} on hehe.cafe — ${money(p.price)}`)}" data-share-url="${e(`https://hehe.cafe/#product/${p.id}`)}" aria-label="Share ${e(p.title)}"><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="m8.6 13.5 6.8 4"/><path d="m15.4 6.5-6.8 4"/></svg></button>
@@ -956,6 +1022,7 @@ function applyStoreBanners(){
   announcement.innerHTML=`<a href="${e(storeSettings.announcementLink)}"><span class="announcement-text">${e(storeSettings.announcementText)}</span> <span aria-hidden="true">→</span></a>`;
   document.body.dataset.cartBtnMode=storeSettings.cartButtonMode||'black';
   applyAboutPageVisibility();
+  applyMobileBreakpoint();
 }
 function draftSettingsFromForm(){
   const form=$('banner-form');
@@ -973,6 +1040,7 @@ function draftSettingsFromForm(){
   draft.reviewsVisible=data.get('reviewsVisible')==='on';
   draft.aboutVisible=data.get('aboutVisible')==='on';
   draft.storyVisible=data.get('storyVisible')==='on';
+  if(data.has('mobileBreakpoint'))draft.mobileBreakpoint=Number(data.get('mobileBreakpoint'));
   draft.bannerButtonOffsetX=Number(data.get('bannerButtonOffsetX')||0);
   draft.bannerButtonOffsetY=Number(data.get('bannerButtonOffsetY')||0);
   if(homeLayoutController){
@@ -1012,6 +1080,7 @@ async function submitBanners(event){
   value.artworkSort=storeSettings.artworkSort||'manual';
   value.cartButtonMode=storeSettings.cartButtonMode||'black';
   value.bannerLimit=Number.isInteger(storeSettings.bannerLimit)?storeSettings.bannerLimit:8;
+  value.mobileBreakpoint=data.has('mobileBreakpoint')?Number(data.get('mobileBreakpoint')):(Number.isInteger(storeSettings.mobileBreakpoint)?storeSettings.mobileBreakpoint:580);
   if(homeLayoutController){
     const lv=homeLayoutController.getValue();
     value.homeSectionOrder=lv.homeSectionOrder;
@@ -1231,8 +1300,9 @@ function renderAdminContent(){
     const activeSort=storeSettings.artworkSort||'manual';
     const btnMode=storeSettings.cartButtonMode||'black';
     const bannerLimit=Number.isInteger(storeSettings.bannerLimit)?storeSettings.bannerLimit:8;
+    const mobileBp=Number.isInteger(storeSettings.mobileBreakpoint)?storeSettings.mobileBreakpoint:580;
     const limitOptions=[[3,'3 artworks'],[5,'5 artworks'],[8,'8 artworks (default)'],[10,'10 artworks'],[12,'12 artworks'],[15,'15 artworks'],[20,'20 artworks'],[0,'No limit (all banner pieces)']];
-    $('admin-content').innerHTML=`<div class="admin-title"><div><h1>Your artworks</h1><p>Manage your artworks, homepage &amp; banner visibility, stock, pricing and display order.</p></div><div class="admin-title-actions"><button type="button" class="button outline small" data-action="toggle-products-preview">${productsPreviewOpen?'Hide storefront preview':'Preview storefront 👁'}</button><button class="button" data-action="new-product">+ Add artwork</button></div></div><div class="stats-grid"><div class="stat"><span>Total artworks</span><strong id="admin-total-count">${products.length}</strong></div><div class="stat"><span>Published</span><strong id="admin-published-count">${products.filter(p=>p.visible).length}</strong></div><div class="stat"><span>Sold out</span><strong id="admin-sold-count">${products.filter(p=>!p.stock).length}</strong></div></div><div id="admin-products-preview" class="products-preview-panel" ${productsPreviewOpen?'':'hidden'}></div><div class="admin-filters"><input id="admin-search" aria-label="Search admin products" placeholder="Search artworks by title, artist or SKU…" value="${e(adminSearch)}"><label class="admin-sort-control"><span>Storefront order</span><select id="admin-artwork-sort" aria-label="Storefront artwork display order">${ARTWORK_SORT_MODES.map(([val,label])=>`<option value="${e(val)}" ${activeSort===val?'selected':''}>${e(label)}</option>`).join('')}</select></label><label class="admin-sort-control"><span>Add to cart buttons</span><select id="admin-cart-btn-mode" aria-label="Add to cart button style"><option value="black" ${btnMode==='black'?'selected':''}>Black buttons (default)</option><option value="artwork" ${btnMode==='artwork'?'selected':''}>Match artwork color</option></select></label><label class="admin-sort-control"><span>Banner limit</span><select id="admin-banner-limit" aria-label="Maximum artworks shown in banner">${limitOptions.map(([val,label])=>`<option value="${val}" ${bannerLimit===val?'selected':''}>${e(label)}</option>`).join('')}</select></label></div><div id="admin-product-table"></div>`;renderAdminTable();syncProductsPreview();
+    $('admin-content').innerHTML=`<div class="admin-title"><div><h1>Your artworks</h1><p>Manage your artworks, homepage &amp; banner visibility, stock, pricing and display order.</p></div><div class="admin-title-actions"><button type="button" class="button outline small" data-action="toggle-products-preview">${productsPreviewOpen?'Hide storefront preview':'Preview storefront 👁'}</button><button class="button" data-action="new-product">+ Add artwork</button></div></div><div class="stats-grid"><div class="stat"><span>Total artworks</span><strong id="admin-total-count">${products.length}</strong></div><div class="stat"><span>Published</span><strong id="admin-published-count">${products.filter(p=>p.visible).length}</strong></div><div class="stat"><span>Sold out</span><strong id="admin-sold-count">${products.filter(p=>!p.stock).length}</strong></div></div><div id="admin-products-preview" class="products-preview-panel" ${productsPreviewOpen?'':'hidden'}></div><div class="admin-filters"><input id="admin-search" aria-label="Search admin products" placeholder="Search artworks by title, artist or SKU…" value="${e(adminSearch)}"><label class="admin-sort-control"><span>Storefront order</span><select id="admin-artwork-sort" aria-label="Storefront artwork display order">${ARTWORK_SORT_MODES.map(([val,label])=>`<option value="${e(val)}" ${activeSort===val?'selected':''}>${e(label)}</option>`).join('')}</select></label><label class="admin-sort-control"><span>Add to cart buttons</span><select id="admin-cart-btn-mode" aria-label="Add to cart button style"><option value="black" ${btnMode==='black'?'selected':''}>Black buttons (default)</option><option value="artwork" ${btnMode==='artwork'?'selected':''}>Match artwork color</option></select></label><label class="admin-sort-control"><span>Banner limit</span><select id="admin-banner-limit" aria-label="Maximum artworks shown in banner">${limitOptions.map(([val,label])=>`<option value="${val}" ${bannerLimit===val?'selected':''}>${e(label)}</option>`).join('')}</select></label><label class="admin-sort-control"><span>Mobile 1-per-row size</span><select id="admin-mobile-breakpoint" aria-label="Mobile 1-per-row screen size threshold">${MOBILE_BREAKPOINT_OPTIONS.map(([val,label])=>`<option value="${val}" ${mobileBp===val?'selected':''}>${e(label)}</option>`).join('')}</select></label></div><div id="admin-product-table"></div>`;renderAdminTable();syncProductsPreview();
     if(isMasterAdmin){
       $('admin-product-table').insertAdjacentHTML('beforebegin',`<section class="master-storage-panel"><div><span class="master-admin-pill">Master Admin</span><h2>Artwork image storage</h2><p>Firebase inline storage remains active until you switch to Freeimage.host (configure FREEIMAGE_API_KEY on the Worker first). Existing photos keep their links.</p></div><label class="admin-sort-control"><span>New artwork photos</span><select id="admin-image-storage" aria-label="Artwork image storage provider"><option value="firebase" ${storeSettings.productImageStorage==='firebase'?'selected':''}>Firebase (current)</option><option value="freeimage" ${storeSettings.productImageStorage==='freeimage'?'selected':''}>Freeimage.host</option></select></label></section>`);
     }
@@ -1957,6 +2027,9 @@ async function submitProduct(event){event.preventDefault();if(!isAdmin)return;co
 function renderInfo(){const markup=infoMarkup(siteContent,route().id);if(!markup)return renderNotFound();$('main').innerHTML=markup;}
 function renderNotFound(){$('main').innerHTML='<div class="container empty-state"><h1>Artwork not found</h1><p>This piece may have been archived or the link may have changed.</p><a href="#home" class="button">Back to hehe.cafe →</a></div>';}
 function render(){
+  const nextRouteKey=routeScrollKey();
+  const isSameRoute=nextRouteKey===lastRenderedRouteKey;
+  if(isSameRoute&&window.scrollY>0)saveRouteScroll(nextRouteKey,window.scrollY);
   $('main').removeAttribute('data-loading');
   delete $('main').dataset.smoothNav;
   delete document.body.dataset.productWash;
@@ -1964,14 +2037,19 @@ function render(){
   document.body.style.removeProperty('--art-ink');
   destroyAdminControllers();
   deliveryMap?.destroy();deliveryMap=null;stopReviews();stopHeroBanner();stopArtistPrompt();
-  const {page}=route();if(page!=='checkout'&&lastRenderedPage==='checkout')checkoutStep=1;lastRenderedPage=page;document.body.dataset.page=page;document.querySelectorAll('.desktop-nav>a').forEach(a=>a.toggleAttribute('aria-current',a.hash===`#${page}`||(page==='artist'&&a.hash==='#artists')));document.querySelectorAll('.desktop-nav>a[aria-current]').forEach(a=>a.setAttribute('aria-current','page'));
+  const {page}=route();if(page!=='checkout'&&lastRenderedPage==='checkout')checkoutStep=1;lastRenderedPage=page;lastRenderedRouteKey=nextRouteKey;activeScrollRouteKey=nextRouteKey;
+  if(['home','shop','collection','search','artists','artist'].includes(page))lastBrowseHash=location.hash||'#home';
+  document.body.dataset.page=page;document.querySelectorAll('.desktop-nav>a').forEach(a=>a.toggleAttribute('aria-current',a.hash===`#${page}`||(page==='artist'&&a.hash==='#artists')));document.querySelectorAll('.desktop-nav>a[aria-current]').forEach(a=>a.setAttribute('aria-current','page'));
   document.title=`${page==='home'?'Original artworks & prints':page==='artists'||page==='artist'?'Artists':page==='admin'?'Studio admin':page==='checkout'?'Checkout':page==='account'?'Your account':'Art gallery'} · hehe.cafe`;
   if(deferPageRender(render))return;
   if(['about','info'].includes(page)&&!contentReady&&!contentError){$('main').innerHTML=pageSkeleton(page);return;}
   if(page==='home')renderHome();else if(['shop','collection','search'].includes(page))renderShop();else if(page==='artists')renderArtists();else if(page==='artist')renderArtistProfile(route().id);else if(page==='product')renderProduct();else if(page==='checkout')renderCheckout();else if(page==='admin')renderAdmin();else if(page==='account')renderAccount();else if(page==='about'){if(!storeSettings.aboutVisible)renderHome();else $('main').innerHTML=`<div class="container"><div class="page-head">${breadcrumbs('About hehe.cafe')}<h1>About hehe.cafe</h1></div><hr class="section-rule rule-terracotta" aria-hidden="true">${story()}</div>`;}else if(page==='info')renderInfo();else renderNotFound();
-  applyAboutPageVisibility();applyStoreContent(siteContent,page);applyRouteSEO({page,id:route().id,products:visible(),artists:mergeArtistsWithProducts(artists,products,{includeHidden:false}),content:siteContent});decorateCartButtons();syncInBagButtons();stopReviews=mountReviews();stopHeroBanner=mountHeroBanner();mountLogout();syncAdminOrdersLivePoll();
+  applyAboutPageVisibility();applyMobileBreakpoint();applyStoreContent(siteContent,page);applyRouteSEO({page,id:route().id,products:visible(),artists:mergeArtistsWithProducts(artists,products,{includeHidden:false}),content:siteContent});decorateCartButtons();syncInBagButtons();stopReviews=mountReviews();stopHeroBanner=mountHeroBanner();mountLogout();syncAdminOrdersLivePoll();
   if(page==='home'||page==='shop')stopArtistPrompt=mountArtistScrollPrompt({dismissed:artistPromptDismissed,onDismiss:()=>{artistPromptDismissed=true;}});
   liveSiteEditor?.sync();
+  if(routeScrollMemory.has(nextRouteKey)&&!$('main').querySelector('.loading-skeleton')){
+    restoreRouteScroll(nextRouteKey);
+  }
 }
 function updateBanner(){const banner=$('connection-banner');banner.hidden=!catalogError;banner.innerHTML=catalogError?'The catalogue could not load. <button class="text-link" data-action="retry">Try again</button>':'';}
 function mergeWithStarterProducts(remoteList = []) {
@@ -2006,6 +2084,8 @@ function onCatalogUpdated(){
 async function startCatalog(){const generation=++catalogGeneration;if(unsubscribeProducts)unsubscribeProducts();catalogError='';updateBanner();if(!catalogReady){render();if($('cart-dialog').open)renderCart();if($('search-dialog').open)renderSearch();}try{const stop=await store.observeProducts(isAdmin,list=>{if(generation!==catalogGeneration)return;products=mergeWithStarterProducts(list);for(const p of products)rememberedProducts.set(p.id,p);catalogReady=true;catalogSynced=true;catalogError='';reconcileCart();updateBanner();onCatalogUpdated();if($('cart-dialog').open)renderCart();if($('search-dialog').open)renderSearch();},error=>{if(generation!==catalogGeneration)return;if(!products.length)products=[...STARTER_PRODUCTS];catalogReady=true;catalogSynced=true;catalogError='';reconcileCart();updateBanner();if(route().page==='checkout'&&$('checkout-form'))updateCheckoutAvailability();else onCatalogUpdated();if($('cart-dialog').open)renderCart();if($('search-dialog').open)renderSearch();});if(generation!==catalogGeneration)stop();else unsubscribeProducts=stop;}catch(error){if(generation!==catalogGeneration)return;if(!products.length)products=[...STARTER_PRODUCTS];catalogReady=true;catalogSynced=true;catalogError='';reconcileCart();updateBanner();onCatalogUpdated();if($('cart-dialog').open)renderCart();if($('search-dialog').open)renderSearch();}}
 
 function launchProductWashTransition(card,href){
+  saveRouteScroll(activeScrollRouteKey,window.scrollY);
+  routeScrollMemory.set(routeScrollKey(href),0);
   if(!href||matchMedia('(prefers-reduced-motion: reduce)').matches)return false;
   document.querySelectorAll('.product-wash-transition').forEach(el=>el.remove());
   const sampled=sampleArtworkBgFromImage(card?.querySelector('img'));
@@ -2048,6 +2128,8 @@ function launchProductWashTransition(card,href){
 let pendingArtistPassFlight=null;
 
 function launchArtistPassTransition(card,href){
+  saveRouteScroll(activeScrollRouteKey,window.scrollY);
+  routeScrollMemory.set(routeScrollKey(href),0);
   if(!card||!href||matchMedia('(prefers-reduced-motion: reduce)').matches)return false;
   const passEl=card.querySelector('.artist-lanyard-pass')||card;
   const fromRect=passEl.getBoundingClientRect();
@@ -2798,6 +2880,19 @@ document.addEventListener('change',async event=>{const t=event.target;if(t.close
       toast(store.friendlyError(error));
     }
   }
+  if(t.id==='admin-mobile-breakpoint'&&isAdmin){
+    const rawBp=Math.round(Number(t.value));
+    const nextBp=Number.isInteger(rawBp)&&rawBp>=320&&rawBp<=840?rawBp:580;
+    storeSettings=normalizeSettings({...storeSettings,mobileBreakpoint:nextBp});
+    applyStoreBanners();
+    syncProductsPreview();
+    try{
+      await withSavingOverlay('Updating mobile layout size…',()=>store.saveSettings(storeSettings));
+      toast(`Mobile 1-per-row active up to ${nextBp}px (foldables & tablets show 2 per row above ${nextBp}px).`);
+    }catch(error){
+      toast(store.friendlyError(error));
+    }
+  }
   if(t.id==='admin-toggle-about-page'&&isAdmin){
     const nextVisible=Boolean(t.checked);
     storeSettings=normalizeSettings({...storeSettings,aboutVisible:nextVisible});
@@ -2857,7 +2952,24 @@ document.addEventListener('change',async event=>{const t=event.target;if(t.close
   if(t.id==='product-files'){$('editor-image-preview').replaceChildren();for(const [idx,file] of [...t.files].slice(0,8).entries()){if(!file.type.startsWith('image/'))continue;const image=document.createElement('img');const url=URL.createObjectURL(file);image.src=url;image.alt=file.name;image.onload=()=>{if(idx===0&&$('product-bg-color')){const sampled=sampleArtworkBgFromImage(image);if(sampled)$('product-bg-color').value=sampled;}renderEditorCardPreview();URL.revokeObjectURL(url);};image.onerror=()=>URL.revokeObjectURL(url);$('editor-image-preview').append(image);}renderEditorCardPreview();}
 });
 function renderSearch(){if($('search-input').value&&!catalogReady){$('search-results').innerHTML=catalogError?catalogErrorMarkup():skeletonMarkup('rows','Loading search results…');return;}const query=$('search-input').value;const results=filterProducts(products,{search:query}).slice(0,6);$('search-results').innerHTML=query?results.length?results.map(p=>`<a class="search-result" href="#product/${e(p.id)}" data-action="close-dialog"><img src="${e(imageOf(p))}" alt=""><div>${e(p.title)}<span>by ${e(p.artist||'Suprita Chatterjee')} · ${money(p.price)}</span></div></a>`).join(''):'<p class="muted" style="margin-top:25px">No artworks found. Try searching by title, artist or medium.</p>':`<p class="eyebrow" style="margin-top:25px">Quick links</p><div class="footer-links">${categoryLinks}</div>`;}
-window.addEventListener('hashchange',()=>{if(location.hash==='#main'){return;}paymentSceneActive=false;if(location.hash==='#artworks'){document.getElementById('artworks')?.scrollIntoView({behavior:'smooth'});return;}$('mobile-menu').hidden=true;document.querySelector('[data-action="menu"]').setAttribute('aria-expanded','false');if(!smoothCheckoutNav)closeDialogs();render();window.scrollTo({top:0,behavior:'instant'});completeArtistPassFlight();if(!smoothCheckoutNav)$('main').focus({preventScroll:true});});
+window.addEventListener('hashchange',()=>{
+  if(location.hash==='#main'){return;}
+  paymentSceneActive=false;
+  if(location.hash==='#artworks'){document.getElementById('artworks')?.scrollIntoView({behavior:'smooth'});return;}
+  const nextKey=routeScrollKey();
+  $('mobile-menu').hidden=true;
+  document.querySelector('[data-action="menu"]').setAttribute('aria-expanded','false');
+  if(!smoothCheckoutNav)closeDialogs();
+  render();
+  const {page}=route();
+  if(['product','checkout','info'].includes(page)&&!routeScrollMemory.get(nextKey)){
+    window.scrollTo({top:0,behavior:'instant'});
+  }else{
+    restoreRouteScroll(nextKey,{fallbackTop:0});
+  }
+  completeArtistPassFlight();
+  if(!smoothCheckoutNav)$('main').focus({preventScroll:true});
+});
 window.addEventListener('storage',event=>{if(event.key===cartKey){try{const value=JSON.parse(event.newValue);cart=Array.isArray(value)?value:[];reconcileCart();updateCartBadge();if($('cart-dialog').open)renderCart();if(route().page==='checkout'){captureCheckout();renderCheckout();}}catch{}}});
 document.addEventListener('error',event=>{if(event.target instanceof HTMLImageElement&&!event.target.closest('.leaflet-container')&&!event.target.dataset.fallback){event.target.dataset.fallback='1';event.target.src='assets/paintings.svg';}},true);
 const liveSiteEditor=mountLiveSiteEditor({
@@ -2935,6 +3047,7 @@ store.observeSettings(settings=>{
       if($('admin-artwork-sort'))$('admin-artwork-sort').value=storeSettings.artworkSort||'manual';
       if($('admin-cart-btn-mode'))$('admin-cart-btn-mode').value=storeSettings.cartButtonMode||'black';
       if($('admin-banner-limit'))$('admin-banner-limit').value=String(Number.isInteger(storeSettings.bannerLimit)?storeSettings.bannerLimit:8);
+      if($('admin-mobile-breakpoint'))$('admin-mobile-breakpoint').value=String(Number.isInteger(storeSettings.mobileBreakpoint)?storeSettings.mobileBreakpoint:580);
       if($('admin-product-table'))renderAdminTable();
     }
   }

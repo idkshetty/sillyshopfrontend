@@ -29,6 +29,77 @@ export const PROMO_THEMES = [
   ['ink-dark', 'Gallery black']
 ];
 
+export const MOBILE_BREAKPOINT_OPTIONS = [
+  [580, 'Up to 580px · All phones & closed foldables (1 per row, default)'],
+  [520, 'Up to 520px · Standard & large phones (1 per row)'],
+  [640, 'Up to 640px · Extra-wide phones (foldables open at 641px+)'],
+  [720, 'Up to 720px · Phones & compact foldables (1 per row)'],
+  [760, 'Up to 760px · All mobile & small tablets (1 per row)'],
+  [360, 'Up to 360px · Compact phones only (2 per row on most phones)']
+];
+
+export function mobileGridBreakpointCss(rawBp = 580) {
+  const n = Math.round(Number(rawBp));
+  const bp = Number.isInteger(n) && n >= 320 && n <= 840 ? n : 580;
+  const tabMin = bp + 1;
+  return `@media (max-width: ${bp}px) {
+  .product-grid, .related .product-grid {
+    grid-template-columns: minmax(0, 1fr) !important;
+    gap: 20px !important;
+  }
+  .product-card {
+    padding: 14px 14px 16px;
+    border-radius: 16px;
+  }
+  .product-card-image {
+    padding: 8px;
+    aspect-ratio: 4 / 3;
+  }
+  .product-card-meta-top {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 6px;
+  }
+  .product-card h2 {
+    font-size: 17px;
+    line-height: 1.3;
+    margin: 2px 0 6px;
+  }
+  .artwork-card-description {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+  }
+  .product-card .price {
+    font-size: 16px;
+  }
+  .product-card-actions {
+    grid-template-columns: 1fr auto;
+    gap: 8px;
+  }
+  .product-card .cart-button,
+  .product-card .artwork-cart-btn {
+    height: 44px;
+    min-height: 44px;
+    padding: 0 14px;
+    font-size: 13px !important;
+  }
+  .product-card .quick-buy-btn {
+    min-height: 44px;
+    padding: 0 14px;
+    font-size: 12.5px;
+    width: auto;
+  }
+}
+@media (min-width: ${tabMin}px) and (max-width: 900px) {
+  .product-grid, .related .product-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 20px 16px !important;
+  }
+}`;
+}
+
 export const DEFAULT_SETTINGS = {
   announcementVisible: false,
   announcementText: 'welcome to hehe.cafe · handmade clay frames & paintings · ₹40/item India Post shipping',
@@ -55,6 +126,7 @@ export const DEFAULT_SETTINGS = {
   artworkSort: 'manual',
   cartButtonMode: 'black',
   bannerLimit: 8,
+  mobileBreakpoint: 580,
   aboutVisible: false,
   storyVisible: true,
   productImageStorage: 'firebase'
@@ -263,6 +335,8 @@ export function normalizeSettings(value = {}) {
   result.cartButtonMode = value.cartButtonMode === 'artwork' ? 'artwork' : 'black';
   const rawLimit = Number(value.bannerLimit);
   result.bannerLimit = Number.isInteger(rawLimit) && rawLimit >= 0 && rawLimit <= 50 ? rawLimit : 8;
+  const rawMobileBp = Math.round(Number(value.mobileBreakpoint));
+  result.mobileBreakpoint = Number.isInteger(rawMobileBp) && rawMobileBp >= 320 && rawMobileBp <= 840 ? rawMobileBp : 580;
   result.aboutVisible = value.aboutVisible === true;
   result.storyVisible = value.storyVisible !== false;
   result.productImageStorage = value.productImageStorage === 'freeimage' ? 'freeimage' : 'firebase';
@@ -332,10 +406,18 @@ export function settingsForm(s) {
   const ctaY = Number(s.bannerButtonOffsetY) || 0;
   const ctaPos = s.bannerButtonPosition || 'below-text';
   const ctaStyle = s.bannerButtonStyle || 'light';
+  const mobileBp = Number.isInteger(s.mobileBreakpoint) ? s.mobileBreakpoint : 580;
   return `<form id="banner-form" class="settings-note banner-editor">
-  <h2>Storefront pages</h2>
+  <h2>Storefront pages &amp; responsive grid</h2>
   <label class="visibility-toggle"><input type="checkbox" name="aboutVisible" ${s.aboutVisible?'checked':''}><span>Show "About hehe.cafe" page on storefront</span></label>
   <label class="visibility-toggle"><input type="checkbox" name="storyVisible" ${s.storyVisible!==false?'checked':''}><span>Show "Welcome to hehe.cafe" story section on homepage</span></label>
+  <div class="form-grid" style="margin-top:10px">
+    <label class="field wide">Mobile 1-per-row max width (phones &amp; closed foldables show 1 artwork per row; opened foldables &amp; tablets above this show 2 per row)
+      <select name="mobileBreakpoint">
+        ${MOBILE_BREAKPOINT_OPTIONS.map(([val, label]) => `<option value="${val}" ${mobileBp === val ? 'selected' : ''}>${e(label)}</option>`).join('')}
+      </select>
+    </label>
+  </div>
   <hr>
   <h2>Announcement bar</h2>
   <label class="visibility-toggle"><input type="checkbox" name="announcementVisible" ${s.announcementVisible?'checked':''}><span>Announcement bar visible</span></label>

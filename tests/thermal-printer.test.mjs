@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {encodeTSPL,encodeTSPL2In,encodeZPL,encodeESCPOS,getUnprintedOrders} from '../frontend/thermal-printer.js';
 import {thermalPrinterDockMarkup} from '../frontend/admin-ui.js';
-import {normalizeSettings} from '../frontend/store-settings.js';
+import {normalizeSettings,mobileGridBreakpointCss} from '../frontend/store-settings.js';
 
 const sampleOrder={
   id:'order-9f8e7d6c-1234',
@@ -82,6 +82,12 @@ test('normalizeSettings hides About page by default, shows story section by defa
   assert.equal(normalizeSettings({aboutVisible:true}).aboutVisible,true);
   assert.equal(normalizeSettings().storyVisible,true);
   assert.equal(normalizeSettings({storyVisible:false}).storyVisible,false);
+  assert.equal(normalizeSettings().mobileBreakpoint,580);
+  assert.equal(normalizeSettings({mobileBreakpoint:640}).mobileBreakpoint,640);
+  assert.equal(normalizeSettings({mobileBreakpoint:100}).mobileBreakpoint,580);
+  const bpCss=mobileGridBreakpointCss(640);
+  assert.match(bpCss,/@media \(max-width: 640px\)/);
+  assert.match(bpCss,/@media \(min-width: 641px\) and \(max-width: 900px\)/);
 });
 
 test('encodeTSPL2In outputs 50x75mm 2-inch commands within 384 dots width and escapes quotes',()=>{
