@@ -32,13 +32,13 @@ export function progressiveImageSources(product = {}, index = 0, fallback = 'ass
 }
 
 const ASSET_BG_COLORS = {
-  'assets/artwork-1.jpg': '#3b5d20',
-  'assets/artwork-2.jpg': '#587920',
-  'assets/artwork-3.jpg': '#245a9f',
-  'assets/artwork-4.jpg': '#2245a7',
-  'assets/artwork-5.jpg': '#364a27',
-  'assets/artwork-6.jpg': '#65559b',
-  'assets/artwork-7.jpg': '#a81d20',
+  'https://img3.pixhost.to/images/7410/814393231_artwork.jpg': '#3b5d20',
+  'https://img3.pixhost.to/images/7410/814393236_artwork.jpg': '#587920',
+  'https://img3.pixhost.to/images/7410/814393239_artwork.jpg': '#245a9f',
+  'https://img3.pixhost.to/images/7410/814393241_artwork.jpg': '#2245a7',
+  'https://img3.pixhost.to/images/7410/814393243_artwork.jpg': '#364a27',
+  'https://img3.pixhost.to/images/7410/814393247_artwork.jpg': '#65559b',
+  'https://img3.pixhost.to/images/7410/814393257_artwork.jpg': '#a81d20',
   'assets/paintings.svg': '#3b5d20',
   'assets/paintings-sunset.svg': '#a81d20',
   'assets/clay-models.svg': '#587920',

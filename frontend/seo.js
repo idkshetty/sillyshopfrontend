@@ -2,7 +2,7 @@ import { SHIPPING_CHARGE } from './commerce.js';
 import { artistSlug } from './artists.js';
 
 export const SITE_ORIGIN = 'https://hehe.cafe';
-export const DEFAULT_OG_IMAGE = `${SITE_ORIGIN}/assets/artwork-1.jpg`;
+export const DEFAULT_OG_IMAGE = 'https://img3.pixhost.to/images/7410/814393231_artwork.jpg';
 const DEFAULT_TITLE = 'hehe.cafe — Handmade Clay Magnets, Original Artworks & Prints in India';
 const DEFAULT_DESC = 'Collect original handmade clay fridge magnets, miniature paintings, and tactile small-batch artworks by independent artists at hehe.cafe. Shipped artist-direct across India via India Post (₹40/item).';
 const INDEX_ROBOTS = 'index, follow, max-image-preview:large, max-snippet:-1';
@@ -13,7 +13,7 @@ const NOINDEX_NOFOLLOW = 'noindex, nofollow';
 export function absoluteAssetUrl(src, origin = SITE_ORIGIN) {
   const base = String(origin || SITE_ORIGIN).replace(/\/+$/, '');
   const raw = String(src || '').trim();
-  if (!raw || raw.startsWith('data:') || raw.startsWith('blob:')) return `${base}/assets/artwork-1.jpg`;
+  if (!raw || raw.startsWith('data:') || raw.startsWith('blob:')) return DEFAULT_OG_IMAGE;
   if (/^https?:\/\//i.test(raw)) return raw;
   return `${base}/${raw.replace(/^\/+/, '')}`;
 }

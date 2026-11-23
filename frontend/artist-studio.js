@@ -133,7 +133,7 @@ export function mountArtistStudio(root, {
       </div>
       <div class="artist-studio-tabs" role="tablist" aria-label="Choose an artist page to edit">
         ${combined.map(a => `<button type="button" class="artist-studio-pill ${a.id === selectedId ? 'is-active' : ''}" data-pick-artist="${e(a.id)}" role="tab" aria-selected="${a.id === selectedId}">
-            <img src="${e(safeImage(a.coverImage || a.photo, 'assets/artwork-1.jpg'))}" alt="">
+            <img src="${e(safeImage(a.coverImage || a.photo, 'https://img3.pixhost.to/images/7410/814393231_artwork.jpg'))}" alt="">
             <span>
               <strong>${e(a.name)}</strong>
               <small>${artCounts.get(a.id) || 0} works${a.visible === false ? ' · Hidden' : ''}${a.featured ? ' · Featured' : ''}</small>
@@ -179,12 +179,12 @@ export function mountArtistStudio(root, {
               </div>
               <label class="field">Portrait / card photo URL<input name="photo" maxlength="100000" data-saved-photo="${isInlineImage(draft.photo)}" value="${isInlineImage(draft.photo) ? '' : e(draft.photo || '')}" placeholder="${isInlineImage(draft.photo) ? 'Uploaded photo saved · paste URL or upload new below' : 'https://… or upload below'}"></label>
               <div class="content-image-control">
-                <img id="artist-photo-thumb" src="${e(safeImage(draft.photo, 'assets/artwork-1.jpg'))}" alt="Artist portrait preview">
+                <img id="artist-photo-thumb" src="${e(safeImage(draft.photo, 'https://img3.pixhost.to/images/7410/814393231_artwork.jpg'))}" alt="Artist portrait preview">
                 <label class="content-upload">Upload portrait photo<input type="file" id="artist-upload-photo" accept="image/jpeg,image/png,image/webp"></label>
               </div>
               <label class="field">Banner backdrop photo URL (optional full-bleed header bg)<input name="bannerImage" maxlength="100000" data-saved-banner="${isInlineImage(draft.bannerImage)}" value="${isInlineImage(draft.bannerImage) ? '' : e(draft.bannerImage || '')}" placeholder="${isInlineImage(draft.bannerImage) ? 'Banner photo saved · paste URL or upload new' : 'Optional hero backdrop image URL'}"></label>
               <div class="content-image-control">
-                <img id="artist-banner-thumb" src="${e(safeImage(draft.bannerImage, 'assets/artwork-1.jpg'))}" alt="Banner backdrop preview" ${draft.bannerImage ? '' : 'style="opacity:.35"'}>
+                <img id="artist-banner-thumb" src="${e(safeImage(draft.bannerImage, 'https://img3.pixhost.to/images/7410/814393231_artwork.jpg'))}" alt="Banner backdrop preview" ${draft.bannerImage ? '' : 'style="opacity:.35"'}>
                 <label class="content-upload">Upload banner backdrop<input type="file" id="artist-upload-banner" accept="image/jpeg,image/png,image/webp"></label>
                 ${draft.bannerImage ? '<button type="button" class="text-link" id="artist-clear-banner">Remove banner</button>' : ''}
               </div>

@@ -171,7 +171,7 @@ export const DEFAULT_SETTINGS = {
   bannerButtonPosition: 'below-text',
   bannerButtonOffsetX: 0,
   bannerButtonOffsetY: 0,
-  bannerImage: 'assets/artwork-1.jpg',
+  bannerImage: 'https://img3.pixhost.to/images/7410/814393231_artwork.jpg',
   homeSectionOrder: [...DEFAULT_HOME_SECTIONS],
   promoBlocks: [],
   reviewsVisible: false,
@@ -197,7 +197,7 @@ export const FALLBACK_BANNER_ARTWORKS = [
     stock: 1,
     tag: '',
     featured: true,
-    images: ['assets/artwork-1.jpg'],
+    images: ['https://img3.pixhost.to/images/7410/814393231_artwork.jpg'],
     bgColor: '#3b5d20',
     material: 'Hand-sculpted clay frame & watercolour on paper',
     dimensions: '6 × 5.5 in'
@@ -213,7 +213,7 @@ export const FALLBACK_BANNER_ARTWORKS = [
     stock: 1,
     tag: '',
     featured: false,
-    images: ['assets/artwork-2.jpg'],
+    images: ['https://img3.pixhost.to/images/7410/814393236_artwork.jpg'],
     bgColor: '#587920',
     material: 'Hand-sculpted clay frame & watercolour ink',
     dimensions: '6.5 × 5.5 in'
@@ -229,7 +229,7 @@ export const FALLBACK_BANNER_ARTWORKS = [
     stock: 1,
     tag: '',
     featured: true,
-    images: ['assets/artwork-3.jpg'],
+    images: ['https://img3.pixhost.to/images/7410/814393239_artwork.jpg'],
     bgColor: '#245a9f',
     material: 'Hand-sculpted clay frame & watercolour on paper',
     dimensions: '6 × 6.5 in'
@@ -245,7 +245,7 @@ export const FALLBACK_BANNER_ARTWORKS = [
     stock: 1,
     tag: '',
     featured: false,
-    images: ['assets/artwork-4.jpg'],
+    images: ['https://img3.pixhost.to/images/7410/814393241_artwork.jpg'],
     bgColor: '#2245a7',
     material: 'Hand-sculpted clay frame & watercolour ink',
     dimensions: '7 × 5 in'
@@ -261,7 +261,7 @@ export const FALLBACK_BANNER_ARTWORKS = [
     stock: 1,
     tag: '',
     featured: true,
-    images: ['assets/artwork-5.jpg'],
+    images: ['https://img3.pixhost.to/images/7410/814393243_artwork.jpg'],
     bgColor: '#364a27',
     material: 'Hand-sculpted clay frame & watercolour on paper',
     dimensions: '6.5 × 5.5 in'
@@ -277,7 +277,7 @@ export const FALLBACK_BANNER_ARTWORKS = [
     stock: 1,
     tag: '',
     featured: false,
-    images: ['assets/artwork-6.jpg'],
+    images: ['https://img3.pixhost.to/images/7410/814393247_artwork.jpg'],
     bgColor: '#65559b',
     material: 'Hand-sculpted clay frame & watercolour ink',
     dimensions: '5.5 × 7 in'
@@ -293,7 +293,7 @@ export const FALLBACK_BANNER_ARTWORKS = [
     stock: 1,
     tag: '',
     featured: true,
-    images: ['assets/artwork-7.jpg'],
+    images: ['https://img3.pixhost.to/images/7410/814393257_artwork.jpg'],
     bgColor: '#a81d20',
     material: 'Hand-sculpted clay frame & watercolour on paper',
     dimensions: '6 × 6 in'
@@ -403,7 +403,7 @@ export function bannerSlidesFor(products = [], settings = DEFAULT_SETTINGS) {
   const limit = Number.isInteger(settings?.bannerLimit) && settings.bannerLimit >= 0 ? settings.bannerLimit : 8;
   const limited = limit === 0 ? source : source.slice(0, limit);
   return limited.map(p => {
-    const prog = progressiveImageSources(p, 0, settings.bannerImage || 'assets/artwork-1.jpg');
+    const prog = progressiveImageSources(p, 0, settings.bannerImage || 'https://img3.pixhost.to/images/7410/814393231_artwork.jpg');
     return {
       id: p.id,
       title: p.title || 'Untitled Artwork',

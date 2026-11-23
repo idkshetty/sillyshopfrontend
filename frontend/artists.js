@@ -30,7 +30,7 @@ export const DEFAULT_ARTISTS = [
     oneLiner: 'Playful miniature clay frames paired with tender ink & watercolour characters.',
     about: 'Suprita Chatterjee creates one-of-a-kind hand-sculpted clay frames and original miniature watercolour paintings at hehe.cafe. Every piece is moulded, painted and varnished by hand so no two magnets or artworks are ever alike.',
     quote: '',
-    photo: 'assets/artwork-1.jpg',
+    photo: 'https://img3.pixhost.to/images/7410/814393231_artwork.jpg',
     bannerImage: '',
     accentColor: '#d96b43',
     worksHeading: '',
@@ -119,20 +119,20 @@ export function mergeArtistsWithProducts(savedArtists = [], products = [], { inc
         style: 'Independent Studio Artist',
         oneLiner: `Original handmade pieces by ${artistName} at hehe.cafe.`,
         about: `${artistName} creates small-batch original artworks and tactile pieces for hehe.cafe.`,
-        photo: safeImage(p.images?.[0], 'assets/artwork-1.jpg')
+        photo: safeImage(p.images?.[0], 'https://img3.pixhost.to/images/7410/814393231_artwork.jpg')
       }));
       map.get(slug).artworkCount = 0;
-      map.get(slug).coverImage = safeImage(p.images?.[0], 'assets/artwork-1.jpg');
+      map.get(slug).coverImage = safeImage(p.images?.[0], 'https://img3.pixhost.to/images/7410/814393231_artwork.jpg');
     }
     const entry = map.get(slug);
     entry.artworkCount += 1;
     if (!entry.coverImage && p.images?.[0]) {
-      entry.coverImage = safeImage(p.images[0], 'assets/artwork-1.jpg');
+      entry.coverImage = safeImage(p.images[0], 'https://img3.pixhost.to/images/7410/814393231_artwork.jpg');
     }
   }
 
   for (const entry of map.values()) {
-    if (!entry.coverImage) entry.coverImage = entry.photo || 'assets/artwork-1.jpg';
+    if (!entry.coverImage) entry.coverImage = entry.photo || 'https://img3.pixhost.to/images/7410/814393231_artwork.jpg';
     if (!entry.style) entry.style = 'Independent Studio Artist';
     if (!entry.oneLiner) entry.oneLiner = `Original handmade pieces by ${entry.name} at hehe.cafe.`;
   }

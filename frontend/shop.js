@@ -1774,7 +1774,7 @@ async function toggleProductFlag(id,field){
 }
 function renderAdminArtists(){
   const list=mergeArtistsWithProducts(artists,products);
-  $('admin-content').innerHTML=`<div class="admin-title"><div><h1>Artists</h1><p>Customize each artist’s photo, signature style name and bio for their storefront page.</p></div><button class="button" data-action="new-artist">+ Add artist</button></div><div class="admin-artist-grid">${list.map(a=>`<article class="admin-artist-card"><div class="admin-artist-head"><img src="${e(safeImage(a.coverImage,'assets/artwork-1.jpg'))}" alt="${e(a.name)}"><div><span class="artist-style-pill">${e(a.style||'Independent Studio Artist')}</span><h2>${e(a.name)}</h2><p class="small muted">${a.artworkCount} published ${a.artworkCount===1?'artwork':'artworks'}</p></div></div><p class="admin-artist-oneliner">${e(a.oneLiner||'')}</p><div class="admin-artist-actions"><a class="text-link" href="#artist/${e(a.id)}">View page ↗</a><button type="button" class="table-action" data-action="edit-artist" data-id="${e(a.id)}">Edit profile</button></div></article>`).join('')}</div>`;
+  $('admin-content').innerHTML=`<div class="admin-title"><div><h1>Artists</h1><p>Customize each artist’s photo, signature style name and bio for their storefront page.</p></div><button class="button" data-action="new-artist">+ Add artist</button></div><div class="admin-artist-grid">${list.map(a=>`<article class="admin-artist-card"><div class="admin-artist-head"><img src="${e(safeImage(a.coverImage,'https://img3.pixhost.to/images/7410/814393231_artwork.jpg'))}" alt="${e(a.name)}"><div><span class="artist-style-pill">${e(a.style||'Independent Studio Artist')}</span><h2>${e(a.name)}</h2><p class="small muted">${a.artworkCount} published ${a.artworkCount===1?'artwork':'artworks'}</p></div></div><p class="admin-artist-oneliner">${e(a.oneLiner||'')}</p><div class="admin-artist-actions"><a class="text-link" href="#artist/${e(a.id)}">View page ↗</a><button type="button" class="table-action" data-action="edit-artist" data-id="${e(a.id)}">Edit profile</button></div></article>`).join('')}</div>`;
 }
 function openArtistEditor(id){
   if(!isAdmin)return;
@@ -2092,7 +2092,7 @@ function renderEditorCardPreview(){
     comparePrice:Number.isFinite(comparePrice)&&comparePrice>0?comparePrice:0,
     stock:Number.isInteger(stock)&&stock>=0?stock:1,
     visible:data.get('visible')==='on',
-    images:imgList.length?imgList:['assets/artwork-1.jpg']
+    images:imgList.length?imgList:['https://img3.pixhost.to/images/7410/814393231_artwork.jpg']
   });
   host.innerHTML=productCardMarkup(draft,siteContent);
 }
