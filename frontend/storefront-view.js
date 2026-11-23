@@ -24,7 +24,7 @@ export function storyMarkup() {
 export function productCardMarkup(p, content = DEFAULT_CONTENT, { index = 99 } = {}) {
   const CATEGORIES = contentCategories(content);
   const categoryOf = id => CATEGORIES.find(c => c.id === id);
-  const fallbackImg = categoryOf(p.category)?.image || 'https://img3.pixhost.to/images/7410/814393231_artwork.jpg';
+  const fallbackImg = categoryOf(p.category)?.image || 'https://iili.io/ofJ6Nr7.jpg';
   const prog = progressiveImageSources(p, 0, fallbackImg);
   const eager = Number.isInteger(index) && index >= 0 && index < 2;
   const loadAttr = eager ? (index === 0 ? 'fetchpriority="high"' : '') : 'loading="lazy"';
@@ -188,7 +188,7 @@ export function artistsPageMarkup(artists = [], products = [], content = DEFAULT
         <div class="artist-lanyard-pass">
           <span class="lanyard-slot" aria-hidden="true"></span>
           ${a.featured ? '<span class="artist-featured-badge">Featured</span>' : ''}
-          <div class="artist-lanyard-photo"><img src="${e(safeImage(a.coverImage, 'https://img3.pixhost.to/images/7410/814393231_artwork.jpg'))}" alt="${e(a.name)}" loading="lazy" decoding="async"></div>
+          <div class="artist-lanyard-photo"><img src="${e(safeImage(a.coverImage, 'https://iili.io/ofJ6Nr7.jpg'))}" alt="${e(a.name)}" loading="lazy" decoding="async"></div>
           <div class="artist-lanyard-overlay">
             <div class="artist-lanyard-id">
               <h2 class="artist-lanyard-name">${e(a.name)}</h2>
@@ -208,7 +208,7 @@ export function artistsPageMarkup(artists = [], products = [], content = DEFAULT
 }
 
 export function artistDetailMarkup(artist, artistProducts = [], content = DEFAULT_CONTENT) {
-  const photo = safeImage(artist.coverImage || artist.photo, 'https://img3.pixhost.to/images/7410/814393231_artwork.jpg');
+  const photo = safeImage(artist.coverImage || artist.photo, 'https://iili.io/ofJ6Nr7.jpg');
   const bannerImg = artist.bannerImage ? safeImage(artist.bannerImage, '') : '';
   const count = artistProducts.length;
   const heading = artist.bannerTitle || artist.name;
@@ -272,7 +272,7 @@ export function artistDetailMarkup(artist, artistProducts = [], content = DEFAUL
 export function productDetailPreviewMarkup(p, content = DEFAULT_CONTENT, related = []) {
   if (!p) return '<div class="container empty-state"><h2>No published artwork to preview</h2><p>Publish an artwork to preview its detail page.</p></div>';
   const artist = p.artist || 'Suprita Chatterjee';
-  const prog = progressiveImageSources(p, 0, 'https://img3.pixhost.to/images/7410/814393231_artwork.jpg');
+  const prog = progressiveImageSources(p, 0, 'https://iili.io/ofJ6Nr7.jpg');
   const productType = p.productType || 'Fridge Magnet';
   const bgColor = artworkColorFor(p);
   const inkColor = contrastColorFor(bgColor);

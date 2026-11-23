@@ -8,7 +8,7 @@ import { DEFAULT_CONTENT } from '../frontend/store-content.js';
 test('absoluteAssetUrl resolves relative assets and falls back on data URIs', () => {
   assert.equal(absoluteAssetUrl('assets/artwork-2.jpg'), `${SITE_ORIGIN}/assets/artwork-2.jpg`);
   assert.equal(absoluteAssetUrl('https://cdn.example.com/art.webp'), 'https://cdn.example.com/art.webp');
-  assert.equal(absoluteAssetUrl('data:image/webp;base64,AAAA'), 'https://img3.pixhost.to/images/7410/814393231_artwork.jpg');
+  assert.equal(absoluteAssetUrl('data:image/webp;base64,AAAA'), 'https://iili.io/ofJ6Nr7.jpg');
 });
 
 test('buildRouteSEO generates Product JSON-LD, Artist ProfilePage, Policy schema & noindex private routes', () => {

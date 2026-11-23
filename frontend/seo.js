@@ -2,7 +2,7 @@ import { SHIPPING_CHARGE } from './commerce.js';
 import { artistSlug } from './artists.js';
 
 export const SITE_ORIGIN = 'https://hehe.cafe';
-export const DEFAULT_OG_IMAGE = 'https://img3.pixhost.to/images/7410/814393231_artwork.jpg';
+export const DEFAULT_OG_IMAGE = 'https://iili.io/ofJ6Nr7.jpg';
 const DEFAULT_TITLE = 'hehe.cafe — Handmade Clay Magnets, Original Artworks & Prints in India';
 const DEFAULT_DESC = 'Collect original handmade clay fridge magnets, miniature paintings, and tactile small-batch artworks by independent artists at hehe.cafe. Shipped artist-direct across India via India Post (₹40/item).';
 const INDEX_ROBOTS = 'index, follow, max-image-preview:large, max-snippet:-1';
