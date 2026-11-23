@@ -1,7 +1,7 @@
 import {reviewCards} from './review-editor.js';
 import {starterCopy} from './placeholder-copy.js';
 import {isInlineImage,validImageSource,encodeImage} from './image-data.js';
-import {escapeHTML as e, safeImage, artworkColorFor, artworkThemeStyle, sortArtworks, ARTWORK_SORT_MODES, money} from './commerce.js';
+import {escapeHTML as e, safeImage, progressiveImageSources, artworkColorFor, artworkThemeStyle, sortArtworks, ARTWORK_SORT_MODES, money} from './commerce.js';
 import {artistSlug} from './artists.js';
 
 export const BANNER_CTA_POSITIONS = [
@@ -349,14 +349,19 @@ export function bannerSlidesFor(products = [], settings = DEFAULT_SETTINGS) {
   const source = bannerPicked.length ? bannerPicked : (visible.length ? visible : FALLBACK_BANNER_ARTWORKS);
   const limit = Number.isInteger(settings?.bannerLimit) && settings.bannerLimit >= 0 ? settings.bannerLimit : 8;
   const limited = limit === 0 ? source : source.slice(0, limit);
-  return limited.map(p => ({
-    id: p.id,
-    title: p.title || 'Untitled Artwork',
-    artist: p.artist || 'Suprita Chatterjee',
-    price: p.price,
-    image: safeImage(p.images?.[0], settings.bannerImage || 'assets/artwork-1.jpg'),
-    bgColor: artworkColorFor(p)
-  }));
+  return limited.map(p => {
+    const prog = progressiveImageSources(p, 0, settings.bannerImage || 'assets/artwork-1.jpg');
+    return {
+      id: p.id,
+      title: p.title || 'Untitled Artwork',
+      artist: p.artist || 'Suprita Chatterjee',
+      price: p.price,
+      image: prog.src,
+      hdImage: prog.hdSrc,
+      fallbackImage: prog.fallbackSrc,
+      bgColor: artworkColorFor(p)
+    };
+  });
 }
 export function bannerMarkup(settings = DEFAULT_SETTINGS, products = []) {
   if (settings && settings.bannerVisible === false) return '';
@@ -381,7 +386,7 @@ export function bannerMarkup(settings = DEFAULT_SETTINGS, products = []) {
   return `<section class="store-banner hehe-hero-banner ${showCta ? `has-cta-${e(ctaPos)}` : ''}" data-hero-banner style="${themeStyle};--banner-bg:${e(first.bgColor)}">
     <div class="hero-bg-stage" aria-hidden="true">
       ${slides.map((s, idx) => `<div class="hero-bg-slide ${idx === 0 ? 'is-active' : ''}" data-hero-slide="${idx}" data-bg-color="${e(s.bgColor)}" data-title="${e(s.title)}" data-artist="${e(s.artist)}" data-artist-slug="${e(artistSlug(s.artist))}" data-price="${e(s.price ? money(s.price) : '')}" data-href="#product/${e(s.id)}">
-        <img src="${e(s.image)}" alt="" ${idx === 0 ? 'fetchpriority="high"' : 'loading="lazy"'} data-artwork-img>
+        <img src="${e(s.image)}"${s.hdImage ? ` data-hd-src="${e(s.hdImage)}"` : ''}${s.fallbackImage ? ` data-fallback-src="${e(s.fallbackImage)}"` : ''} alt="" ${idx === 0 ? 'fetchpriority="high"' : 'loading="lazy"'} decoding="async" data-artwork-img>
       </div>`).join('')}
     </div>
     <div class="hero-banner-overlay">

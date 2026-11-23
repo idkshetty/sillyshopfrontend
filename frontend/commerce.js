@@ -20,6 +20,16 @@ export function safeImage(value, fallback = 'assets/paintings.svg') {
 export function cardImage(value, fallback = 'assets/paintings.svg') {
   return safeImage(value,fallback);
 }
+export function progressiveImageSources(product = {}, index = 0, fallback = 'assets/paintings.svg') {
+  const primary = safeImage(product?.images?.[index], fallback);
+  const backup = safeImage(product?.backupImages?.[index], '');
+  const hasRemoteHd = Boolean(backup && primary && primary !== backup && /^https:\/\//i.test(primary));
+  return {
+    src: hasRemoteHd ? backup : primary,
+    hdSrc: hasRemoteHd ? primary : '',
+    fallbackSrc: backup && backup !== primary ? backup : ''
+  };
+}
 
 const ASSET_BG_COLORS = {
   'assets/artwork-1.jpg': '#3b5d20',

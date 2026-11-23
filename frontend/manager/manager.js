@@ -134,11 +134,53 @@ function toast(msg, { isError = false } = {}) {
 const getRefCode = a => a?.refNumber || a?.storeRefNumber || '';
 
 function artImgTag(a, idx = 0, extra = '') {
-  const src = a?.images?.[idx] || '';
-  if (!src) return '';
+  const primary = a?.images?.[idx] || '';
   const fb = a?.backupImages?.[idx] || '';
-  const fbAttr = (fb && fb !== src) ? ` data-fallback-src="${esc(fb)}"` : '';
-  return `<img src="${esc(src)}"${fbAttr} ${extra}>`;
+  const initialSrc = fb || primary;
+  if (!initialSrc) return '';
+  const hasRemoteHd = Boolean(fb && primary && primary !== fb && /^https:\/\//i.test(primary));
+  const hdAttr = hasRemoteHd ? ` data-hd-src="${esc(primary)}"` : '';
+  const fbAttr = (fb && fb !== primary) ? ` data-fallback-src="${esc(fb)}"` : '';
+  return `<img src="${esc(initialSrc)}"${hdAttr}${fbAttr} decoding="async" ${extra}>`;
+}
+
+const mgrHdCache = new Set();
+const mgrHdObserver = typeof IntersectionObserver === 'function'
+  ? new IntersectionObserver(entries => {
+      for (const entry of entries) {
+        if (!entry.isIntersecting) continue;
+        const img = entry.target;
+        mgrHdObserver.unobserve(img);
+        const hdSrc = img.dataset.hdSrc;
+        if (!hdSrc || img.dataset.hdLoaded === '1') continue;
+        if (mgrHdCache.has(hdSrc)) {
+          img.dataset.hdLoaded = '1';
+          if (img.getAttribute('src') !== hdSrc) img.src = hdSrc;
+          continue;
+        }
+        const loader = new Image();
+        loader.decoding = 'async';
+        loader.onload = () => {
+          const apply = () => {
+            mgrHdCache.add(hdSrc);
+            if (!img.isConnected) return;
+            img.dataset.hdLoaded = '1';
+            img.src = hdSrc;
+          };
+          if (typeof loader.decode === 'function') loader.decode().then(apply, apply);
+          else apply();
+        };
+        loader.src = hdSrc;
+      }
+    }, { rootMargin: '360px 0px' })
+  : null;
+if (mgrHdObserver && typeof MutationObserver === 'function') {
+  new MutationObserver(() => {
+    document.querySelectorAll('img[data-hd-src]:not([data-hd-watched])').forEach(img => {
+      img.dataset.hdWatched = '1';
+      mgrHdObserver.observe(img);
+    });
+  }).observe(document.body, { childList: true, subtree: true });
 }
 
 // Automatic runtime fallback to Firebase Base64 backup if a Freeimage.host link ever breaks

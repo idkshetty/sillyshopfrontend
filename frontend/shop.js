@@ -8,7 +8,8 @@ import {deferPageRender} from './page-loading.js';
 import {mountSalesDashboard} from './sales-dashboard.js';
 import {payRequest,preloadRazorpay} from './payments.js';
 import {mountReviewEditor,collectReviews} from './review-editor.js';
-import {MAX_ITEM_QUANTITY,CATEGORIES,categoryOf,money,SHIPPING_CHARGE,shippingPaiseForQuantity,totalWithShipping,artworkColorFor,artworkThemeStyle,contrastColorFor,normalizeProduct,sortArtworks,ARTWORK_SORT_MODES,escapeHTML as e,safeImage,cardImage,cartLines,subtotal,filterProducts,validateCustomer} from './commerce.js';
+import {MAX_ITEM_QUANTITY,CATEGORIES,categoryOf,money,SHIPPING_CHARGE,shippingPaiseForQuantity,totalWithShipping,artworkColorFor,artworkThemeStyle,contrastColorFor,normalizeProduct,sortArtworks,ARTWORK_SORT_MODES,escapeHTML as e,safeImage,cardImage,progressiveImageSources,cartLines,subtotal,filterProducts,validateCustomer} from './commerce.js';
+import {prepareHdUploadFile} from './image-data.js';
 import {DEFAULT_ARTISTS,artistSlug,normalizeArtists,mergeArtistsWithProducts} from './artists.js';
 import * as store from './store.js';
 import {mapPanel,mountDeliveryMap} from './delivery-location.js';
@@ -78,7 +79,7 @@ let authLoading=true,authError='',authMode='signin',authNotice='',accountState={
 let verifyCooldownUntil=0,verifyCooldownTimer=null,verifyBusy=false,verifyNotice='',privacyBusy=false,privacyNotice='';
 try {const saved = JSON.parse(localStorage.getItem(cartKey)); if (Array.isArray(saved)) {const seen=new Set(); cart = saved.filter(c=>c && typeof c.id==='string' && !seen.has(c.id) && Number.isInteger(c.quantity) && c.quantity>0 && seen.add(c.id)).map(c=>({id:c.id,quantity:Math.min(c.quantity,MAX_ITEM_QUANTITY)}));}} catch {}
 const visible = () => sortArtworks(products.filter(p=>p.visible && !p.archived), storeSettings.artworkSort || 'manual');
-const imageOf = p => cardImage(p.images?.[0],categoryOf(p.category)?.image);
+const imageOf = p => cardImage(p?.backupImages?.[0] || p?.images?.[0], categoryOf(p?.category)?.image);
 const route = () => {const parts=location.hash.slice(1).split('/');return {page:parts[0] || 'home',id:parts.slice(1).join('/')};};
 let categoryLinks = `<a href="#home">Home &amp; Banner</a><a href="#shop">All Artworks</a><a href="#artists">Artists</a><a href="#about"${storeSettings.aboutVisible?'':' hidden'}>About hehe.cafe</a>`;
 $('collection-menu').innerHTML=categoryLinks;
@@ -469,7 +470,7 @@ function renderCart(){
   $('cart-content').innerHTML=`<div class="cart-checkout-flow cart-dark-sheet"><div class="cart-sheet-handle" aria-hidden="true"></div><div class="cart-checkout-pile"><section class="cart-checkout-card cart-checkout-current">${cleanupBanner}<div class="cart-checkout-items">${rows}</div>${bagOffersMarkup(entries,pricing,'cart')}<label class="cart-note cart-dark-note" for="order-note">Note for hehe.cafe <span class="muted">(optional)</span><textarea id="order-note" maxlength="1000" placeholder="Gift note, framing preference, or delivery instructions…">${e(orderNote)}</textarea></label>${ticket}<p class="small cart-limit-note">Limit ${MAX_ITEM_QUANTITY} per artwork · add as many artworks as you like.</p></section><section class="cart-checkout-card cart-checkout-confirmed" aria-hidden="true"><span class="cart-checkout-ready-icon" aria-hidden="true"><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 13l4 4L19 7"/></svg></span><h2>Opening checkout…</h2><p>Confirm your address to complete your order.</p></section></div><button class="cart-checkout-button cart-pill-checkout" type="button" data-action="cart-checkout"><svg class="cart-checkout-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 4h2l2.1 11.5a2 2 0 0 0 2 1.6h8.7a2 2 0 0 0 2-1.5L22 8H6"/><circle cx="10" cy="20" r="1.2"/><circle cx="18" cy="20" r="1.2"/></svg><span class="cart-checkout-label">Checkout · ${money(bagTotal)}</span><span class="cart-pill-chevrons" aria-hidden="true"><svg class="ui-icon ui-chevrons" viewBox="0 0 28 16" aria-hidden="true"><path d="m4 3 5 5-5 5"/><path d="m12 3 5 5-5 5"/><path d="m20 3 5 5-5 5"/></svg></span><svg class="cart-checkout-check" viewBox="0 0 24 24" aria-hidden="true"><path d="m4 12 5 5L20 6"/></svg></button><button class="text-link full cart-dark-browse" data-action="close-dialog" style="display:block;margin:14px auto 4px">Continue browsing</button></div>`;
 }
 function breadcrumbs(current,extra=''){return `<div class="breadcrumbs"><a href="#home">hehe.cafe</a><span>/</span>${extra}<span>${e(current)}</span></div>`;}
-function productCard(p){return productCardMarkup(p,siteContent);}
+function productCard(p,idx=99){return productCardMarkup(p,siteContent,{index:idx});}
 function story(){return storyMarkup();}
 function renderHome(){
   if((!contentReady&&!contentError)||(!settingsReady&&!settingsError)){$('main').innerHTML=pageSkeleton('home');return;}
@@ -552,6 +553,7 @@ function renderProduct(){
   if(!['desc','details','care'].includes(activeProductTab))activeProductTab='desc';
   document.body.dataset.productWash='true';
   applyProductWash(bgColor);
+  const mainProg=progressiveImageSources(p,0,categoryOf(p.category)?.image);
   $('main').innerHTML=`<div class="product-immersive-page" style="${themeStyle};--art-accent:${e(bgColor)};--art-ink:${e(inkColor)}">
     <div class="product-immersive-hero"><div class="container">
       <div class="product-topbar">
@@ -565,7 +567,7 @@ function renderProduct(){
       <div class="product-immersive-grid" data-product-card style="${themeStyle}">
         <div class="product-stage-column">
           <button class="product-blended-stage" data-action="zoom" aria-label="Zoom ${e(p.title)} image">
-            <img id="product-main-image" src="${e(safeImage(p.images?.[0],categoryOf(p.category)?.image))}" alt="${e(p.title)} by ${e(artist)}" data-artwork-img>
+            <img id="product-main-image" src="${e(mainProg.src)}"${mainProg.hdSrc?` data-hd-src="${e(mainProg.hdSrc)}"`:''}${mainProg.fallbackSrc?` data-fallback-src="${e(mainProg.fallbackSrc)}"`:''} alt="${e(p.title)} by ${e(artist)}" fetchpriority="high" decoding="async" data-artwork-img>
           </button>
           ${p.images.length>1?`<div class="product-gallery-dots thumbs">${p.images.map((img,i)=>`<button type="button" data-action="thumbnail" data-index="${i}" class="${i===0?'active is-active':''}" aria-label="View image ${i+1}"></button>`).join('')}</div>`:''}
         </div>
@@ -2103,15 +2105,14 @@ async function submitProduct(event){event.preventDefault();if(!isAdmin)return;co
   try{
     await withSavingOverlay('Saving artwork…',async()=>{
       const id=editingId||randomId();
-      const uploaded=[];
-      const uploadedBackups=[];
-      for(const file of files){
-        const base64Backup=await store.uploadImage(file);
+      const uploadResults=await Promise.all(files.map(async file=>{
+        const [base64Backup,hdFile]=await Promise.all([store.uploadImage(file),prepareHdUploadFile(file)]);
         let remoteUrl='';
-        try{remoteUrl=await store.uploadProductImage(file,'freeimage');}catch{}
-        uploaded.push(remoteUrl||base64Backup);
-        uploadedBackups.push(base64Backup);
-      }
+        try{remoteUrl=await store.uploadProductImage(hdFile,'freeimage');}catch{}
+        return {primary:remoteUrl||base64Backup,backup:base64Backup};
+      }));
+      const uploaded=uploadResults.map(r=>r.primary);
+      const uploadedBackups=uploadResults.map(r=>r.backup);
       const existing=editingId?products.find(item=>item.id===editingId):null;
       const rawOrder=Number(data.get('displayOrder'));
       const displayOrder=Number.isInteger(rawOrder)&&rawOrder>=1&&rawOrder<=100000?rawOrder:(existing?.displayOrder??products.length+1);
@@ -2454,7 +2455,18 @@ document.addEventListener('click',async event=>{
         if(route().page==='checkout'){captureCheckout();renderCheckout();}
       }
     }
-    else if(action==='zoom'){$('zoom-image').src=$('product-main-image').src;$('zoom-image').alt=$('product-main-image').alt;openDialog('image-dialog');}
+    else if(action==='zoom'){
+      const mainImg=$('product-main-image'),zoomImg=$('zoom-image');
+      if(mainImg&&zoomImg){
+        const hd=mainImg.dataset.hdSrc||mainImg.src;
+        delete zoomImg.dataset.hdLoaded;
+        if(hd&&hd!==mainImg.src)zoomImg.dataset.hdSrc=hd;else delete zoomImg.dataset.hdSrc;
+        if(mainImg.dataset.fallbackSrc)zoomImg.dataset.fallbackSrc=mainImg.dataset.fallbackSrc;else delete zoomImg.dataset.fallbackSrc;
+        zoomImg.src=mainImg.src;
+        zoomImg.alt=mainImg.alt;
+        openDialog('image-dialog');
+      }
+    }
     else if(action==='remove-product-image'){const rmIdx=Number(target.dataset.index);editingImages.splice(rmIdx,1);editingBackups.splice(rmIdx,1);renderSavedProductImages();renderEditorCardPreview();}
     else if(action==='product-tab'){
       const next=target.dataset.tab||'desc';
@@ -2467,7 +2479,19 @@ document.addEventListener('click',async event=>{
       });
       panelRoot?.querySelectorAll('[data-tab-panel]').forEach(p=>{p.hidden=p.dataset.tabPanel!==next;});
     }
-    else if(action==='thumbnail'){const p=products.find(p=>p.id===route().id);const mainImg=$('product-main-image');if(mainImg&&p){mainImg.src=safeImage(p.images[Number(target.dataset.index)]);sampleAndWashProductImage(mainImg);}document.querySelectorAll('.thumbs button').forEach(b=>{const on=b===target;b.classList.toggle('active',on);b.classList.toggle('is-active',on);});}
+    else if(action==='thumbnail'){
+      const p=products.find(p=>p.id===route().id);
+      const mainImg=$('product-main-image');
+      if(mainImg&&p){
+        const prog=progressiveImageSources(p,Number(target.dataset.index)||0,categoryOf(p.category)?.image);
+        delete mainImg.dataset.hdLoaded;
+        if(prog.hdSrc)mainImg.dataset.hdSrc=prog.hdSrc;else delete mainImg.dataset.hdSrc;
+        if(prog.fallbackSrc)mainImg.dataset.fallbackSrc=prog.fallbackSrc;else delete mainImg.dataset.fallbackSrc;
+        mainImg.src=prog.src;
+        sampleAndWashProductImage(mainImg);
+      }
+      document.querySelectorAll('.thumbs button').forEach(b=>{const on=b===target;b.classList.toggle('active',on);b.classList.toggle('is-active',on);});
+    }
     else if(action==='signin'||action==='signin-redirect'){target.disabled=true;const p=store.signIn({redirect:action==='signin-redirect'});await p;if(target.isConnected)target.disabled=false;}
     else if(action==='auth-mode'){
       authMode=target.dataset.authMode==='signup'?'signup':'signin';

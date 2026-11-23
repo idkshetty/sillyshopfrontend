@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {normalizeProduct,cardImage} from '../frontend/commerce.js';
+import {normalizeProduct,cardImage,progressiveImageSources} from '../frontend/commerce.js';
 import {FALLBACK_BANNER_ARTWORKS,normalizeSettings} from '../frontend/store-settings.js';
 import {orderCardMarkup} from '../frontend/admin-ui.js';
 
@@ -25,4 +25,9 @@ test('Freeimage stays opt-in without R2 and card URLs stay intact',()=>{
   const url='https://iili.io/example.jpg';
   assert.equal(cardImage(url),url);
   assert.equal(cardImage('assets/artwork-1.jpg'),'assets/artwork-1.jpg');
+  const backup='data:image/webp;base64,AAAA';
+  const prog=progressiveImageSources({images:['https://img3.pixhost.to/images/1/art.png'],backupImages:[backup]},0);
+  assert.equal(prog.src,backup);
+  assert.equal(prog.hdSrc,'https://img3.pixhost.to/images/1/art.png');
+  assert.equal(prog.fallbackSrc,backup);
 });

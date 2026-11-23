@@ -1,6 +1,6 @@
 import { backendURL } from '../backend-config.js';
 import { firebaseConfig, APP_CHECK_SITE_KEY } from '../firebase-config.js';
-import { encodeImage } from '../image-data.js';
+import { encodeImage, prepareHdUploadFile } from '../image-data.js';
 
 const MAX_FREEIMAGE_BYTES = 20 * 1024 * 1024;
 let sdkPromise = null;
@@ -154,27 +154,28 @@ export async function uploadManagerImage(file) {
  */
 export async function uploadArtworkFiles(fileList, onProgress = () => {}) {
   const files = [...(fileList || [])].slice(0, 4);
-  const images = [];
-  const backupImages = [];
+  if (!files.length) return { images: [], backupImages: [], hostedCount: 0, fallbackUsed: false };
+  onProgress(`Uploading ${files.length} photo${files.length === 1 ? '' : 's'} (HD + Firebase backup)…`);
   let hostedCount = 0;
   let fallbackUsed = false;
-
-  for (let idx = 0; idx < files.length; idx++) {
-    const file = files[idx];
-    onProgress(`Preparing photo ${idx + 1} of ${files.length} (Freeimage.host HD + Firebase backup)…`);
-    const base64Backup = await encodeImage(file);
+  const results = await Promise.all(files.map(async file => {
+    const [base64Backup, hdFile] = await Promise.all([encodeImage(file), prepareHdUploadFile(file)]);
     let primaryUrl = '';
     try {
-      primaryUrl = await uploadManagerImage(file);
+      primaryUrl = await uploadManagerImage(hdFile);
       if (primaryUrl) hostedCount += 1;
     } catch {
       fallbackUsed = true;
     }
-    images.push(primaryUrl || base64Backup);
-    backupImages.push(base64Backup);
-  }
+    return { primary: primaryUrl || base64Backup, backup: base64Backup };
+  }));
   onProgress('');
-  return { images, backupImages, hostedCount, fallbackUsed };
+  return {
+    images: results.map(r => r.primary),
+    backupImages: results.map(r => r.backup),
+    hostedCount,
+    fallbackUsed
+  };
 }
 
 export const compressArtworkFiles = uploadArtworkFiles;

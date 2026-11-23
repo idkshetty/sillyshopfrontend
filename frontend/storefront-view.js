@@ -1,4 +1,4 @@
-import { escapeHTML as e, safeImage, cardImage, money, SHIPPING_CHARGE, artworkColorFor, artworkThemeStyle, contrastColorFor, sortArtworks, filterProducts } from './commerce.js';
+import { escapeHTML as e, safeImage, cardImage, progressiveImageSources, money, SHIPPING_CHARGE, artworkColorFor, artworkThemeStyle, contrastColorFor, sortArtworks, filterProducts } from './commerce.js';
 import { artistSlug, mergeArtistsWithProducts } from './artists.js';
 import { contentCategories, DEFAULT_CONTENT } from './store-content.js';
 import { bannerMarkup, FALLBACK_BANNER_ARTWORKS, DEFAULT_HOME_SECTIONS, safeStoreLink } from './store-settings.js';
@@ -21,10 +21,13 @@ export function storyMarkup() {
   </section>`;
 }
 
-export function productCardMarkup(p, content = DEFAULT_CONTENT) {
+export function productCardMarkup(p, content = DEFAULT_CONTENT, { index = 99 } = {}) {
   const CATEGORIES = contentCategories(content);
   const categoryOf = id => CATEGORIES.find(c => c.id === id);
-  const imageOf = item => cardImage(item.images?.[0], categoryOf(item.category)?.image || 'assets/artwork-1.jpg');
+  const fallbackImg = categoryOf(p.category)?.image || 'assets/artwork-1.jpg';
+  const prog = progressiveImageSources(p, 0, fallbackImg);
+  const eager = Number.isInteger(index) && index >= 0 && index < 2;
+  const loadAttr = eager ? (index === 0 ? 'fetchpriority="high"' : '') : 'loading="lazy"';
   const artist = p.artist || 'Suprita Chatterjee';
   const slug = artistSlug(artist);
   const productType = p.productType || 'Fridge Magnet';
@@ -36,7 +39,7 @@ export function productCardMarkup(p, content = DEFAULT_CONTENT) {
   return `<article class="product-card ${soldOut ? 'is-sold-out-card' : ''}" data-product-card data-product-id="${e(p.id)}" data-bg-color="${e(bgColor)}" style="${themeStyle}">
     <a class="product-card-image" href="#product/${e(p.id)}">
       <div class="artwork-mat-frame">
-        <img src="${e(imageOf(p))}" alt="${e(p.title)} by ${e(artist)}" loading="lazy" decoding="async" data-artwork-img>
+        <img src="${e(prog.src)}"${prog.hdSrc ? ` data-hd-src="${e(prog.hdSrc)}"` : ''}${prog.fallbackSrc ? ` data-fallback-src="${e(prog.fallbackSrc)}"` : ''} alt="${e(p.title)} by ${e(artist)}" ${loadAttr} decoding="async" data-artwork-img>
       </div>
       ${!soldOut && p.tag ? `<span class="badge unique-badge">${e(p.tag)}</span>` : ''}
     </a>
@@ -145,7 +148,7 @@ export function homeMarkup(products, storeSettings, content = DEFAULT_CONTENT, {
         ${homeFilterPanelMarkup(products, filter)}
       </div>
       <div id="product-results">
-        ${catalogLoading ? skeletonMarkup('products', 'Loading artworks…') : catalogError && !allVisible.length ? `<div class="empty-state" role="alert"><h2>Artworks could not load</h2><p>Check your connection and try again.</p><button class="button outline" data-action="retry">Try again</button></div>` : allVisible.length ? `<div class="product-grid">${allVisible.map(p => productCardMarkup(p, content)).join('')}</div>` : hasFilter ? `<div class="empty-state"><h2>No matching artworks</h2><p>No pieces match those filters yet.</p><button type="button" class="button outline" data-action="reset-filters">Show all artworks</button></div>` : `<div class="product-grid">${FALLBACK_BANNER_ARTWORKS.map(item => productCardMarkup(item, content)).join('')}</div>`}
+        ${catalogLoading ? skeletonMarkup('products', 'Loading artworks…') : catalogError && !allVisible.length ? `<div class="empty-state" role="alert"><h2>Artworks could not load</h2><p>Check your connection and try again.</p><button class="button outline" data-action="retry">Try again</button></div>` : allVisible.length ? `<div class="product-grid">${allVisible.map((p, idx) => productCardMarkup(p, content, { index: idx })).join('')}</div>` : hasFilter ? `<div class="empty-state"><h2>No matching artworks</h2><p>No pieces match those filters yet.</p><button type="button" class="button outline" data-action="reset-filters">Show all artworks</button></div>` : `<div class="product-grid">${FALLBACK_BANNER_ARTWORKS.map((item, idx) => productCardMarkup(item, content, { index: idx })).join('')}</div>`}
       </div>
     </section>`;
   const storyHtml = storeSettings?.storyVisible === false ? '' : storyMarkup();
@@ -260,7 +263,7 @@ export function artistDetailMarkup(artist, artistProducts = [], content = DEFAUL
           <h2>${e(artist.worksHeading || `Artworks by ${artist.name}`)}</h2>
           <a href="#home" class="text-link">All artworks →</a>
         </div>
-        ${count ? `<div class="product-grid">${artistProducts.map(p => productCardMarkup(p, content)).join('')}</div>` : `<div class="empty-state"><h2>No published pieces yet</h2><p>Check back soon for new works by ${e(artist.name)}.</p><a class="button outline" href="#artists">Browse other artists</a></div>`}
+        ${count ? `<div class="product-grid">${artistProducts.map((p, idx) => productCardMarkup(p, content, { index: idx })).join('')}</div>` : `<div class="empty-state"><h2>No published pieces yet</h2><p>Check back soon for new works by ${e(artist.name)}.</p><a class="button outline" href="#artists">Browse other artists</a></div>`}
       </section>
     </div>
   </div>`;
@@ -269,7 +272,7 @@ export function artistDetailMarkup(artist, artistProducts = [], content = DEFAUL
 export function productDetailPreviewMarkup(p, content = DEFAULT_CONTENT, related = []) {
   if (!p) return '<div class="container empty-state"><h2>No published artwork to preview</h2><p>Publish an artwork to preview its detail page.</p></div>';
   const artist = p.artist || 'Suprita Chatterjee';
-  const img = safeImage(p.images?.[0], 'assets/artwork-1.jpg');
+  const prog = progressiveImageSources(p, 0, 'assets/artwork-1.jpg');
   const productType = p.productType || 'Fridge Magnet';
   const bgColor = artworkColorFor(p);
   const inkColor = contrastColorFor(bgColor);
@@ -283,7 +286,7 @@ export function productDetailPreviewMarkup(p, content = DEFAULT_CONTENT, related
       </div>
       <div class="product-immersive-grid">
         <div class="product-stage-column">
-          <div class="product-blended-stage"><img src="${e(img)}" alt="${e(p.title)}"></div>
+          <div class="product-blended-stage"><img src="${e(prog.src)}"${prog.hdSrc ? ` data-hd-src="${e(prog.hdSrc)}"` : ''} alt="${e(p.title)}"></div>
           <div class="product-gallery-dots" aria-hidden="true"><span class="is-active"></span>${(p.images || []).slice(1).map(() => '<span></span>').join('')}</div>
         </div>
         <div class="product-detail-panel">

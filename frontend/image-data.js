@@ -31,3 +31,29 @@ export async function encodeImage(file){
     throw new Error('This image is too detailed to save. Try a smaller image or crop it first.');
   }finally{bitmap.close();}
 }
+export async function prepareHdUploadFile(file,maxDimension=2048,quality=0.9){
+  if(!file||!['image/jpeg','image/png','image/webp'].includes(file.type))return file;
+  if(typeof createImageBitmap!=='function'||typeof document==='undefined')return file;
+  let bitmap;
+  try{bitmap=await createImageBitmap(file);}catch{return file;}
+  try{
+    if(!bitmap.width||!bitmap.height)return file;
+    const scale=Math.min(1,maxDimension/Math.max(bitmap.width,bitmap.height));
+    if(scale===1&&file.type==='image/webp'&&file.size<=320*1024)return file;
+    const canvas=document.createElement('canvas');
+    canvas.width=Math.max(1,Math.round(bitmap.width*scale));
+    canvas.height=Math.max(1,Math.round(bitmap.height*scale));
+    const ctx=canvas.getContext('2d');
+    if(!ctx||typeof canvas.toBlob!=='function')return file;
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+    ctx.drawImage(bitmap,0,0,canvas.width,canvas.height);
+    const blob=await new Promise(resolve=>canvas.toBlob(resolve,'image/webp',quality));
+    if(!blob||!blob.size||(blob.size>=file.size&&scale===1))return file;
+    const baseName=String(file.name||'artwork').replace(/\.[^.]+$/,'')||'artwork';
+    return new File([blob],`${baseName}.webp`,{type:blob.type||'image/webp',lastModified:Date.now()});
+  }catch{
+    return file;
+  }finally{
+    bitmap.close();
+  }
+}
