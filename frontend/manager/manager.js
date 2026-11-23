@@ -59,6 +59,7 @@ const GENRE_PRESETS = ['Fridge Magnet', 'Clay Frame', 'Original Painting', 'Coas
 const NAV_ICONS = {
   analytics: '<path d="M3 3v18h18"/><path d="M7 15v-4"/><path d="M12 15V8"/><path d="M17 15v-6"/>',
   artworks: '<rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/>',
+  site: '<path d="M3 9h18v11H3z"/><path d="M5 4h14l2 5H3z"/><path d="M9 14h6"/>',
   bins: '<path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/>',
   cafes: '<path d="M17 8h1a4 4 0 1 1 0 8h-1"/><path d="M3 8h14v9a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4Z"/><path d="M6 2v3"/><path d="M10 2v3"/><path d="M14 2v3"/>',
   payouts: '<path d="M6 3h12"/><path d="M6 8h12"/><path d="m6 13 8.5 8"/><path d="M6 13h3a4 4 0 0 0 0-8"/>',
@@ -79,6 +80,10 @@ const state = {
   dataError: '',
   analytics: null,
   payoutData: null,
+  siteStockData: null,
+  siteFilter: 'all',
+  siteSearch: '',
+  importSearch: '',
   artworks: [],
   cafes: [],
   cafeStock: [],
@@ -266,13 +271,14 @@ async function loadWorkspaceData() {
   setBusy(true);
   try {
     const isAdmin = state.me.role === 'admin';
-    const [analytics, artworks, cafeData, payoutData, users, orders] = await Promise.all([
+    const [analytics, artworks, cafeData, payoutData, users, orders, siteStockData] = await Promise.all([
       callManager('managerAnalytics', { range: state.range }),
       callManager('managerListArtworks'),
       callManager('managerListCafes'),
       callManager('managerListPayouts'),
       isAdmin ? callManager('managerListUsers') : Promise.resolve([]),
-      isAdmin ? callManager('managerListOrders') : Promise.resolve([])
+      isAdmin ? callManager('managerListOrders') : Promise.resolve([]),
+      isAdmin ? callManager('managerListSiteStock').catch(() => null) : Promise.resolve(null)
     ]);
     state.analytics = analytics || null;
     state.artworks = Array.isArray(artworks) ? artworks : [];
@@ -282,6 +288,7 @@ async function loadWorkspaceData() {
     state.payoutData = payoutData || null;
     state.users = Array.isArray(users) ? users : [];
     state.orders = Array.isArray(orders) ? orders : [];
+    state.siteStockData = siteStockData || null;
     const valid = new Set(state.artworks.map(a => a.id));
     for (const sid of [...state.selectedArtIds]) {
       if (!valid.has(sid)) state.selectedArtIds.delete(sid);
@@ -375,6 +382,8 @@ function renderDrawer() {
         <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;flex-wrap:wrap">
           <span class="mgr-ref-pill">#${esc(ref || '—')}</span>
           <span class="mgr-pill is-${esc(art.stage || 'intake')}">${esc(STAGE_LABEL[art.stage] || art.stage)}</span>
+          ${art.siteFakeSold ? '<span class="mgr-fake-sold-pill">Fake sold (site only)</span>' : ''}
+          ${(art.siteCycleCount || 0) > 0 ? `<span class="mgr-cycle-pill">Cycles: ${art.siteCycleCount}</span>` : ''}
           ${art.storeProductId ? '<span class="mgr-store-badge">In hehe.cafe Artworks</span>' : ''}
         </div>
         <h2 style="font-size:18px">${esc(art.title)}</h2>
@@ -387,11 +396,11 @@ function renderDrawer() {
 
     <div class="mgr-spec-grid">
       <div><span>Selling price</span><strong>${art.price > 0 ? money(art.price) : 'Price TBD'}</strong></div>
-      <div><span>Availability</span><strong>${art.stock === 0 || art.stage === 'sold' ? 'Sold out (0)' : 'Unique 1-of-1'}</strong></div>
+      <div><span>Availability</span><strong>${art.stage === 'sold' ? 'Sold (0)' : art.siteFakeSold ? 'Fake-sold on site (In warehouse)' : art.stock === 0 ? 'Sold out (0)' : 'Unique 1-of-1'}</strong></div>
       <div><span>Material</span><strong>${esc(art.material || '—')}</strong></div>
       <div><span>Dimensions</span><strong>${esc(art.dimensions || '—')}</strong></div>
       <div><span>Current location</span><strong>${esc(art.assignedCafeName || (art.stage === 'delivery_bin' ? (art.binTargetCustomerName ? `Order #${art.binTargetOrderRef}` : art.binTargetCafeName || 'Pickup bin') : STAGE_LABEL[art.stage] || art.stage))}</strong></div>
-      <div><span>hehe.cafe Artworks</span><strong>${art.storeProductId ? `Added (#${esc(art.storeRefNumber || ref)})` : 'Not added yet'}</strong></div>
+      <div><span>Site ↔ Warehouse cycles</span><strong>${Number(art.siteCycleCount) || 0} cycles (${Number(art.siteDropCount) || 0} site drops)</strong></div>
     </div>
 
     ${art.stage === 'delivery_bin' ? `<div class="mgr-panel" style="margin:0;padding:12px">
@@ -413,6 +422,7 @@ function renderDrawer() {
       ${!['sold', 'at_cafe'].includes(art.stage) ? `<button type="button" class="mgr-btn outline small" data-action="open-bin-modal" data-id="${esc(art.id)}">Put in Pickup Bin</button>` : ''}
       ${!['sold', 'at_cafe'].includes(art.stage) && state.cafes.length ? `<button type="button" class="mgr-btn outline small" data-action="send-one-cafe" data-id="${esc(art.id)}">Send to Café</button>` : ''}
       ${art.price > 0 && art.stage !== 'sold' ? `<button type="button" class="mgr-btn accent small" data-action="publish-mgr-art" data-id="${esc(art.id)}">${art.storeProductId ? 'Sync hehe.cafe ↻' : 'Add to hehe.cafe →'}</button>` : ''}
+      ${art.stage !== 'sold' ? `<button type="button" class="mgr-btn danger small" data-action="drawer-mark-sold" data-id="${esc(art.id)}" data-prod="${esc(art.storeProductId || '')}">Mark sold</button>` : ''}
     </div>` : ''}
 
     ${stockHist.length ? `<div>
@@ -604,15 +614,21 @@ function renderArtworksTab(isAdmin) {
       <h2>Upload 1-of-1 artwork to intake</h2>
       <p class="mgr-muted" style="margin-bottom:14px">${isAdmin ? 'Uploads full-resolution images to Freeimage.host with automatic Firebase Base64 backup redundancy.' : `Uploading 1-of-1 artwork as <strong>${esc(state.me.artistName)}</strong> (Freeimage.host HD + Firebase Base64 backup).`}</p>
       <form id="mgr-upload-form" class="mgr-form-grid">
-        <label class="mgr-field wide">1–4 photos (photo #1 becomes Cover · up to 20 MB each)
-          <label class="mgr-dropzone">
-            <strong>${esc(state.uploadingPhotosText || 'Tap to choose or capture high-res artwork photos')}</strong>
-            <span class="mgr-muted">JPG, PNG, or WebP · hosted on Freeimage.host with Firebase Base64 backup</span>
-            <input id="mgr-upload-files" type="file" accept="image/jpeg,image/png,image/webp" multiple ${state.uploadingPhotosText ? 'disabled' : ''}>
-          </label>
-        </label>
+        <div class="mgr-field wide"><span>Photos (required · 1–4 photos · photo #1 becomes Cover)</span>
+          <div class="mgr-photo-bar">
+            <label class="mgr-btn accent mgr-camera-btn">
+              <span>📷 ${esc(state.uploadingPhotosText || 'Take photo (Camera)')}</span>
+              <input id="mgr-upload-camera" type="file" accept="image/*" capture="environment" ${state.uploadingPhotosText ? 'disabled' : ''}>
+            </label>
+            <label class="mgr-dropzone" style="flex:1;padding:12px">
+              <strong>${esc(state.uploadingPhotosText || 'Choose from gallery / files')}</strong>
+              <span class="mgr-muted">JPG, PNG, or WebP · hosted HD + Firebase backup</span>
+              <input id="mgr-upload-files" type="file" accept="image/jpeg,image/png,image/webp" multiple ${state.uploadingPhotosText ? 'disabled' : ''}>
+            </label>
+          </div>
+        </div>
         ${state.selectedUploadImages.length ? `<div class="mgr-preview-imgs mgr-field wide" id="mgr-upload-preview">${state.selectedUploadImages.map((src, i) => `<div class="mgr-preview-thumb"><img src="${esc(src)}" ${state.selectedUploadBackups[i] && state.selectedUploadBackups[i] !== src ? `data-fallback-src="${esc(state.selectedUploadBackups[i])}"` : ''} alt="Preview ${i + 1}">${i === 0 ? '<span class="mgr-cover-tag">COVER</span>' : ''}<button type="button" class="mgr-thumb-del" data-action="remove-upload-thumb" data-idx="${i}" aria-label="Remove photo ${i + 1}">×</button></div>`).join('')}</div>` : '<div id="mgr-upload-preview"></div>'}
-        <label class="mgr-field">Artwork title<input name="title" required minlength="2" maxlength="120" placeholder="e.g. Rainy Chai Magnet"></label>
+        <label class="mgr-field">Artwork title (optional)<input name="title" maxlength="120" placeholder="Optional — auto-named if left blank"></label>
         ${isAdmin ? `<label class="mgr-field">Artist name<input name="artistName" required maxlength="120" value="Suprita Chatterjee"></label>` : ''}
         <div class="mgr-field wide">
           <span>Quick genre / style</span>
@@ -658,6 +674,8 @@ function renderArtworksTab(isAdmin) {
                   </div>
                   <div class="mgr-kcard-title">${esc(a.title)}</div>
                   <div class="mgr-art-meta">${esc(a.artistName)} · ${esc(a.genre)}</div>
+                  ${a.siteFakeSold ? '<div style="margin-top:3px"><span class="mgr-fake-sold-pill">Fake sold</span></div>' : ''}
+                  ${(a.siteCycleCount || 0) > 0 ? `<div style="margin-top:3px"><span class="mgr-cycle-pill">Cycles: ${a.siteCycleCount}</span></div>` : ''}
                   ${a.storeProductId ? '<div style="margin-top:3px"><span class="mgr-store-badge">In hehe.cafe</span></div>' : ''}
                   ${stage === 'delivery_bin' ? `<div style="margin-top:3px">${binDestinationBadge(a)}</div>` : ''}
                   ${a.assignedCafeName ? `<div class="mgr-art-meta">At ${esc(a.assignedCafeName)}</div>` : ''}
@@ -694,7 +712,11 @@ function renderArtworksTab(isAdmin) {
               </div>
               <div class="mgr-art-meta">
                 ${esc(a.genre)} · ${esc(a.artistName)}
-                ${a.storeProductId ? '<div style="margin-top:4px"><span class="mgr-store-badge">In hehe.cafe Artworks</span></div>' : ''}
+                <div style="display:flex;gap:4px;flex-wrap:wrap;margin-top:4px">
+                  ${a.storeProductId ? '<span class="mgr-store-badge">In hehe.cafe Artworks</span>' : ''}
+                  ${a.siteFakeSold ? '<span class="mgr-fake-sold-pill">Fake sold (site only)</span>' : ''}
+                  ${(a.siteCycleCount || 0) > 0 ? `<span class="mgr-cycle-pill">Cycles: ${a.siteCycleCount}</span>` : ''}
+                </div>
                 ${a.stage === 'delivery_bin' ? `<div style="margin-top:5px">${binDestinationBadge(a)}</div>` : ''}
                 ${a.assignedCafeName ? `<br>At café: <strong>${esc(a.assignedCafeName)}</strong>` : ''}
               </div>
@@ -1198,9 +1220,11 @@ function render() {
   const isAdmin = state.me.role === 'admin';
   const pendingUsersCount = isAdmin ? state.users.filter(u => u.status === 'pending').length : 0;
   const dueCount = (state.payoutData?.summaries || []).filter(r => r.balanceDue > 0).length;
+  const liveSiteCount = state.siteStockData?.summary?.totalOnSite ?? state.artworks.filter(a => a.stage === 'live_online').length;
   const navItems = [
     ['analytics', 'Analytics', null],
     ['artworks', 'Artworks', state.artworks.length],
+    ...(isAdmin ? [['site', 'Site stock', liveSiteCount]] : []),
     ['bins', 'Pickup bin', state.artworks.filter(a => a.stage === 'delivery_bin').length],
     ['cafes', 'Cafés', state.cafeStock.filter(s => ['at_cafe', 'return_requested'].includes(s.status)).length],
     ['payouts', 'Payouts', dueCount || null]
@@ -1212,6 +1236,8 @@ function render() {
     bodyHtml = `<div class="mgr-panel"><p style="color:var(--danger)">${esc(state.dataError)}</p><button type="button" class="mgr-btn outline small" data-action="refresh-all">Try again</button></div>`;
   } else if (state.tab === 'artworks') {
     bodyHtml = renderArtworksTab(isAdmin);
+  } else if (state.tab === 'site' && isAdmin) {
+    bodyHtml = renderSiteStockTab();
   } else if (state.tab === 'bins') {
     bodyHtml = renderBinsTab(isAdmin);
   } else if (state.tab === 'cafes') {
@@ -1269,6 +1295,182 @@ function render() {
   renderDrawer();
 }
 
+/* Site Stock & Warehouse Rotation Tab */
+function filterSiteProducts(list = []) {
+  const q = state.siteSearch.trim().toLowerCase().replace(/^#/, '');
+  return list.filter(p => {
+    if (state.siteFilter === 'available' && !(p.visible && !p.realSold && !p.fakeSold)) return false;
+    if (state.siteFilter === 'fake_sold' && !(p.visible && p.fakeSold && !p.realSold)) return false;
+    if (state.siteFilter === 'real_sold' && !p.realSold) return false;
+    if (state.siteFilter === 'hidden' && (p.visible || p.realSold)) return false;
+    if (!q) return true;
+    return `${p.refNumber || ''} ${p.title} ${p.artist} ${p.productType} ${p.managerStage || ''}`.toLowerCase().includes(q);
+  });
+}
+
+function renderSiteStockTab() {
+  const data = state.siteStockData;
+  if (!data) {
+    return `<div class="mgr-head"><div><p class="mgr-eyebrow">hehe.cafe ↔ Chain Manager</p><h1>Site Stock &amp; Warehouse Rotation</h1></div><div class="mgr-head-actions"><button type="button" class="mgr-btn outline small" data-action="refresh-all">Reload ↻</button></div></div>
+    <div class="mgr-panel"><p class="mgr-muted">${state.loadingData ? 'Loading hehe.cafe site stock…' : 'Could not load site stock yet. Tap Reload to sync.'}</p></div>`;
+  }
+  const summary = data.summary || {};
+  const allSite = data.siteProducts || [];
+  const filtered = filterSiteProducts(allSite);
+  const warehouseCount = summary.warehouseReadyCount ?? (data.warehouseArtworks || []).length;
+  const chips = [
+    ['all', 'All site records', allSite.length],
+    ['available', 'Live · In stock', summary.liveAvailable || 0],
+    ['fake_sold', 'Fake sold (display)', summary.liveFakeSold || 0],
+    ['real_sold', 'Sold', allSite.filter(p => p.realSold).length],
+    ['hidden', 'Off site / Warehouse', allSite.filter(p => !p.visible && !p.realSold).length]
+  ];
+
+  return `<div class="mgr-head">
+      <div>
+        <p class="mgr-eyebrow">hehe.cafe ↔ Chain Manager Sync</p>
+        <h1>Site Stock &amp; Warehouse Rotation</h1>
+      </div>
+      <div class="mgr-head-actions">
+        <button type="button" class="mgr-btn accent" data-action="open-refresh-site-modal">↻ Refresh site stock (20)</button>
+        <button type="button" class="mgr-btn" data-action="open-import-site-modal">+ Import from warehouse (${warehouseCount})</button>
+        <button type="button" class="mgr-btn outline small" data-action="sync-from-site">Sync from site</button>
+        <button type="button" class="mgr-btn outline small" data-action="refresh-all">Reload</button>
+      </div>
+    </div>
+
+    <div class="mgr-kpi-grid">
+      <div class="mgr-kpi"><span>Live on site</span><strong>${summary.totalOnSite || 0}</strong><small>${summary.liveAvailable || 0} available · ${summary.liveFakeSold || 0} fake sold</small></div>
+      <div class="mgr-kpi"><span>Fake sold (scarcity)</span><strong style="color:var(--warn-ink)">${summary.liveFakeSold || 0}</strong><small>Shown sold on site · still in warehouse</small></div>
+      <div class="mgr-kpi"><span>Sold artworks</span><strong>${allSite.filter(p => p.realSold).length}</strong><small>Excluded from future rotations</small></div>
+      <div class="mgr-kpi"><span>Warehouse ready</span><strong>${warehouseCount}</strong><small>${summary.unlinkedSiteProducts || 0} unlinked site items</small></div>
+      <div class="mgr-kpi"><span>Total cycles tracked</span><strong>${summary.totalCyclesCompleted || 0}</strong><small>Site → Warehouse rotations</small></div>
+    </div>
+
+    <div class="mgr-chips">
+      ${chips.map(([k, label, count]) => `<button type="button" class="mgr-chip ${state.siteFilter === k ? 'is-active' : ''}" data-action="set-site-filter" data-filter="${k}">${esc(label)} (${count})</button>`).join('')}
+    </div>
+
+    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:12px">
+      <input id="mgr-site-search" type="search" value="${esc(state.siteSearch)}" placeholder="Search site stock by #Ref, title, artist, or genre…" style="width:100%;max-width:380px;padding:7px 12px;border-radius:8px;border:1px solid var(--line-strong);background:var(--surface)">
+      <span class="mgr-muted">Showing ${filtered.length} of ${allSite.length} site records</span>
+    </div>
+
+    <section class="mgr-panel">
+      ${filtered.length ? `<div class="mgr-table-wrap"><table class="mgr-table">
+        <thead><tr><th>Artwork</th><th>Ref #</th><th>Price</th><th>Site status</th><th>Cycles</th><th>Actions</th></tr></thead>
+        <tbody>${filtered.map(p => {
+          const statusBadge = p.realSold
+            ? '<span class="mgr-pill is-sold">Sold</span>'
+            : p.visible && p.fakeSold
+              ? '<span class="mgr-fake-sold-pill">Fake sold · In warehouse</span>'
+              : p.visible
+                ? '<span class="mgr-pill is-live_online">Live · In stock</span>'
+                : '<span class="mgr-pill is-curated">Warehouse / Hidden</span>';
+          const imgSrc = p.backupImages?.[0] || p.images?.[0] || '';
+          return `<tr>
+            <td>
+              <div style="display:flex;align-items:center;gap:10px;min-width:190px">
+                ${imgSrc ? `<img src="${esc(imgSrc)}" alt="" style="width:42px;height:42px;border-radius:7px;object-fit:cover;border:1px solid var(--line);flex-shrink:0">` : ''}
+                <div>
+                  <strong>${esc(p.title)}</strong>
+                  <div class="mgr-art-meta">${esc(p.artist)} · ${esc(p.productType)}</div>
+                </div>
+              </div>
+            </td>
+            <td>${refPillMarkup(p.refNumber, p.managerArtworkId || '')}</td>
+            <td><strong>${p.price > 0 ? money(p.price) : '—'}</strong></td>
+            <td>${statusBadge}</td>
+            <td><span class="mgr-cycle-pill">${p.siteCycleCount || 0} cycles</span><div class="mgr-art-meta">${p.siteDropCount || 0} drops</div></td>
+            <td>
+              <div style="display:flex;gap:5px;flex-wrap:wrap">
+                ${!p.realSold ? `<button type="button" class="mgr-btn danger small" data-action="site-mark-sold" data-id="${esc(p.id)}" data-art="${esc(p.managerArtworkId || '')}" data-title="${esc(p.title)}">Mark sold</button>` : ''}
+                ${p.visible && !p.realSold ? `<button type="button" class="mgr-btn outline small" data-action="site-toggle-fake-sold" data-id="${esc(p.id)}" data-art="${esc(p.managerArtworkId || '')}" data-fake="${p.fakeSold ? '0' : '1'}">${p.fakeSold ? 'Clear fake sold' : 'Fake sold'}</button>` : ''}
+                ${p.realSold || p.fakeSold ? `<button type="button" class="mgr-btn outline small" data-action="site-mark-available" data-id="${esc(p.id)}" data-art="${esc(p.managerArtworkId || '')}">Mark in stock</button>` : ''}
+              </div>
+            </td>
+          </tr>`;
+        }).join('')}</tbody>
+      </table></div>` : '<p class="mgr-muted">No site stock records match this filter. Click "Sync from site" or "+ Import from warehouse" above.</p>'}
+    </section>`;
+}
+
+/* Modals */
+function renderImportSiteModalListHtml(q = '') {
+  const clean = String(q || '').trim().toLowerCase().replace(/^#/, '');
+  const list = (state.siteStockData?.warehouseArtworks || []).filter(a => {
+    if (!clean) return true;
+    return `${a.refNumber || ''} ${a.title} ${a.artistName} ${a.genre}`.toLowerCase().includes(clean);
+  });
+  if (!list.length) return '<p class="mgr-muted" style="padding:10px;font-size:12px">No eligible warehouse artworks match right now.</p>';
+  return list.map(a => `<label class="mgr-order-opt" style="align-items:center">
+    <input type="checkbox" name="importArtworkIds" value="${esc(a.id)}">
+    ${a.images?.[0] ? artImgTag(a, 0, 'alt="" style="width:36px;height:36px;border-radius:6px;object-fit:cover;flex-shrink:0"') : ''}
+    <div style="flex:1;min-width:0">
+      <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+        <span class="mgr-ref-pill">#${esc(getRefCode(a) || '—')}</span>
+        <strong>${esc(a.title)}</strong>
+        ${(a.siteCycleCount || 0) > 0 ? `<span class="mgr-cycle-pill">Cycles: ${a.siteCycleCount}</span>` : ''}
+      </div>
+      <div class="mgr-art-meta">${esc(a.artistName)} · ${esc(a.genre)} · ${esc(STAGE_LABEL[a.stage] || a.stage)}</div>
+    </div>
+    <strong>${a.price > 0 ? money(a.price) : '<small class="mgr-muted">Uses default ₹</small>'}</strong>
+  </label>`).join('');
+}
+
+function openImportSiteModal() {
+  state.importSearch = '';
+  const dlg = $('mgr-dialog');
+  const count = (state.siteStockData?.warehouseArtworks || []).length;
+  dlg.innerHTML = `<div class="mgr-dialog-head">
+      <div><p class="mgr-eyebrow">Warehouse → Site Stock</p><h2>Import artworks to hehe.cafe (${count} ready)</h2></div>
+      <button type="button" class="mgr-btn outline small" data-action="close-modal">Close</button>
+    </div>
+    <p id="mgr-modal-alert" class="mgr-modal-alert" role="alert" hidden></p>
+    <form id="mgr-import-site-form" style="display:grid;gap:12px">
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end">
+        <label class="mgr-field" style="flex:1;min-width:190px">Search warehouse<input id="mgr-import-search" type="search" placeholder="Filter by #Ref, title, or artist…"></label>
+        <label class="mgr-field" style="width:150px">Default price if TBD (₹)<input name="defaultPrice" type="number" min="1" step="1" value="250"></label>
+      </div>
+      <div style="display:flex;gap:12px;align-items:center">
+        <button type="button" class="mgr-link" data-action="import-select-all">Select all visible</button>
+        <button type="button" class="mgr-link" data-action="import-select-none">Clear</button>
+      </div>
+      <div id="mgr-import-list" class="mgr-order-pick-list" style="max-height:280px">${renderImportSiteModalListHtml('')}</div>
+      <div style="display:flex;justify-content:flex-end;gap:8px">
+        <button type="submit" class="mgr-btn accent">Import selected to live site →</button>
+      </div>
+    </form>`;
+  dlg.showModal();
+}
+
+function openRefreshSiteModal() {
+  const dlg = $('mgr-dialog');
+  const summary = state.siteStockData?.summary || {};
+  dlg.innerHTML = `<div class="mgr-dialog-head">
+      <div><p class="mgr-eyebrow">Warehouse ↔ Site Stock Cycle</p><h2>Refresh live site stock</h2></div>
+      <button type="button" class="mgr-btn outline small" data-action="close-modal">Close</button>
+    </div>
+    <p id="mgr-modal-alert" class="mgr-modal-alert" role="alert" hidden></p>
+    <p class="mgr-muted" style="margin-bottom:12px">This rotates the storefront automatically:</p>
+    <ol class="mgr-muted" style="margin:0 0 14px;padding-left:18px;display:grid;gap:4px">
+      <li>All current unsold &amp; display-sold site stock (<strong>${(summary.liveAvailable || 0) + (summary.liveFakeSold || 0)}</strong> pcs) moves back into the <strong>Warehouse</strong> and increments each piece's <strong>Cycle</strong> count.</li>
+      <li>Genuinely sold items remain marked <strong>Sold</strong> and are excluded.</li>
+      <li>Picks <strong>20 random artworks</strong> from Warehouse and puts them live on <strong>hehe.cafe</strong>.</li>
+      <li>Marks <strong>3 random pieces</strong> out of the 20 as <strong>Sold on site only</strong> (fake scarcity order — still tracked as available in Warehouse).</li>
+    </ol>
+    <form id="mgr-refresh-site-form" class="mgr-form-grid">
+      <label class="mgr-field">Random pieces to put on site<input name="pickCount" type="number" min="1" max="50" value="20" required></label>
+      <label class="mgr-field">Random fake-sold on site<input name="fakeSoldCount" type="number" min="0" max="50" value="3" required></label>
+      <label class="mgr-field wide">Default price (₹) for unpriced warehouse pieces<input name="defaultPrice" type="number" min="1" max="500000" value="250" required></label>
+      <div class="mgr-field wide" style="display:flex;justify-content:flex-end;gap:8px;padding-top:6px">
+        <button type="button" class="mgr-btn outline small" data-action="close-modal">Cancel</button>
+        <button type="submit" class="mgr-btn accent">↻ Refresh site stock now →</button>
+      </div>
+    </form>`;
+  dlg.showModal();
+}
+
 /* Modals */
 function openCurationModal(artworkId) {
   const art = state.artworks.find(a => a.id === artworkId);
@@ -1292,12 +1494,18 @@ function renderCurationModalBody(art) {
         <div class="mgr-preview-imgs" style="margin-bottom:6px">
           ${state.curateImages.map((src, i) => `<div class="mgr-preview-thumb"><img src="${esc(src)}" ${state.curateBackups[i] && state.curateBackups[i] !== src ? `data-fallback-src="${esc(state.curateBackups[i])}"` : ''} alt="">${i === 0 ? '<span class="mgr-cover-tag">COVER</span>' : ''}${state.curateImages.length > 1 ? `<button type="button" class="mgr-thumb-del" data-action="remove-curate-thumb" data-id="${esc(art.id)}" data-idx="${i}">×</button>` : ''}</div>`).join('')}
         </div>
-        <label class="mgr-dropzone" style="padding:10px">
-          <strong>${esc(state.uploadingPhotosText || '+ Add / replace high-res photos (Freeimage.host + Base64 backup)')}</strong>
-          <input id="mgr-curate-files" data-id="${esc(art.id)}" type="file" accept="image/jpeg,image/png,image/webp" multiple ${state.uploadingPhotosText ? 'disabled' : ''}>
-        </label>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <label class="mgr-btn accent small mgr-camera-btn">
+            <span>📷 ${esc(state.uploadingPhotosText || 'Take photo')}</span>
+            <input id="mgr-curate-camera" data-id="${esc(art.id)}" type="file" accept="image/*" capture="environment" ${state.uploadingPhotosText ? 'disabled' : ''}>
+          </label>
+          <label class="mgr-dropzone" style="flex:1;padding:10px">
+            <strong>${esc(state.uploadingPhotosText || '+ Choose from gallery (HD + Base64 backup)')}</strong>
+            <input id="mgr-curate-files" data-id="${esc(art.id)}" type="file" accept="image/jpeg,image/png,image/webp" multiple ${state.uploadingPhotosText ? 'disabled' : ''}>
+          </label>
+        </div>
       </div>
-      <label class="mgr-field">Title<input name="title" required maxlength="120" value="${esc(art.title)}"></label>
+      <label class="mgr-field">Title (optional)<input name="title" maxlength="120" value="${esc(art.title)}"></label>
       <label class="mgr-field">Artist<input name="artistName" required maxlength="120" value="${esc(art.artistName)}"></label>
       <label class="mgr-field">Genre / product type<input name="genre" required maxlength="60" value="${esc(art.genre)}"></label>
       <label class="mgr-field">Selling price (₹)<input id="mgr-curate-price" name="price" type="number" min="0" step="0.01" value="${art.price || 0}"></label>
@@ -1775,6 +1983,72 @@ document.addEventListener('click', async event => {
     } else if (action === 'set-stage-filter') {
       state.stageFilter = btn.dataset.stage || 'all';
       render();
+    } else if (action === 'set-site-filter') {
+      state.siteFilter = btn.dataset.filter || 'all';
+      render();
+    } else if (action === 'open-import-site-modal') {
+      openImportSiteModal();
+    } else if (action === 'open-refresh-site-modal') {
+      openRefreshSiteModal();
+    } else if (action === 'import-select-all' || action === 'import-select-none') {
+      const checked = action === 'import-select-all';
+      $('mgr-import-list')?.querySelectorAll('input[name="importArtworkIds"]').forEach(cb => { cb.checked = checked; });
+    } else if (action === 'sync-from-site') {
+      btn.disabled = true;
+      btn.textContent = 'Syncing…';
+      setBusy(true);
+      const res = await callManager('managerSyncFromSite');
+      toast(`Synced from hehe.cafe: ${res.importedCount} imported, ${res.markedSoldCount} sold.`);
+      await loadWorkspaceData();
+    } else if (action === 'site-mark-sold') {
+      openConfirmModal({
+        eyebrow: 'Site Stock · Mark Sold',
+        title: `Mark "${btn.dataset.title || 'Artwork'}" as sold?`,
+        message: 'This sets stock to 0 on hehe.cafe and marks the artwork Sold in Manager (excluded from future rotations).',
+        confirmLabel: 'Mark sold',
+        danger: true,
+        onConfirmAction: 'exec-site-mark-sold',
+        dataAttrs: `data-id="${esc(id || '')}" data-art="${esc(btn.dataset.art || '')}"`
+      });
+    } else if (action === 'exec-site-mark-sold') {
+      btn.disabled = true;
+      btn.textContent = 'Updating…';
+      setBusy(true);
+      await callManager('managerMarkSiteProductSold', { productId: id || '', artworkId: btn.dataset.art || '', sold: true, fakeOnly: false });
+      $('mgr-dialog')?.close();
+      toast('Marked artwork as sold on site and in Manager.');
+      await loadWorkspaceData();
+    } else if (action === 'drawer-mark-sold') {
+      openConfirmModal({
+        eyebrow: 'Mark Artwork Sold',
+        title: 'Mark this artwork as sold?',
+        message: 'Marks stage Sold (stock 0) in Manager and sets stock to 0 on hehe.cafe if linked.',
+        confirmLabel: 'Mark sold',
+        danger: true,
+        onConfirmAction: 'exec-drawer-mark-sold',
+        dataAttrs: `data-id="${esc(id || '')}"`
+      });
+    } else if (action === 'exec-drawer-mark-sold') {
+      btn.disabled = true;
+      btn.textContent = 'Updating…';
+      setBusy(true);
+      await callManager('managerMarkSiteProductSold', { artworkId: id, sold: true, fakeOnly: false });
+      $('mgr-dialog')?.close();
+      toast('Artwork marked sold.');
+      await loadWorkspaceData();
+    } else if (action === 'site-toggle-fake-sold') {
+      const fake = btn.dataset.fake === '1';
+      btn.disabled = true;
+      setBusy(true);
+      await callManager('managerMarkSiteProductSold', { productId: id || '', artworkId: btn.dataset.art || '', sold: fake, fakeOnly: fake });
+      toast(fake ? 'Marked fake-sold on site (still kept available in Warehouse).' : 'Cleared fake-sold flag — artwork is live in stock.');
+      await loadWorkspaceData();
+    } else if (action === 'site-mark-available') {
+      btn.disabled = true;
+      setBusy(true);
+      await callManager('managerMarkSiteProductSold', { productId: id || '', artworkId: btn.dataset.art || '', sold: false });
+      toast('Artwork marked back in stock on site and Manager.');
+      await loadWorkspaceData();
     } else if (action === 'select-all-shown') {
       filterArtworks().forEach(a => state.selectedArtIds.add(a.id));
       render();
@@ -2076,7 +2350,7 @@ document.addEventListener('drop', async event => {
 });
 
 document.addEventListener('change', async event => {
-  if (event.target.id === 'mgr-upload-files') {
+  if (event.target.id === 'mgr-upload-files' || event.target.id === 'mgr-upload-camera') {
     try {
       setBusy(true);
       const res = await uploadArtworkFiles(event.target.files, text => {
@@ -2087,9 +2361,9 @@ document.addEventListener('change', async event => {
       state.selectedUploadBackups = [...state.selectedUploadBackups, ...res.backupImages].slice(0, 4);
       state.uploadingPhotosText = '';
       if (res.fallbackUsed) {
-        toast('Uploaded using Firebase Base64 backup (configure FREEIMAGE_API_KEY on Worker for Freeimage.host HD links).');
+        toast('Uploaded using Firebase Base64 backup (configure FREEIMAGE_API_KEY on Worker for HD links).');
       } else if (res.hostedCount) {
-        toast(`Uploaded ${res.hostedCount} HD photo(s) to Freeimage.host + Firebase Base64 backup.`);
+        toast(`Uploaded ${res.hostedCount} HD photo(s) + Firebase Base64 backup.`);
       }
       render();
     } catch (error) {
@@ -2097,9 +2371,10 @@ document.addEventListener('change', async event => {
       render();
       toast(error?.message || 'Could not process image.', { isError: true });
     } finally {
+      event.target.value = '';
       setBusy(false);
     }
-  } else if (event.target.id === 'mgr-curate-files') {
+  } else if (event.target.id === 'mgr-curate-files' || event.target.id === 'mgr-curate-camera') {
     const artId = event.target.dataset.id;
     const art = state.artworks.find(a => a.id === artId);
     if (!art) return;
@@ -2112,12 +2387,13 @@ document.addEventListener('change', async event => {
       state.curateBackups = [...state.curateBackups, ...res.backupImages].slice(0, 4);
       state.uploadingPhotosText = '';
       renderCurationModalBody(art);
-      toast(res.fallbackUsed ? 'Photo saved with Firebase Base64 backup.' : 'Uploaded HD photo to Freeimage.host + Base64 backup.');
+      toast(res.fallbackUsed ? 'Photo saved with Firebase Base64 backup.' : 'Uploaded HD photo + Base64 backup.');
     } catch (error) {
       state.uploadingPhotosText = '';
       renderCurationModalBody(art);
       toast(error?.message || 'Could not upload photo.', { isError: true });
     } finally {
+      event.target.value = '';
       setBusy(false);
     }
   } else if (event.target.dataset?.selectArt) {
@@ -2145,6 +2421,16 @@ document.addEventListener('input', event => {
     render();
     const input = $('mgr-art-search');
     if (input) { input.focus(); input.setSelectionRange(pos, pos); }
+  } else if (event.target.id === 'mgr-site-search') {
+    state.siteSearch = event.target.value;
+    const pos = event.target.selectionStart;
+    render();
+    const input = $('mgr-site-search');
+    if (input) { input.focus(); input.setSelectionRange(pos, pos); }
+  } else if (event.target.id === 'mgr-import-search') {
+    state.importSearch = event.target.value;
+    const list = $('mgr-import-list');
+    if (list) list.innerHTML = renderImportSiteModalListHtml(state.importSearch);
   } else if (event.target.id === 'mgr-bin-order-search' && state.binModal) {
     state.binModal.orderQuery = event.target.value;
     const list = $('mgr-bin-order-list');
@@ -2315,6 +2601,26 @@ document.addEventListener('submit', async event => {
         status: 'approved'
       });
       toast(`Approved ${fd.get('email')}.`);
+      await loadWorkspaceData();
+    } else if (form.id === 'mgr-import-site-form') {
+      const artworkIds = fd.getAll('importArtworkIds');
+      if (!artworkIds.length) throw new Error('Select at least one artwork to import to Site Stock.');
+      const res = await callManager('managerImportToSiteStock', {
+        artworkIds,
+        visible: true,
+        defaultPrice: Number(fd.get('defaultPrice') || 250)
+      });
+      $('mgr-dialog')?.close();
+      toast(`Imported ${res.importedCount} artwork(s) into live Site Stock${res.skippedCount ? ` (${res.skippedCount} skipped)` : ''}.`);
+      await loadWorkspaceData();
+    } else if (form.id === 'mgr-refresh-site-form') {
+      const res = await callManager('managerRefreshSiteStock', {
+        pickCount: Number(fd.get('pickCount') || 20),
+        fakeSoldCount: Number(fd.get('fakeSoldCount') ?? 3),
+        defaultPrice: Number(fd.get('defaultPrice') || 250)
+      });
+      $('mgr-dialog')?.close();
+      toast(`Site refreshed: ${res.movedToWarehouse} returned to warehouse · ${res.selectedForSite} live (${res.fakeSoldCount} fake-sold).`);
       await loadWorkspaceData();
     } else if (form.id === 'mgr-edit-user-form') {
       await callManager('managerApproveUser', {
