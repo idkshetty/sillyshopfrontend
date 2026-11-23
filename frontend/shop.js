@@ -2558,7 +2558,43 @@ document.addEventListener('click',async event=>{
       }
     }
     else if(action==='approve-quote'){const request=requestList.find(r=>r.id===id);if(request)openQuoteEditor(request,{approve:data=>store.callBackend('approveQuote',data),onSaved:()=>{requestsLoaded=false;renderAdminContent();}});}
-    else if(action==='resolve-cancellation'){target.disabled=true;await withSavingOverlay('Updating order…',()=>store.callBackend('resolveCancellation',{requestId:id,approve:target.dataset.approve==='true'}));requestsLoaded=false;renderAdminContent();}
+    else if(action==='resolve-cancellation'){
+      const order=requestList.find(o=>o.id===id);
+      const approve=target.dataset.approve==='true';
+      const refLabel=id.slice(0,8).toUpperCase();
+      const isRazorpayPaid=order?.paymentStatus==='captured'&&order?.paymentMethod!=='manual';
+      const remainingRupees=Math.max(0,((Number(order?.quote?.amount)||0)-(Number(order?.refundedAmount)||0))/100);
+      if(approve){
+        const confirmMsg=isRazorpayPaid&&remainingRupees>=1
+          ?`Cancel order #${refLabel}, release stock, and automatically refund ${money(remainingRupees)} via Razorpay?`
+          :`Cancel order #${refLabel}${order?.inventoryReserved?' and release reserved stock':''}?`;
+        if(!window.confirm(confirmMsg))return;
+      }
+      target.disabled=true;
+      try{
+        const res=await withSavingOverlay(approve&&isRazorpayPaid?'Cancelling order & issuing Razorpay refund…':'Updating order…',()=>store.callBackend('resolveCancellation',{requestId:id,approve}));
+        requestsLoaded=false;
+        renderAdminContent();
+        if(res?.autoRefunded)toast(`Order #${refLabel} cancelled and ${money((res.refundedPaise||0)/100)} refunded via Razorpay.`);
+        else if(res?.refundError)toast(`Order #${refLabel} cancelled, but automatic refund failed: ${res.refundError}. Use the Refund button to retry.`);
+        else toast(approve?`Order #${refLabel} cancelled.`:`Cancellation declined for #${refLabel}.`);
+      }finally{
+        if(target.isConnected)target.disabled=false;
+      }
+    }
+    else if(action==='uncancel-order'&&isAdmin){
+      const refLabel=id.slice(0,8).toUpperCase();
+      if(!window.confirm(`Un-cancel order #${refLabel}? This will restore the order and re-reserve artwork stock.`))return;
+      target.disabled=true;
+      try{
+        await withSavingOverlay('Restoring order…',()=>store.uncancelOrder(id));
+        requestsLoaded=false;
+        renderAdminContent();
+        toast(`Order #${refLabel} restored from cancelled.`);
+      }finally{
+        if(target.isConnected)target.disabled=false;
+      }
+    }
     else if(action==='manual-paid'){const box=target.closest('.manual-payment-controls'),method=box.querySelector('[name=manual-method]').value,reference=box.querySelector('[name=manual-reference]').value.trim();if(!reference)return toast('Enter the offline payment reference.');target.disabled=true;await withSavingOverlay('Recording offline payment…',()=>store.callBackend('setManualPaymentStatus',{requestId:id,status:'paid',method,reference}));requestsLoaded=false;renderAdminContent();toast('Offline payment recorded.');}
     else if(action==='manual-unpaid'){if(!window.confirm('Mark this offline payment unpaid? Confirm that the money was never received or has been returned.'))return;target.disabled=true;await withSavingOverlay('Updating payment status…',()=>store.callBackend('setManualPaymentStatus',{requestId:id,status:'unpaid'}));requestsLoaded=false;renderAdminContent();toast('Offline payment marked unpaid.');}
     else if(action==='manual-refund'){if(!window.confirm('Confirm that you have already returned the offline payment to the customer.'))return;target.disabled=true;await withSavingOverlay('Recording offline refund…',()=>store.callBackend('setManualPaymentStatus',{requestId:id,status:'refunded'}));requestsLoaded=false;renderAdminContent();toast('Offline refund recorded.');}

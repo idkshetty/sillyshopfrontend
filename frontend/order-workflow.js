@@ -20,6 +20,7 @@ export function statusChangeError(order,next){
   return 'This order changed or the selected step is unavailable. Refresh and choose an available status.';
 }
 export function statusHelp(order){
+  if(order.status==='cancelled'&&order.paymentStatus!=='refunded')return 'This order is cancelled. You can un-cancel it below to restore fulfilment and re-reserve stock.';
   if(['cancelled','closed'].includes(order.status))return 'This request is '+order.status+'. No further status changes are available.';
   if(order.status==='cancel_requested')return 'Use the controls below to approve or decline cancellation.';
   if(order.paymentStatus==='refunded')return 'Payment was refunded. Fulfilment is unavailable; resolve any outstanding cancellation below.';

@@ -272,6 +272,7 @@ export async function cancelRequest(id,reason){return callBackend('cancelRequest
 export async function observePublicReviews(onData,onError){return observePublic('reviews',v=>onData(Array.isArray(v)?v:(v&&typeof v==='object'?Object.values(v):[])),onError);}
 export async function saveOrderTracking(requestId,tracking={}){return callBackend('saveOrderTracking',{requestId,...tracking});}
 export async function issueRazorpayRefund(payload){return callBackend('issueRazorpayRefund',payload);}
+export async function uncancelOrder(requestId){return callBackend('uncancelOrder',{requestId});}
 export async function submitCustomerReview(payload){return callBackend('submitCustomerReview',payload);}
 export async function loadMyReviews(){return callBackend('loadMyReviews',{});}
 export async function loadCustomerReviewsAdmin(){return callBackend('loadCustomerReviewsAdmin',{});}

@@ -28,6 +28,26 @@ test('orderCardMarkup renders tracking editor and Razorpay refund button for pai
   assert.match(html, /data-tracking-form="order123456"/);
   assert.match(html, /EK99887766IN/);
   assert.match(html, /data-action="open-razorpay-refund"/);
+  assert.match(html, /Cancel order, release stock &amp; auto-refund|Cancel order, release stock & auto-refund/);
+});
+
+test('orderCardMarkup renders un-cancel controls only when not fully refunded', () => {
+  const baseOrder = {
+    id: 'order_cancelled_1',
+    status: 'cancelled',
+    paymentStatus: 'captured',
+    paymentMethod: 'razorpay',
+    customer: { firstName: 'Asha', lastName: 'K', city: 'Bengaluru', postalCode: '560001' },
+    items: [{ productId: 'p1', title: 'Moon Cat', quantity: 1, unitPrice: 300 }],
+    quote: { amount: 34000, shipping: 4000 },
+    createdAt: Date.now()
+  };
+  const paidCancelled = orderCardMarkup(baseOrder, { open: true });
+  assert.match(paidCancelled, /order-summary-uncancel[^>]*data-action="uncancel-order"/);
+  assert.match(paidCancelled, /data-action="uncancel-order"[^>]*>Un-cancel order</);
+
+  const refundedCancelled = orderCardMarkup({ ...baseOrder, paymentStatus: 'refunded', refundedAmount: 34000 }, { open: true });
+  assert.doesNotMatch(refundedCancelled, /data-action="uncancel-order"/);
 });
 
 test('thermalPrinterDockMarkup collapses cleanly when disconnected and expands on demand', () => {

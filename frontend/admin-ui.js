@@ -282,6 +282,7 @@ export function orderCardMarkup(o, {
   const canRazorpayRefund = o.paymentStatus === 'captured' && o.paymentMethod !== 'manual' && Math.max(0, (Number(o.quote?.amount) || 0) - (Number(o.refundedAmount) || 0)) >= 100;
   const refundDue = canRazorpayRefund && o.refundStatus === 'required';
   const canCancel = ['details_received', 'reviewed', 'contacted', 'processing'].includes(o.status);
+  const canUncancel = o.status === 'cancelled' && o.paymentStatus !== 'refunded';
   const shippingIncluded = Boolean(o.quote?.shipping > 0 || o.quote?.freeShipping);
   const canSetQuote = o.checkoutPayment
     ? (!shippingIncluded && !o.shippingQuote && ['details_received', 'reviewed', 'contacted', 'processing'].includes(o.status))
@@ -302,6 +303,7 @@ export function orderCardMarkup(o, {
         <span class="status-pill order-stage-pill">${e(stageLabel)}</span>
         ${printBadge}
         ${printable ? `<button type="button" class="button outline small order-summary-print" data-action="print-label" data-id="${e(o.id)}">Print label ↗</button>` : ''}
+        ${canUncancel && o.paymentStatus === 'captured' ? `<button type="button" class="button outline small order-summary-uncancel" data-action="uncancel-order" data-id="${e(o.id)}">Un-cancel</button>` : ''}
         ${canRazorpayRefund ? `<button type="button" class="button outline small danger-button order-summary-refund" data-action="open-razorpay-refund" data-id="${e(o.id)}">${refundDue ? 'Refund due · Issue refund' : 'Refund ↩'}</button>` : ''}
         <button type="button" class="icon-button order-expand-chevron" data-action="toggle-order-card" data-id="${e(o.id)}" aria-expanded="${open ? 'true' : 'false'}" aria-label="${open ? 'Collapse order details' : 'Expand order details'}"><svg viewBox="0 0 24 24" class="ui-chevron" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></button>
       </div>
@@ -323,6 +325,7 @@ export function orderCardMarkup(o, {
         ${canDownloadInvoice ? `<button type="button" class="button outline small" data-action="download-invoice" data-id="${e(o.id)}">Download invoice</button>` : ''}
         ${printable ? `<button type="button" class="button outline small" data-action="print-label" data-id="${e(o.id)}">Print label ↗</button>` : ''}
         ${canRazorpayRefund ? `<button type="button" class="button outline small danger-button" data-action="open-razorpay-refund" data-id="${e(o.id)}">Issue Razorpay refund</button>` : ''}
+        ${canUncancel ? `<button type="button" class="button outline small" data-action="uncancel-order" data-id="${e(o.id)}">Un-cancel order</button>` : ''}
         ${isPrinted && printable ? `<button type="button" class="text-link" data-action="reset-label-printed" data-id="${e(o.id)}">Mark unprinted</button>` : ''}
         <a class="text-link" href="${e(locationUrl)}" target="_blank" rel="noopener">${hasPin ? 'View delivery pin ↗' : 'Search address ↗'}</a>
       </div>
@@ -334,8 +337,8 @@ export function orderCardMarkup(o, {
       </form>` : ''}
       ${manualPaymentHtml}
       ${o.paymentStatus === 'captured' && o.paymentMethod !== 'manual' ? `<div class="order-refund-controls"><button type="button" class="button outline small danger-button" data-action="open-razorpay-refund" data-id="${e(o.id)}">Issue Razorpay refund</button>${o.refundedAmount > 0 ? `<span class="small muted">Refunded to date: ${money(o.refundedAmount / 100)}</span>` : ''}</div>` : ''}
-      ${canCancel ? `<button type="button" class="text-link" data-action="resolve-cancellation" data-id="${e(o.id)}" data-approve="true">${o.inventoryReserved ? 'Cancel order & release stock' : 'Cancel request'}</button>` : ''}
-      ${o.status === 'cancel_requested' ? `<div class="order-tools"><button type="button" class="button small" data-action="resolve-cancellation" data-id="${e(o.id)}" data-approve="true">Approve cancellation</button><button type="button" class="button outline small" data-action="resolve-cancellation" data-id="${e(o.id)}" data-approve="false">Decline cancellation</button></div>` : ''}
+      ${canCancel ? `<button type="button" class="text-link" data-action="resolve-cancellation" data-id="${e(o.id)}" data-approve="true">${canRazorpayRefund ? 'Cancel order, release stock & auto-refund' : o.inventoryReserved ? 'Cancel order & release stock' : 'Cancel request'}</button>` : ''}
+      ${o.status === 'cancel_requested' ? `<div class="order-tools"><button type="button" class="button small" data-action="resolve-cancellation" data-id="${e(o.id)}" data-approve="true">${canRazorpayRefund ? 'Approve cancellation & auto-refund' : 'Approve cancellation'}</button><button type="button" class="button outline small" data-action="resolve-cancellation" data-id="${e(o.id)}" data-approve="false">Decline cancellation</button></div>` : ''}
       ${canSetQuote ? `<button type="button" class="text-link" data-action="approve-quote" data-id="${e(o.id)}">Set quote / shipping charge →</button>` : ''}
       ${o.quote ? `<p class="payment-info">${o.checkoutPayment && !shippingIncluded ? 'Item subtotal' : o.paymentStatus === 'captured' ? 'Total paid' : 'Confirmed total'}: ${money(o.quote.amount / 100)}${o.quote.shipping > 0 ? ` (includes ${money(o.quote.shipping / 100)} shipping)` : o.quote.freeShipping ? ' (free shipping)' : ''} · ${e(o.refundStatus === 'required' ? (o.paymentMethod === 'manual' ? 'Offline refund due — return funds through the original method, then record it below.' : 'Refund due — issue it in Razorpay; the webhook updates this request.') : paidLabel)}</p>${o.shippingQuote ? `<p class="small">Shipping charge: ${money(o.shippingQuote.amount / 100)} - ${e(shipStatusLabel)}</p>` : ''}` : ''}
       <div class="order-card-footer-meta">
