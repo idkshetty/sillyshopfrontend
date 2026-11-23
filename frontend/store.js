@@ -349,6 +349,16 @@ export async function loadMyReviews(){return callBackend('loadMyReviews',{});}
 export async function loadCustomerReviewsAdmin(){return callBackend('loadCustomerReviewsAdmin',{});}
 export async function moderateCustomerReview(reviewId,decision){return callBackend('moderateCustomerReview',{reviewId,decision});}
 export async function loadAdminAudit(){return callBackend('loadAdminAudit',{});}
+export async function trackBagSnapshot(payload={}){
+  try{
+    const headers={'Content-Type':'application/json'};
+    if(sdk?.auth?.currentUser&&!sdk.auth.currentUser.isAnonymous){
+      const tok=await sdk.auth.currentUser.getIdToken().catch(()=>'');
+      if(tok)headers.Authorization='Bearer '+tok;
+    }
+    await fetch(backendURL()+'/cart-track',{method:'POST',headers,body:JSON.stringify(payload),keepalive:true,signal:AbortSignal.timeout(8000)});
+  }catch{}
+}
 export async function callBackend(name,data={}){
  const {auth,app}=await backend();await auth.authStateReady();if(!auth.currentUser)throw new Error('Sign in to continue.');
  const url=backendURL()+'/api/'+encodeURIComponent(name);

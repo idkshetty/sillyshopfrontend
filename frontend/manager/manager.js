@@ -60,6 +60,7 @@ const NAV_ICONS = {
   analytics: '<path d="M3 3v18h18"/><path d="M7 15v-4"/><path d="M12 15V8"/><path d="M17 15v-6"/>',
   artworks: '<rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/>',
   site: '<path d="M3 9h18v11H3z"/><path d="M5 4h14l2 5H3z"/><path d="M9 14h6"/>',
+  customers: '<path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z"/><path d="M3 6h18"/><path d="M16 10a4 4 0 0 1-8 0"/>',
   bins: '<path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/>',
   cafes: '<path d="M17 8h1a4 4 0 1 1 0 8h-1"/><path d="M3 8h14v9a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4Z"/><path d="M6 2v3"/><path d="M10 2v3"/><path d="M14 2v3"/>',
   payouts: '<path d="M6 3h12"/><path d="M6 8h12"/><path d="m6 13 8.5 8"/><path d="M6 13h3a4 4 0 0 0 0-8"/>',
@@ -83,6 +84,9 @@ const state = {
   siteStockData: null,
   siteFilter: 'all',
   siteSearch: '',
+  customerBagsData: null,
+  customerFilter: 'in_bag',
+  customerSearch: '',
   importSearch: '',
   artworks: [],
   cafes: [],
@@ -264,6 +268,47 @@ async function refreshAccess() {
   }
 }
 
+function waPhoneHref(phone) {
+  const digits = String(phone || '').replace(/\D+/g, '');
+  if (!digits) return '';
+  const normalized = digits.length === 10 ? `91${digits}` : digits;
+  return `https://wa.me/${normalized}`;
+}
+
+function buyerDetailsMarkup(buyer, { compact = false } = {}) {
+  if (!buyer || typeof buyer !== 'object') return '';
+  const name = buyer.name || 'Customer';
+  const waHref = waPhoneHref(buyer.phone);
+  if (compact) {
+    return `<div class="mgr-buyer-inline">
+      <strong>${esc(name)}</strong>
+      <div class="mgr-art-meta">${buyer.orderRef ? `#${esc(buyer.orderRef)}` : ''}${buyer.city ? ` · ${esc(buyer.city)}` : ''}${buyer.paidAmount > 0 ? ` · ${money(buyer.paidAmount)}` : ''}</div>
+      ${(buyer.phone || buyer.email) ? `<div class="mgr-contact-links">
+        ${buyer.phone ? `<a href="tel:${esc(buyer.phone)}">${esc(buyer.phone)}</a>` : ''}
+        ${waHref ? `<a href="${esc(waHref)}" target="_blank" rel="noopener">WhatsApp ↗</a>` : ''}
+        ${buyer.email ? `<a href="mailto:${esc(buyer.email)}">${esc(buyer.email)}</a>` : ''}
+      </div>` : ''}
+    </div>`;
+  }
+  return `<div class="mgr-buyer-box">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap">
+      <strong>Buyer &amp; Order Details</strong>
+      <span class="mgr-pill is-sold">${buyer.orderRef ? `#${esc(buyer.orderRef)}` : 'Order'} · ${esc(buyer.paymentStatus || 'captured')}</span>
+    </div>
+    <div style="display:grid;gap:4px">
+      <div><strong>${esc(name)}</strong>${buyer.purchasedAt ? ` <span class="mgr-muted">· ${fmtDateTime(buyer.purchasedAt)}</span>` : ''}</div>
+      ${buyer.paidAmount > 0 ? `<div class="mgr-muted">Paid total: <strong style="color:var(--ink)">${money(buyer.paidAmount)}</strong>${buyer.orderStatus ? ` · Order status: ${esc(buyer.orderStatus.replace(/_/g, ' '))}` : ''}</div>` : ''}
+      ${(buyer.email || buyer.phone) ? `<div class="mgr-contact-links">
+        ${buyer.email ? `<a href="mailto:${esc(buyer.email)}">${esc(buyer.email)}</a>` : ''}
+        ${buyer.phone ? `<a href="tel:${esc(buyer.phone)}">${esc(buyer.phone)}</a>` : ''}
+        ${waHref ? `<a href="${esc(waHref)}" target="_blank" rel="noopener">WhatsApp ↗</a>` : ''}
+      </div>` : ''}
+      ${(buyer.address || buyer.city || buyer.postalCode) ? `<div class="mgr-muted">${esc([buyer.address, buyer.city, buyer.postalCode].filter(Boolean).join(', '))}</div>` : ''}
+      ${buyer.notes ? `<div class="mgr-note-box">Buyer note: ${esc(buyer.notes)}</div>` : ''}
+    </div>
+  </div>`;
+}
+
 async function loadWorkspaceData() {
   if (state.me?.status !== 'approved') return;
   state.loadingData = true;
@@ -271,14 +316,15 @@ async function loadWorkspaceData() {
   setBusy(true);
   try {
     const isAdmin = state.me.role === 'admin';
-    const [analytics, artworks, cafeData, payoutData, users, orders, siteStockData] = await Promise.all([
+    const [analytics, artworks, cafeData, payoutData, users, orders, siteStockData, customerBagsData] = await Promise.all([
       callManager('managerAnalytics', { range: state.range }),
       callManager('managerListArtworks'),
       callManager('managerListCafes'),
       callManager('managerListPayouts'),
       isAdmin ? callManager('managerListUsers') : Promise.resolve([]),
       isAdmin ? callManager('managerListOrders') : Promise.resolve([]),
-      isAdmin ? callManager('managerListSiteStock').catch(() => null) : Promise.resolve(null)
+      isAdmin ? callManager('managerListSiteStock').catch(() => null) : Promise.resolve(null),
+      isAdmin ? callManager('managerListCustomerBags').catch(() => null) : Promise.resolve(null)
     ]);
     state.analytics = analytics || null;
     state.artworks = Array.isArray(artworks) ? artworks : [];
@@ -289,6 +335,7 @@ async function loadWorkspaceData() {
     state.users = Array.isArray(users) ? users : [];
     state.orders = Array.isArray(orders) ? orders : [];
     state.siteStockData = siteStockData || null;
+    state.customerBagsData = customerBagsData || null;
     const valid = new Set(state.artworks.map(a => a.id));
     for (const sid of [...state.selectedArtIds]) {
       if (!valid.has(sid)) state.selectedArtIds.delete(sid);
@@ -322,7 +369,11 @@ function lookupMatches(rawQuery) {
       a.assignedCafeName,
       a.binTargetCustomerName,
       a.binTargetOrderRef,
-      a.binTargetCafeName
+      a.binTargetCafeName,
+      a.buyer?.name,
+      a.buyer?.email,
+      a.buyer?.phone,
+      a.buyer?.orderRef
     ].filter(Boolean).join(' ').toLowerCase();
     return hay.includes(q);
   }).slice(0, 8);
@@ -342,7 +393,7 @@ function renderLookupPopoverHtml() {
         <span class="mono" style="font-size:11px;font-weight:600">#${esc(getRefCode(a) || '—')}</span>
         <strong style="font-size:12.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(a.title)}</strong>
       </div>
-      <div class="mgr-art-meta">${esc(a.artistName)} · ${esc(a.genre)}${a.assignedCafeName ? ` · ${esc(a.assignedCafeName)}` : a.binTargetCustomerName ? ` · ${esc(a.binTargetCustomerName)}` : ''}</div>
+      <div class="mgr-art-meta">${esc(a.artistName)} · ${esc(a.genre)}${a.buyer?.name ? ` · Buyer: ${esc(a.buyer.name)}` : a.assignedCafeName ? ` · ${esc(a.assignedCafeName)}` : a.binTargetCustomerName ? ` · ${esc(a.binTargetCustomerName)}` : ''}</div>
     </div>
     <span class="mgr-pill is-${esc(a.stage || 'intake')}">${esc(STAGE_LABEL[a.stage] || a.stage)}</span>
   </button>`).join('')}</div>`;
@@ -382,7 +433,6 @@ function renderDrawer() {
         <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;flex-wrap:wrap">
           <span class="mgr-ref-pill">#${esc(ref || '—')}</span>
           <span class="mgr-pill is-${esc(art.stage || 'intake')}">${esc(STAGE_LABEL[art.stage] || art.stage)}</span>
-          ${art.siteFakeSold ? '<span class="mgr-fake-sold-pill">Fake sold (site only)</span>' : ''}
           ${(art.siteCycleCount || 0) > 0 ? `<span class="mgr-cycle-pill">Cycles: ${art.siteCycleCount}</span>` : ''}
           ${art.storeProductId ? '<span class="mgr-store-badge">In hehe.cafe Artworks</span>' : ''}
         </div>
@@ -396,12 +446,14 @@ function renderDrawer() {
 
     <div class="mgr-spec-grid">
       <div><span>Selling price</span><strong>${art.price > 0 ? money(art.price) : 'Price TBD'}</strong></div>
-      <div><span>Availability</span><strong>${art.stage === 'sold' ? 'Sold (0)' : art.siteFakeSold ? 'Fake-sold on site (In warehouse)' : art.stock === 0 ? 'Sold out (0)' : 'Unique 1-of-1'}</strong></div>
+      <div><span>Availability</span><strong>${art.stage === 'sold' ? 'Sold (0)' : art.stock === 0 ? 'Sold out (0)' : 'In stock (Unique 1-of-1)'}</strong></div>
       <div><span>Material</span><strong>${esc(art.material || '—')}</strong></div>
       <div><span>Dimensions</span><strong>${esc(art.dimensions || '—')}</strong></div>
       <div><span>Current location</span><strong>${esc(art.assignedCafeName || (art.stage === 'delivery_bin' ? (art.binTargetCustomerName ? `Order #${art.binTargetOrderRef}` : art.binTargetCafeName || 'Pickup bin') : STAGE_LABEL[art.stage] || art.stage))}</strong></div>
       <div><span>Site ↔ Warehouse cycles</span><strong>${Number(art.siteCycleCount) || 0} cycles (${Number(art.siteDropCount) || 0} site drops)</strong></div>
     </div>
+
+    ${(isAdmin && art.buyer) ? buyerDetailsMarkup(art.buyer) : (isAdmin && art.stage === 'sold' ? '<div class="mgr-note-box">Marked sold (manual / café sale — no online checkout buyer record).</div>' : '')}
 
     ${art.stage === 'delivery_bin' ? `<div class="mgr-panel" style="margin:0;padding:12px">
       <p class="mgr-eyebrow" style="margin-bottom:6px">Pickup Bin Assignment</p>
@@ -568,12 +620,12 @@ function renderAnalyticsTab(isAdmin) {
       <section class="mgr-panel">
         <h2>Recent sales (${isAdmin ? 'All channels' : 'Your artworks'})</h2>
         ${(a.recentSales || []).length ? `<div class="mgr-table-wrap"><table class="mgr-table">
-          <thead><tr><th>Date</th><th>Ref #</th><th>Artwork</th><th>Location</th><th>Sale</th></tr></thead>
+          <thead><tr><th>Date</th><th>Ref #</th><th>Artwork</th><th>${isAdmin ? 'Buyer / Channel' : 'Location'}</th><th>Sale</th></tr></thead>
           <tbody>${a.recentSales.slice(0, 15).map(r => `<tr>
             <td>${fmtDate(r.at)}</td>
             <td>${refPillMarkup(r.refNumber, findArtIdByRef(r.refNumber, r.title))}</td>
             <td><strong>${esc(r.title)}</strong>${isAdmin ? `<br><small class="mgr-muted">${esc(r.artistName)} · ${esc(r.genre)}</small>` : ''}</td>
-            <td><span class="mgr-pill ${r.channel === 'cafe' ? 'is-at_cafe' : 'is-live_online'}">${esc(r.location || r.channel)}</span></td>
+            <td><span class="mgr-pill ${r.channel === 'cafe' ? 'is-at_cafe' : 'is-live_online'}">${esc(r.location || r.channel)}</span>${isAdmin && r.buyerName ? `<div class="mgr-art-meta" style="margin-top:3px"><strong>${esc(r.buyerName)}</strong>${r.buyerCity ? ` · ${esc(r.buyerCity)}` : ''}${r.orderRef ? ` · #${esc(r.orderRef)}` : ''}</div>` : ''}</td>
             <td><strong>${money(r.revenue)}</strong></td>
           </tr>`).join('')}</tbody>
         </table></div>` : '<p class="mgr-muted">No completed sales recorded in this range.</p>'}
@@ -600,7 +652,7 @@ function filterArtworks() {
   return state.artworks.filter(a => {
     if (state.artView !== 'kanban' && state.stageFilter !== 'all' && a.stage !== state.stageFilter) return false;
     if (!q) return true;
-    return `${a.title} ${a.artistName} ${a.genre} ${a.refNumber || ''} ${a.storeRefNumber || ''} ${a.assignedCafeName || ''}`.toLowerCase().includes(q);
+    return `${a.title} ${a.artistName} ${a.genre} ${a.refNumber || ''} ${a.storeRefNumber || ''} ${a.assignedCafeName || ''} ${a.buyer?.name || ''} ${a.buyer?.email || ''} ${a.buyer?.phone || ''}`.toLowerCase().includes(q);
   });
 }
 
@@ -674,9 +726,9 @@ function renderArtworksTab(isAdmin) {
                   </div>
                   <div class="mgr-kcard-title">${esc(a.title)}</div>
                   <div class="mgr-art-meta">${esc(a.artistName)} · ${esc(a.genre)}</div>
-                  ${a.siteFakeSold ? '<div style="margin-top:3px"><span class="mgr-fake-sold-pill">Fake sold</span></div>' : ''}
                   ${(a.siteCycleCount || 0) > 0 ? `<div style="margin-top:3px"><span class="mgr-cycle-pill">Cycles: ${a.siteCycleCount}</span></div>` : ''}
                   ${a.storeProductId ? '<div style="margin-top:3px"><span class="mgr-store-badge">In hehe.cafe</span></div>' : ''}
+                  ${isAdmin && a.stage === 'sold' && a.buyer ? `<div style="margin-top:3px"><span class="mgr-dest-tag is-customer">Buyer: ${esc(a.buyer.name)}${a.buyer.city ? ` · ${esc(a.buyer.city)}` : ''}</span></div>` : ''}
                   ${stage === 'delivery_bin' ? `<div style="margin-top:3px">${binDestinationBadge(a)}</div>` : ''}
                   ${a.assignedCafeName ? `<div class="mgr-art-meta">At ${esc(a.assignedCafeName)}</div>` : ''}
                 </div>
@@ -714,7 +766,7 @@ function renderArtworksTab(isAdmin) {
                 ${esc(a.genre)} · ${esc(a.artistName)}
                 <div style="display:flex;gap:4px;flex-wrap:wrap;margin-top:4px">
                   ${a.storeProductId ? '<span class="mgr-store-badge">In hehe.cafe Artworks</span>' : ''}
-                  ${a.siteFakeSold ? '<span class="mgr-fake-sold-pill">Fake sold (site only)</span>' : ''}
+                  ${isAdmin && a.stage === 'sold' && a.buyer ? `<span class="mgr-dest-tag is-customer">Buyer: ${esc(a.buyer.name)}${a.buyer.city ? ` · ${esc(a.buyer.city)}` : ''}</span>` : ''}
                   ${(a.siteCycleCount || 0) > 0 ? `<span class="mgr-cycle-pill">Cycles: ${a.siteCycleCount}</span>` : ''}
                 </div>
                 ${a.stage === 'delivery_bin' ? `<div style="margin-top:5px">${binDestinationBadge(a)}</div>` : ''}
@@ -1221,10 +1273,11 @@ function render() {
   const pendingUsersCount = isAdmin ? state.users.filter(u => u.status === 'pending').length : 0;
   const dueCount = (state.payoutData?.summaries || []).filter(r => r.balanceDue > 0).length;
   const liveSiteCount = state.siteStockData?.summary?.totalOnSite ?? state.artworks.filter(a => a.stage === 'live_online').length;
+  const inBagCount = isAdmin ? (state.customerBagsData?.summary?.inBagCount || 0) : 0;
   const navItems = [
     ['analytics', 'Analytics', null],
     ['artworks', 'Artworks', state.artworks.length],
-    ...(isAdmin ? [['site', 'Site stock', liveSiteCount]] : []),
+    ...(isAdmin ? [['site', 'Site stock', liveSiteCount], ['customers', 'Customers', inBagCount || null]] : []),
     ['bins', 'Pickup bin', state.artworks.filter(a => a.stage === 'delivery_bin').length],
     ['cafes', 'Cafés', state.cafeStock.filter(s => ['at_cafe', 'return_requested'].includes(s.status)).length],
     ['payouts', 'Payouts', dueCount || null]
@@ -1238,6 +1291,8 @@ function render() {
     bodyHtml = renderArtworksTab(isAdmin);
   } else if (state.tab === 'site' && isAdmin) {
     bodyHtml = renderSiteStockTab();
+  } else if (state.tab === 'customers' && isAdmin) {
+    bodyHtml = renderCustomersTab();
   } else if (state.tab === 'bins') {
     bodyHtml = renderBinsTab(isAdmin);
   } else if (state.tab === 'cafes') {
@@ -1272,7 +1327,7 @@ function render() {
       <header class="mgr-topbar">
         <div class="mgr-lookup-wrap">
           <svg class="mgr-lookup-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
-          <input id="mgr-global-lookup" class="mgr-lookup-input" type="search" autocomplete="off" value="${esc(state.lookupQuery)}" placeholder="Jump to #Ref, artwork, artist, café, or order…">
+          <input id="mgr-global-lookup" class="mgr-lookup-input" type="search" autocomplete="off" value="${esc(state.lookupQuery)}" placeholder="Jump to #Ref, artwork, artist, café, buyer, or order…">
           <kbd id="mgr-lookup-kbd-hint" class="mgr-lookup-kbd" ${state.lookupQuery ? 'hidden' : ''}>/</kbd>
           <button id="mgr-lookup-clear-btn" type="button" class="mgr-lookup-clear" data-action="clear-lookup" aria-label="Clear search" ${state.lookupQuery ? '' : 'hidden'}>×</button>
           <div id="mgr-lookup-results">${renderLookupPopoverHtml()}</div>
@@ -1299,12 +1354,11 @@ function render() {
 function filterSiteProducts(list = []) {
   const q = state.siteSearch.trim().toLowerCase().replace(/^#/, '');
   return list.filter(p => {
-    if (state.siteFilter === 'available' && !(p.visible && !p.realSold && !p.fakeSold)) return false;
-    if (state.siteFilter === 'fake_sold' && !(p.visible && p.fakeSold && !p.realSold)) return false;
+    if (state.siteFilter === 'available' && !(p.visible && !p.realSold)) return false;
     if (state.siteFilter === 'real_sold' && !p.realSold) return false;
     if (state.siteFilter === 'hidden' && (p.visible || p.realSold)) return false;
     if (!q) return true;
-    return `${p.refNumber || ''} ${p.title} ${p.artist} ${p.productType} ${p.managerStage || ''}`.toLowerCase().includes(q);
+    return `${p.refNumber || ''} ${p.title} ${p.artist} ${p.productType} ${p.managerStage || ''} ${p.buyer?.name || ''} ${p.buyer?.email || ''} ${p.buyer?.phone || ''} ${p.buyer?.city || ''} ${p.buyer?.orderRef || ''}`.toLowerCase().includes(q);
   });
 }
 
@@ -1318,11 +1372,12 @@ function renderSiteStockTab() {
   const allSite = data.siteProducts || [];
   const filtered = filterSiteProducts(allSite);
   const warehouseCount = summary.warehouseReadyCount ?? (data.warehouseArtworks || []).length;
+  const liveInStock = summary.liveInStock ?? ((summary.liveAvailable || 0) + (summary.liveFakeSold || 0));
+  const liveRealSoldCount = allSite.filter(p => p.realSold).length;
   const chips = [
     ['all', 'All site records', allSite.length],
-    ['available', 'Live · In stock', summary.liveAvailable || 0],
-    ['fake_sold', 'Fake sold (display)', summary.liveFakeSold || 0],
-    ['real_sold', 'Sold', allSite.filter(p => p.realSold).length],
+    ['available', 'In stock', allSite.filter(p => p.visible && !p.realSold).length],
+    ['real_sold', 'Sold', liveRealSoldCount],
     ['hidden', 'Off site / Warehouse', allSite.filter(p => !p.visible && !p.realSold).length]
   ];
 
@@ -1340,9 +1395,9 @@ function renderSiteStockTab() {
     </div>
 
     <div class="mgr-kpi-grid">
-      <div class="mgr-kpi"><span>Live on site</span><strong>${summary.totalOnSite || 0}</strong><small>${summary.liveAvailable || 0} available · ${summary.liveFakeSold || 0} fake sold</small></div>
-      <div class="mgr-kpi"><span>Fake sold (scarcity)</span><strong style="color:var(--warn-ink)">${summary.liveFakeSold || 0}</strong><small>Shown sold on site · still in warehouse</small></div>
-      <div class="mgr-kpi"><span>Sold artworks</span><strong>${allSite.filter(p => p.realSold).length}</strong><small>Excluded from future rotations</small></div>
+      <div class="mgr-kpi"><span>Live on site</span><strong>${summary.totalOnSite || 0}</strong><small>${liveInStock} in stock · ${liveRealSoldCount} sold</small></div>
+      <div class="mgr-kpi"><span>In stock (Site)</span><strong>${liveInStock}</strong><small>Unsold artworks ready for buyers</small></div>
+      <div class="mgr-kpi"><span>Sold artworks</span><strong>${liveRealSoldCount}</strong><small>Actually bought · excluded from rotations</small></div>
       <div class="mgr-kpi"><span>Warehouse ready</span><strong>${warehouseCount}</strong><small>${summary.unlinkedSiteProducts || 0} unlinked site items</small></div>
       <div class="mgr-kpi"><span>Total cycles tracked</span><strong>${summary.totalCyclesCompleted || 0}</strong><small>Site → Warehouse rotations</small></div>
     </div>
@@ -1352,21 +1407,22 @@ function renderSiteStockTab() {
     </div>
 
     <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:12px">
-      <input id="mgr-site-search" type="search" value="${esc(state.siteSearch)}" placeholder="Search site stock by #Ref, title, artist, or genre…" style="width:100%;max-width:380px;padding:7px 12px;border-radius:8px;border:1px solid var(--line-strong);background:var(--surface)">
+      <input id="mgr-site-search" type="search" value="${esc(state.siteSearch)}" placeholder="Search site stock by #Ref, title, artist, or buyer…" style="width:100%;max-width:380px;padding:7px 12px;border-radius:8px;border:1px solid var(--line-strong);background:var(--surface)">
       <span class="mgr-muted">Showing ${filtered.length} of ${allSite.length} site records</span>
     </div>
 
     <section class="mgr-panel">
       ${filtered.length ? `<div class="mgr-table-wrap"><table class="mgr-table">
-        <thead><tr><th>Artwork</th><th>Ref #</th><th>Price</th><th>Site status</th><th>Cycles</th><th>Actions</th></tr></thead>
+        <thead><tr><th>Artwork</th><th>Ref #</th><th>Price</th><th>Site status</th><th>Buyer</th><th>Cycles</th><th>Actions</th></tr></thead>
         <tbody>${filtered.map(p => {
           const statusBadge = p.realSold
             ? '<span class="mgr-pill is-sold">Sold</span>'
-            : p.visible && p.fakeSold
-              ? '<span class="mgr-fake-sold-pill">Fake sold · In warehouse</span>'
-              : p.visible
-                ? '<span class="mgr-pill is-live_online">Live · In stock</span>'
-                : '<span class="mgr-pill is-curated">Warehouse / Hidden</span>';
+            : p.visible
+              ? '<span class="mgr-pill is-live_online">In stock</span>'
+              : '<span class="mgr-pill is-curated">Warehouse / Hidden</span>';
+          const buyerHtml = p.realSold
+            ? (p.buyer ? buyerDetailsMarkup(p.buyer, { compact: true }) : '<span class="mgr-muted">Manual / studio sale</span>')
+            : '<span class="mgr-muted">—</span>';
           const imgSrc = p.backupImages?.[0] || p.images?.[0] || '';
           return `<tr>
             <td>
@@ -1381,18 +1437,178 @@ function renderSiteStockTab() {
             <td>${refPillMarkup(p.refNumber, p.managerArtworkId || '')}</td>
             <td><strong>${p.price > 0 ? money(p.price) : '—'}</strong></td>
             <td>${statusBadge}</td>
+            <td>${buyerHtml}</td>
             <td><span class="mgr-cycle-pill">${p.siteCycleCount || 0} cycles</span><div class="mgr-art-meta">${p.siteDropCount || 0} drops</div></td>
             <td>
               <div style="display:flex;gap:5px;flex-wrap:wrap">
                 ${!p.realSold ? `<button type="button" class="mgr-btn danger small" data-action="site-mark-sold" data-id="${esc(p.id)}" data-art="${esc(p.managerArtworkId || '')}" data-title="${esc(p.title)}">Mark sold</button>` : ''}
-                ${p.visible && !p.realSold ? `<button type="button" class="mgr-btn outline small" data-action="site-toggle-fake-sold" data-id="${esc(p.id)}" data-art="${esc(p.managerArtworkId || '')}" data-fake="${p.fakeSold ? '0' : '1'}">${p.fakeSold ? 'Clear fake sold' : 'Fake sold'}</button>` : ''}
-                ${p.realSold || p.fakeSold ? `<button type="button" class="mgr-btn outline small" data-action="site-mark-available" data-id="${esc(p.id)}" data-art="${esc(p.managerArtworkId || '')}">Mark in stock</button>` : ''}
+                ${p.visible && !p.realSold ? `<button type="button" class="mgr-btn outline small" data-action="site-toggle-fake-sold" data-id="${esc(p.id)}" data-art="${esc(p.managerArtworkId || '')}" data-fake="${p.fakeSold ? '0' : '1'}" title="Toggle storefront sold-out scarcity display only">${p.fakeSold ? 'Site display: Sold' : 'Site display: Available'}</button>` : ''}
+                ${p.realSold ? `<button type="button" class="mgr-btn outline small" data-action="site-mark-available" data-id="${esc(p.id)}" data-art="${esc(p.managerArtworkId || '')}">Mark in stock</button>` : ''}
               </div>
             </td>
           </tr>`;
         }).join('')}</tbody>
       </table></div>` : '<p class="mgr-muted">No site stock records match this filter. Click "Sync from site" or "+ Import from warehouse" above.</p>'}
     </section>`;
+}
+
+function fmtIdleDuration(mins) {
+  const m = Math.max(0, Math.round(Number(mins) || 0));
+  if (m < 2) return 'Active just now';
+  if (m < 60) return `${m}m idle`;
+  const h = Math.floor(m / 60);
+  const rem = m % 60;
+  if (h < 24) return `${h}h ${rem}m idle`;
+  const d = Math.floor(h / 24);
+  return `${d}d ${h % 24}h idle`;
+}
+
+function renderCustomersTab() {
+  const data = state.customerBagsData;
+  if (!data) {
+    return `<div class="mgr-head"><div><p class="mgr-eyebrow">Customer Tracking · Bags &amp; Buyers</p><h1>Customer Bags &amp; Buyers</h1></div><div class="mgr-head-actions"><button type="button" class="mgr-btn outline small" data-action="refresh-all">Reload ↻</button></div></div>
+    <div class="mgr-panel"><p class="mgr-muted">${state.loadingData ? 'Loading customer bags and buyer records…' : 'Could not load customer tracking yet. Tap Reload.'}</p></div>`;
+  }
+  const bags = Array.isArray(data.bags) ? data.bags : [];
+  const buyers = Array.isArray(data.buyers) ? data.buyers : [];
+  const s = data.summary || {};
+  const q = state.customerSearch.trim().toLowerCase().replace(/^#/, '');
+
+  const inBagBags = bags.filter(b => b.liveStatus === 'active' || b.liveStatus === 'abandoned');
+  const abandonedBags = bags.filter(b => b.liveStatus === 'abandoned');
+  const contactableBags = inBagBags.filter(b => b.hasContact);
+  const convertedBags = bags.filter(b => b.liveStatus === 'converted');
+
+  const chips = [
+    ['in_bag', 'In bag (active + abandoned)', inBagBags.length],
+    ['abandoned', 'Abandoned (30m+)', abandonedBags.length],
+    ['contactable', 'With email / phone', contactableBags.length],
+    ['converted', 'Checked out', convertedBags.length],
+    ['buyers', 'All buyers', buyers.length]
+  ];
+
+  let contentHtml = '';
+  if (state.customerFilter === 'buyers') {
+    const filteredBuyers = buyers.filter(b => {
+      if (!q) return true;
+      const itemsText = (b.items || []).map(i => `${i.title || ''} ${i.refNumber || ''} ${i.orderRef || ''}`).join(' ');
+      return `${b.name || ''} ${b.email || ''} ${b.phone || ''} ${b.city || ''} ${b.address || ''} ${itemsText}`.toLowerCase().includes(q);
+    });
+    contentHtml = `<section class="mgr-panel">
+      ${filteredBuyers.length ? `<div class="mgr-table-wrap"><table class="mgr-table">
+        <thead><tr><th>Buyer</th><th>Contact</th><th>Shipping location</th><th>Orders</th><th>Total spent</th><th>Purchased artworks</th></tr></thead>
+        <tbody>${filteredBuyers.map(b => {
+          const wa = waPhoneHref(b.phone);
+          return `<tr>
+            <td><strong>${esc(b.name || 'Customer')}</strong><div class="mgr-art-meta">Last order ${fmtDateTime(b.lastOrderAt)}</div></td>
+            <td>
+              <div class="mgr-contact-links" style="display:grid;gap:2px">
+                ${b.phone ? `<a href="tel:${esc(b.phone)}">${esc(b.phone)}</a>` : ''}
+                ${wa ? `<a href="${esc(wa)}" target="_blank" rel="noopener">WhatsApp ↗</a>` : ''}
+                ${b.email ? `<a href="mailto:${esc(b.email)}">${esc(b.email)}</a>` : ''}
+                ${!b.phone && !b.email ? '<span class="mgr-muted">—</span>' : ''}
+              </div>
+            </td>
+            <td><div>${esc(b.city || '—')}</div>${b.address || b.postalCode ? `<small class="mgr-muted">${esc([b.address, b.postalCode].filter(Boolean).join(', '))}</small>` : ''}</td>
+            <td><strong>${b.orderCount || 0}</strong></td>
+            <td><strong>${money(b.totalSpent || 0)}</strong></td>
+            <td>
+              <div style="display:flex;flex-wrap:wrap;gap:5px">${(b.items || []).map(it => `<span style="display:inline-flex;align-items:center;gap:4px;padding:2px 6px;border:1px solid var(--line);border-radius:6px;background:var(--surface-soft);font-size:11.5px">${refPillMarkup(it.refNumber, findArtIdByRef(it.refNumber, it.title))}<span>${esc(it.title)}</span></span>`).join('')}</div>
+            </td>
+          </tr>`;
+        }).join('')}</tbody>
+      </table></div>` : '<p class="mgr-muted">No recorded buyers match this search yet.</p>'}
+    </section>`;
+  } else {
+    const baseList = state.customerFilter === 'abandoned'
+      ? abandonedBags
+      : state.customerFilter === 'contactable'
+        ? contactableBags
+        : state.customerFilter === 'converted'
+          ? convertedBags
+          : inBagBags;
+    const filteredBags = baseList.filter(b => {
+      if (!q) return true;
+      const itemHay = (b.items || []).map(i => `${i.title || ''} ${i.refNumber || ''}`).join(' ');
+      return `${b.name || ''} ${b.email || ''} ${b.phone || ''} ${b.city || ''} ${b.state || ''} ${itemHay}`.toLowerCase().includes(q);
+    });
+    const stageLabels = { browsing: 'Browsing', bag_open: 'Opened bag', checkout: 'Started checkout', ordered: 'Ordered' };
+    contentHtml = filteredBags.length
+      ? `<div class="mgr-bag-grid">${filteredBags.map(b => {
+          const wa = waPhoneHref(b.phone);
+          const statusCls = b.liveStatus === 'abandoned' ? 'is-abandoned' : b.liveStatus === 'active' ? 'is-active' : 'is-converted';
+          const statusText = b.liveStatus === 'abandoned'
+            ? `Abandoned · ${fmtIdleDuration(b.minutesIdle)}`
+            : b.liveStatus === 'active'
+              ? `In bag · ${fmtIdleDuration(b.minutesIdle)}`
+              : 'Checked out';
+          return `<article class="mgr-bag-card ${b.liveStatus === 'abandoned' ? 'is-abandoned' : ''}">
+            <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px">
+              <div>
+                <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:4px">
+                  <span class="mgr-pill ${statusCls}">${esc(statusText)}</span>
+                  <span class="mgr-dest-tag">${b.customerType === 'member' ? 'Signed-in' : 'Guest'} · ${esc(stageLabels[b.stage] || b.stage)}</span>
+                </div>
+                <strong style="font-size:15px">${esc(b.name || b.email || 'Guest shopper')}</strong>
+                <div class="mgr-art-meta">Updated ${fmtDateTime(b.updatedAt)}${b.city || b.state ? ` · ${esc([b.city, b.state].filter(Boolean).join(', '))}` : ''}</div>
+              </div>
+              <button type="button" class="mgr-link" data-action="dismiss-customer-bag" data-id="${esc(b.id)}" title="Remove tracked bag">Dismiss</button>
+            </div>
+
+            ${(b.email || b.phone) ? `<div class="mgr-contact-links">
+              ${b.phone ? `<a href="tel:${esc(b.phone)}">${esc(b.phone)}</a>` : ''}
+              ${wa ? `<a href="${esc(wa)}" target="_blank" rel="noopener">WhatsApp ↗</a>` : ''}
+              ${b.email ? `<a href="mailto:${esc(b.email)}">${esc(b.email)}</a>` : ''}
+            </div>` : '<p class="mgr-muted" style="font-size:12px">No contact info entered yet (still browsing with items in bag).</p>'}
+
+            ${(b.items || []).length ? `<div class="mgr-bag-items">${b.items.map(it => `<div class="mgr-bag-item-chip">
+              ${it.image ? `<img src="${esc(it.image)}" alt="">` : ''}
+              <div style="flex:1;min-width:0">
+                <div style="display:flex;align-items:center;gap:5px;flex-wrap:wrap">
+                  ${refPillMarkup(it.refNumber, findArtIdByRef(it.refNumber, it.title))}
+                  <strong style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(it.title)}</strong>
+                </div>
+                <div class="mgr-art-meta">Qty ${it.quantity} · ${money(it.price)}${!it.stillInStock ? ' · <span style="color:var(--danger)">Now sold out</span>' : ' · <span style="color:var(--accent)">In stock</span>'}</div>
+              </div>
+            </div>`).join('')}</div>` : ''}
+
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding-top:6px;border-top:1px solid #f0f0f0;font-size:12.5px">
+              <span>Bag value: <strong>${money(b.totalValue || 0)}</strong> (${b.itemCount || 0} ${b.itemCount === 1 ? 'piece' : 'pieces'})</span>
+              ${b.promoCode ? `<span class="mgr-cycle-pill">Code: ${esc(b.promoCode)}</span>` : ''}
+              ${b.convertedOrderId ? `<span class="mgr-pill is-sold">Order #${esc(String(b.convertedOrderId).slice(-8).toUpperCase())}</span>` : ''}
+            </div>
+          </article>`;
+        }).join('')}</div>`
+      : '<div class="mgr-panel"><p class="mgr-muted">No tracked bags match this filter yet. Live storefront visitors who add items to their bag will appear here automatically.</p></div>';
+  }
+
+  return `<div class="mgr-head">
+      <div>
+        <p class="mgr-eyebrow">Customer Tracking · Bags &amp; Buyers</p>
+        <h1>Customer Bags &amp; Buyers</h1>
+      </div>
+      <div class="mgr-head-actions">
+        <button type="button" class="mgr-btn outline small" data-action="refresh-all">Refresh ↻</button>
+      </div>
+    </div>
+
+    <div class="mgr-kpi-grid">
+      <div class="mgr-kpi"><span>In bag now</span><strong>${s.inBagCount || 0}</strong><small>${s.activeCount || 0} active · ${s.abandonedCount || 0} abandoned</small></div>
+      <div class="mgr-kpi"><span>Abandoned bags (30m+)</span><strong style="color:${(s.abandonedCount || 0) > 0 ? 'var(--danger)' : 'var(--ink)'}">${s.abandonedCount || 0}</strong><small>Left items without checking out</small></div>
+      <div class="mgr-kpi"><span>Potential bag value</span><strong>${money(s.potentialValue || 0)}</strong><small>Waiting inside customer bags</small></div>
+      <div class="mgr-kpi"><span>With contact info</span><strong>${s.withContactCount || 0}</strong><small>Ready for WhatsApp / email follow-up</small></div>
+      <div class="mgr-kpi"><span>Real buyers</span><strong>${s.buyersCount || 0}</strong><small>${s.convertedCount || 0} tracked bag conversions</small></div>
+    </div>
+
+    <div class="mgr-chips">
+      ${chips.map(([k, label, count]) => `<button type="button" class="mgr-chip ${state.customerFilter === k ? 'is-active' : ''}" data-action="set-customer-filter" data-filter="${k}">${esc(label)} (${count})</button>`).join('')}
+    </div>
+
+    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:12px">
+      <input id="mgr-customer-search" type="search" value="${esc(state.customerSearch)}" placeholder="Search by customer name, email, phone, city, #Ref, or artwork…" style="width:100%;max-width:420px;padding:7px 12px;border-radius:8px;border:1px solid var(--line-strong);background:var(--surface)">
+    </div>
+
+    ${contentHtml}`;
 }
 
 /* Modals */
@@ -1986,6 +2202,15 @@ document.addEventListener('click', async event => {
     } else if (action === 'set-site-filter') {
       state.siteFilter = btn.dataset.filter || 'all';
       render();
+    } else if (action === 'set-customer-filter') {
+      state.customerFilter = btn.dataset.filter || 'in_bag';
+      render();
+    } else if (action === 'dismiss-customer-bag') {
+      btn.disabled = true;
+      setBusy(true);
+      await callManager('managerDismissCustomerBag', { bagId: id });
+      toast('Removed customer bag record.');
+      await loadWorkspaceData();
     } else if (action === 'open-import-site-modal') {
       openImportSiteModal();
     } else if (action === 'open-refresh-site-modal') {
@@ -2426,6 +2651,12 @@ document.addEventListener('input', event => {
     const pos = event.target.selectionStart;
     render();
     const input = $('mgr-site-search');
+    if (input) { input.focus(); input.setSelectionRange(pos, pos); }
+  } else if (event.target.id === 'mgr-customer-search') {
+    state.customerSearch = event.target.value;
+    const pos = event.target.selectionStart;
+    render();
+    const input = $('mgr-customer-search');
     if (input) { input.focus(); input.setSelectionRange(pos, pos); }
   } else if (event.target.id === 'mgr-import-search') {
     state.importSearch = event.target.value;
