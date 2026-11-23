@@ -305,7 +305,8 @@ function updateCheckoutAvailability(){
 function openDialog(id){
   const dialog=$(id);if(!dialog)return;
   clearTimeout(dialog._closeTimer);
-  dialog.classList.remove('is-closing');
+  dialog.classList.remove('is-closing','is-closing-down','is-dragging');
+  dialog.style.transform='';
   if(!dialog.open){
     dialog.classList.remove('is-open');
     dialog.showModal();
@@ -315,22 +316,28 @@ function openDialog(id){
     dialog.classList.add('is-open');
   }
 }
-function closeDialog(dialog,{immediate=false}={}){
+function closeDialog(dialog,{immediate=false,fromDrag=false}={}){
   if(!dialog||!dialog.open)return Promise.resolve();
   clearTimeout(dialog._closeTimer);
   const reducedMotion=matchMedia('(prefers-reduced-motion: reduce)').matches;
   if(immediate||!dialog.classList.contains('cart-drawer')||reducedMotion){
-    dialog.classList.remove('is-open','is-closing');
+    dialog.classList.remove('is-open','is-closing','is-closing-down','is-dragging');
+    dialog.style.transform='';
     dialog.close();
     return Promise.resolve();
   }
-  dialog.classList.remove('is-open');
+  dialog.classList.remove('is-open','is-dragging');
   dialog.classList.add('is-closing');
+  if(fromDrag){
+    dialog.classList.add('is-closing-down');
+    requestAnimationFrame(()=>{dialog.style.transform='';});
+  }
   return new Promise(resolve=>{
     const finish=()=>{
       clearTimeout(dialog._closeTimer);
       dialog.removeEventListener('transitionend',onEnd);
-      dialog.classList.remove('is-closing');
+      dialog.classList.remove('is-closing','is-closing-down','is-dragging');
+      dialog.style.transform='';
       if(dialog.open)dialog.close();
       resolve();
     };
@@ -341,6 +348,100 @@ function closeDialog(dialog,{immediate=false}={}){
 }
 function closeDialogs(opts){return Promise.all([...document.querySelectorAll('dialog[open]')].map(d=>closeDialog(d,opts)));}
 $('cart-dialog')?.addEventListener('cancel',event=>{event.preventDefault();closeDialog($('cart-dialog'));});
+(function mountCartDrawerSwipeToClose(){
+  const dialog=$('cart-dialog');
+  if(!dialog)return;
+  let startY=0,startX=0,startTime=0,dragDy=0,active=false,dragging=false,pointerId=null,fromHandle=false,suppressClickUntil=0;
+  const canStartFromTarget=target=>{
+    if(!dialog.open||dialog.classList.contains('is-closing'))return false;
+    if(target.closest('button,a,input,textarea,select,label'))return false;
+    return true;
+  };
+  const begin=(clientX,clientY,target,pid=null)=>{
+    if(!canStartFromTarget(target))return false;
+    const inHandle=Boolean(target.closest('.drawer-header,.cart-sheet-handle'));
+    const content=$('cart-content');
+    const atTop=!content||content.scrollTop<=2;
+    if(!inHandle&&!atTop)return false;
+    active=true;
+    dragging=false;
+    fromHandle=inHandle;
+    pointerId=pid;
+    startX=clientX;
+    startY=clientY;
+    startTime=performance.now();
+    dragDy=0;
+    return true;
+  };
+  const move=(clientX,clientY,ev)=>{
+    if(!active)return;
+    const dy=clientY-startY;
+    const dx=clientX-startX;
+    if(!dragging){
+      if(dy<6)return;
+      if(!fromHandle&&(dy<=Math.abs(dx)||($('cart-content')?.scrollTop||0)>2)){
+        active=false;
+        return;
+      }
+      dragging=true;
+      dialog.classList.add('is-dragging');
+    }
+    if(ev?.cancelable)ev.preventDefault();
+    dragDy=Math.max(0,dy);
+    dialog.style.transform=`translateY(${dragDy}px)`;
+  };
+  const end=()=>{
+    if(!active)return;
+    const wasDragging=dragging;
+    active=false;
+    dragging=false;
+    pointerId=null;
+    if(!wasDragging)return;
+    dialog.classList.remove('is-dragging');
+    if(dragDy>=8)suppressClickUntil=performance.now()+260;
+    const elapsed=Math.max(1,performance.now()-startTime);
+    const vy=dragDy/elapsed;
+    if(dragDy>90||(dragDy>35&&vy>0.4)){
+      closeDialog(dialog,{fromDrag:true});
+    }else{
+      dialog.style.transform='';
+    }
+  };
+  dialog.addEventListener('pointerdown',ev=>{
+    if(ev.pointerType==='mouse'&&ev.button!==0)return;
+    if(begin(ev.clientX,ev.clientY,ev.target,ev.pointerId)){
+      if(fromHandle){try{dialog.setPointerCapture?.(ev.pointerId);}catch{}}
+    }
+  });
+  dialog.addEventListener('pointermove',ev=>{
+    if(!active||(pointerId!==null&&ev.pointerId!==pointerId))return;
+    move(ev.clientX,ev.clientY,ev);
+  });
+  dialog.addEventListener('pointerup',ev=>{
+    if(pointerId!==null&&ev.pointerId!==pointerId)return;
+    try{if(dialog.hasPointerCapture?.(ev.pointerId))dialog.releasePointerCapture(ev.pointerId);}catch{}
+    end();
+  });
+  dialog.addEventListener('pointercancel',()=>{end();});
+  dialog.addEventListener('touchstart',ev=>{
+    if(ev.touches.length!==1)return;
+    const t=ev.touches[0];
+    if(!active)begin(t.clientX,t.clientY,ev.target,null);
+  },{passive:true});
+  dialog.addEventListener('touchmove',ev=>{
+    if(!active||ev.touches.length!==1)return;
+    const t=ev.touches[0];
+    move(t.clientX,t.clientY,ev);
+  },{passive:false});
+  dialog.addEventListener('touchend',()=>{end();},{passive:true});
+  dialog.addEventListener('touchcancel',()=>{end();},{passive:true});
+  dialog.addEventListener('click',ev=>{
+    if(performance.now()<suppressClickUntil){
+      ev.preventDefault();
+      ev.stopPropagation();
+    }
+  },true);
+})();
 function quantityControl(id,value,max,context='cart'){return `<div class="quantity"><button type="button" data-action="quantity" data-id="${e(id)}" data-context="${context}" data-delta="-1" aria-label="Decrease quantity" ${value<=1?'disabled':''}><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14"/></svg></button><input type="number" aria-label="${context==='product'?'Quantity':`Quantity for ${products.find(p=>p.id===id)?.title || 'item'}`}" value="${value}" min="1" max="${Math.min(MAX_ITEM_QUANTITY,max)}" data-quantity="${e(id)}" data-context="${context}"><button type="button" data-action="quantity" data-id="${e(id)}" data-context="${context}" data-delta="1" aria-label="Increase quantity" ${value>=Math.min(MAX_ITEM_QUANTITY,max)?'disabled':''}><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14"/><path d="M5 12h14"/></svg></button></div>`;}
 function addToCart(id,quantity=1,open=true){
   const product=visible().find(p=>p.id===id);if(!product || product.stock<1)return toast('This item is sold out.');

@@ -167,6 +167,10 @@ dialog.label-dialog[open]{display:flex;flex-direction:column;padding:0;overflow:
 .cart-drawer{transform:translateX(100%);opacity:0;transition:transform .68s cubic-bezier(.16,1,.3,1),opacity .54s cubic-bezier(.22,1,.36,1);will-change:transform,opacity}
 .cart-drawer.is-open{transform:translateX(0);opacity:1}
 .cart-drawer.is-closing{transform:translateX(100%);opacity:0;transition-duration:.42s,.32s;pointer-events:none}
+.cart-drawer.is-closing.is-closing-down{transform:translateY(100%);opacity:0}
+#cart-dialog.cart-drawer.is-dragging{transition:none!important;user-select:none;cursor:grabbing}
+#cart-dialog .drawer-header{touch-action:none;cursor:grab;user-select:none}
+#cart-dialog.is-dragging .drawer-header,#cart-dialog.is-dragging .cart-sheet-handle{cursor:grabbing}
 .cart-drawer::backdrop{background:rgba(22,27,23,0);backdrop-filter:blur(0px);transition:background-color .62s cubic-bezier(.16,1,.3,1),backdrop-filter .62s cubic-bezier(.16,1,.3,1)}
 .cart-drawer.is-open::backdrop{background:rgba(22,27,23,.36);backdrop-filter:blur(3px)}
 .cart-drawer.is-closing::backdrop{background:rgba(22,27,23,0);backdrop-filter:blur(0px);transition-duration:.38s,.38s}
@@ -664,7 +668,8 @@ body[data-product-wash="true"]{background:#faf8f5}
 .empty-bag-cta:hover{background:#2b2926;color:#ffffff}
 #cart-dialog .empty-bag-cta{background:#ffffff;border-color:#ffffff;color:#141413;border-radius:14px!important;box-shadow:0 12px 24px -10px rgba(0,0,0,.55)}
 #cart-dialog .empty-bag-cta:hover{background:#f3efe6;color:#141413}
-.cart-sheet-handle{width:42px;height:4px;border-radius:999px;background:rgba(255,255,255,.22);margin:4px auto 16px}
+.cart-sheet-handle{position:relative;width:46px;height:5px;border-radius:999px;background:rgba(255,255,255,.28);margin:4px auto 16px;touch-action:none;cursor:grab;user-select:none}
+.cart-sheet-handle::before{content:'';position:absolute;inset:-14px -48px}
 .cart-dark-sheet .cart-checkout-card{background:transparent;border:0;box-shadow:none;padding:0;color:#faf8f5}
 .cart-dark-sheet .cart-checkout-confirmed{background:#1d1c1a;border:1px solid rgba(255,255,255,.12);border-radius:18px;padding:28px 20px;text-align:center}
 .cart-dark-sheet .cart-checkout-confirmed p{color:#b8b1a6}
