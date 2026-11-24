@@ -24,9 +24,9 @@ async function realtimeBackend(){
  if(!url)throw new Error('Set FIREBASE_DB_URL on the backend.');return {r,db:r.getDatabase(app,url)};})().catch(error=>{realtimePromise=null;throw error;});return realtimePromise;
 }
 function cachedPublic(path,onData){const key='silly-public-v2:'+path;let initialValue=null,hasCached=false;try{const cache=JSON.parse(localStorage.getItem(key));if(cache&&Date.now()-cache.time<86400000){initialValue=cache.value;hasCached=true;onData(cache.value);}}catch{}const publish=value=>{try{localStorage.setItem(key,JSON.stringify({time:Date.now(),value}));}catch{}onData(value);};return {publish,initialJson:hasCached?JSON.stringify(initialValue??{}):''};}
-const PUBLIC_STORE_REFRESH_MS=60000;
+const PUBLIC_STORE_REFRESH_MS=20000;
 const publicSubscribers=new Map();
-let publicStoreSnapshot=null,publicStoreLoadedAt=0,publicStorePromise=null,publicPollTimer=null;
+let publicStoreSnapshot=null,publicStoreLoadedAt=0,publicStorePromise=null,publicPollTimer=null,stopLiveRev=null,lastLiveRev=0,focusListenersBound=false;
 function deliverPublicPath(path,value){
   const set=publicSubscribers.get(path);
   if(!set?.size)return;
@@ -38,11 +38,13 @@ function deliverPublicPath(path,value){
     sub.publish(payload);
   }
 }
-async function fetchPublicStore({force=false}={}){
+async function fetchPublicStore({force=false,rev=''}={}){
   if(!force&&publicStoreSnapshot&&Date.now()-publicStoreLoadedAt<PUBLIC_STORE_REFRESH_MS)return publicStoreSnapshot;
   if(!publicStorePromise){
+    const endpoint=rev?`${backendURL()}/public-store?v=${encodeURIComponent(rev)}`:`${backendURL()}/public-store`;
+    const fetchOpts=rev?{cache:'no-store',signal:AbortSignal.timeout(15000)}:(force?{cache:'no-cache',signal:AbortSignal.timeout(15000)}:{signal:AbortSignal.timeout(15000)});
     publicStorePromise=(async()=>{
-      const response=await fetch(backendURL()+'/public-store',{...(force?{cache:'no-cache'}:{}),signal:AbortSignal.timeout(15000)});
+      const response=await fetch(endpoint,fetchOpts);
       if(!response.ok)throw new Error('Could not load public store.');
       const data=await response.json();
       publicStoreSnapshot=data;
@@ -53,15 +55,51 @@ async function fetchPublicStore({force=false}={}){
   }
   return publicStorePromise;
 }
+function ensureLiveRevSubscription(){
+  if(stopLiveRev||typeof window==='undefined')return;
+  stopLiveRev='connecting';
+  void realtimeBackend().then(({r,db})=>{
+    if(!publicSubscribers.size){stopLiveRev=null;return;}
+    stopLiveRev=r.onValue(r.ref(db,'publicStore/_liveRev'),snap=>{
+      const val=snap.val();
+      const v=Number(val?.v)||0;
+      if(!v)return;
+      if(!lastLiveRev){
+        lastLiveRev=v;
+        if(publicStoreLoadedAt>0&&v>publicStoreLoadedAt){
+          void fetchPublicStore({force:true,rev:String(v)}).catch(()=>{});
+        }
+        return;
+      }
+      if(v!==lastLiveRev){
+        lastLiveRev=v;
+        void fetchPublicStore({force:true,rev:String(v)}).catch(()=>{});
+      }
+    },()=>{});
+  }).catch(()=>{stopLiveRev=null;});
+}
 function ensurePublicPolling(){
+  ensureLiveRevSubscription();
+  if(!focusListenersBound&&typeof window!=='undefined'&&typeof document!=='undefined'){
+    focusListenersBound=true;
+    const syncIfStale=()=>{
+      if(document.visibilityState!=='visible'||!publicSubscribers.size)return;
+      if(Date.now()-publicStoreLoadedAt>4000){
+        void fetchPublicStore({force:true,rev:lastLiveRev?String(lastLiveRev):String(Date.now())}).catch(()=>{});
+      }
+    };
+    document.addEventListener('visibilitychange',syncIfStale);
+    window.addEventListener('focus',syncIfStale);
+  }
   if(publicPollTimer||typeof setInterval!=='function')return;
   publicPollTimer=setInterval(()=>{
     if(!publicSubscribers.size){clearInterval(publicPollTimer);publicPollTimer=null;return;}
-    if(typeof document==='undefined'||document.visibilityState==='visible')void fetchPublicStore({force:true}).catch(()=>{});
+    if(typeof document==='undefined'||document.visibilityState==='visible')void fetchPublicStore({force:true,rev:lastLiveRev?String(lastLiveRev):''}).catch(()=>{});
   },PUBLIC_STORE_REFRESH_MS);
 }
 async function refreshPublicStore(){
-  try{await fetchPublicStore({force:true});}catch{}
+  const rev=String(Date.now());
+  try{await fetchPublicStore({force:true,rev});}catch{}
 }
 async function observePublic(path,onData,onError){
   const {publish,initialJson}=cachedPublic(path,onData);
@@ -90,7 +128,11 @@ async function observePublic(path,onData,onError){
     const set=publicSubscribers.get(path);
     set?.delete(sub);
     if(set&&!set.size)publicSubscribers.delete(path);
-    if(!publicSubscribers.size&&publicPollTimer){clearInterval(publicPollTimer);publicPollTimer=null;}
+    if(!publicSubscribers.size){
+      if(publicPollTimer){clearInterval(publicPollTimer);publicPollTimer=null;}
+      if(typeof stopLiveRev==='function'){stopLiveRev();}
+      stopLiveRev=null;
+    }
   };
 }
 export async function observeAuth(callback) {

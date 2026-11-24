@@ -271,8 +271,10 @@ export function mountTrafficGlobe(container, { locations = [], mode = 'all', onS
 
   function resize() {
     const rect = container.getBoundingClientRect();
-    const w = Math.max(240, Math.round(rect.width || 320));
-    const h = Math.max(250, Math.round(rect.height || 320));
+    const availW = Math.min(container.clientWidth || rect.width || 280, window.innerWidth ? window.innerWidth - 48 : 340, 340);
+    const w = Math.max(210, Math.round(availW));
+    const availH = Math.min(container.clientHeight || rect.height || w, 330);
+    const h = Math.max(210, Math.round(availH));
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
     width = w;
     height = h;
@@ -407,7 +409,7 @@ export function mountTrafficGlobe(container, { locations = [], mode = 'all', onS
         const ringR = pin.radius + 3 + pulsePhase * 12;
         ctx.beginPath();
         ctx.arc(pin.px, pin.py, ringR, 0, Math.PI * 2);
-        ctx.strokeStyle = `rgba(5, 150, 105, ${(1 - pulsePhase) * 0.65})`;
+        ctx.strokeStyle = `rgba(29, 95, 230, ${(1 - pulsePhase) * 0.65})`;
         ctx.lineWidth = 1.6;
         ctx.stroke();
       }
@@ -423,7 +425,7 @@ export function mountTrafficGlobe(container, { locations = [], mode = 'all', onS
       // Soft cobalt drop glow
       ctx.beginPath();
       ctx.arc(pin.px, pin.py, pin.radius + 2.2, 0, Math.PI * 2);
-      ctx.fillStyle = pin.isLive ? 'rgba(5, 150, 105, 0.22)' : 'rgba(29, 95, 230, 0.2)';
+      ctx.fillStyle = pin.isLive ? 'rgba(29, 95, 230, 0.28)' : 'rgba(29, 95, 230, 0.2)';
       ctx.fill();
 
       // Core pin circle

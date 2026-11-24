@@ -139,7 +139,6 @@ export function stockRefreshBarMarkup(stockSchedule = null) {
   const nextRefreshAt = Number(stockSchedule.nextRefreshAt) || 0;
   if (nextRefreshAt <= 0) return '';
   return `<div class="stock-refresh-bar" data-stock-refresh-bar data-next-refresh="${nextRefreshAt}">
-    <span class="stock-refresh-dot" aria-hidden="true"></span>
     <span class="stock-refresh-label">Next stock refresh in</span>
     <strong class="stock-refresh-clock" data-stock-refresh-clock>--h --m --s</strong>
   </div>`;

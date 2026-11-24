@@ -17,7 +17,7 @@ import {
 import {
   mountTrafficGlobe,
   resolveLocationCoords
-} from './traffic-globe.js?v=20261124b';
+} from './traffic-globe.js?v=20261124c';
 
 const $ = id => document.getElementById(id);
 const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -671,8 +671,184 @@ function renderAnalyticsTab(isAdmin) {
 
 /* Live Traffic, 3D Visitor Globe & Item Demand Tab */
 let trafficGlobeController = null;
-let trafficPollTimer = null;
-let trafficPollInFlight = false;
+let managerPollTimer = null;
+let managerPollInFlight = false;
+const tabLiveSnapshots = new Map();
+
+function getNavItems(isAdmin) {
+  const pendingUsersCount = isAdmin ? state.users.filter(u => u.status === 'pending').length : 0;
+  const dueCount = (state.payoutData?.summaries || []).filter(r => r.balanceDue > 0).length;
+  const liveSiteCount = state.siteStockData?.summary?.totalOnSite ?? state.artworks.filter(a => a.stage === 'live_online').length;
+  const inBagCount = isAdmin ? (state.customerBagsData?.summary?.inBagCount || 0) : 0;
+  const activeNowCount = isAdmin ? (state.siteTraffic?.summary?.activeNow || 0) : 0;
+  const items = [
+    ['analytics', 'Analytics', null],
+    ...(isAdmin ? [['traffic', 'Live traffic', activeNowCount]] : []),
+    ['artworks', 'Artworks', state.artworks.length],
+    ...(isAdmin ? [['site', 'Site stock', liveSiteCount], ['customers', 'Customers', inBagCount]] : []),
+    ['bins', 'Pickup bin', state.artworks.filter(a => a.stage === 'delivery_bin').length],
+    ['cafes', 'Cafés', state.cafeStock.filter(s => ['at_cafe', 'return_requested'].includes(s.status)).length],
+    ['payouts', 'Payouts', dueCount || null]
+  ];
+  if (isAdmin) items.push(['users', 'Team access', pendingUsersCount]);
+  return items;
+}
+
+function updateAllNavBadges(isAdmin) {
+  for (const [id, , count] of getNavItems(isAdmin)) {
+    const val = Number(count) || 0;
+    document.querySelectorAll(`[data-nav-badge="${id}"]`).forEach(el => {
+      el.hidden = val <= 0;
+      el.textContent = val > 0 ? String(val) : '';
+    });
+  }
+}
+
+function updateTrafficNavBadges() {
+  updateAllNavBadges(state.me?.role === 'admin');
+}
+
+function isEditingInsideMain() {
+  const active = document.activeElement;
+  if (!active) return false;
+  const mainEl = document.querySelector('.mgr-main');
+  return Boolean(mainEl && mainEl.contains(active) && ['INPUT', 'TEXTAREA', 'SELECT'].includes(active.tagName));
+}
+
+function patchMainTabDOM(isAdmin) {
+  const mainEl = document.querySelector('.mgr-main');
+  if (!mainEl) return;
+  const scrollY = window.scrollY;
+  mainEl.innerHTML = renderActiveTabBody(isAdmin);
+  updateAllNavBadges(isAdmin);
+  if (state.drawerArtworkId) renderDrawer();
+  if (window.scrollY !== scrollY) window.scrollTo(0, scrollY);
+}
+
+function patchTrafficLiveDOM() {
+  const kpisEl = $('mgr-traffic-kpis');
+  const distEl = $('mgr-traffic-dist-list');
+  const browseEl = $('mgr-traffic-browsing');
+  const lowerEl = $('mgr-traffic-lower');
+  const updEl = $('mgr-traffic-updated-at');
+  if (kpisEl) kpisEl.innerHTML = renderTrafficKpisMarkup();
+  if (distEl) distEl.innerHTML = renderTrafficDistributionListMarkup();
+  if (browseEl) browseEl.innerHTML = renderTrafficActiveBrowsingMarkup();
+  if (lowerEl) lowerEl.innerHTML = renderTrafficLowerMarkup();
+  if (updEl) updEl.textContent = state.trafficUpdatedAt ? `Updated ${fmtClock(state.trafficUpdatedAt)}` : 'Waiting…';
+  updateTrafficNavBadges();
+  syncTrafficGlobe();
+}
+
+async function pollActiveTabLive({ manual = false } = {}) {
+  if (managerPollInFlight) return;
+  if (state.me?.status !== 'approved') return;
+  if (!manual && (
+    state.trafficLivePaused
+    || document.visibilityState !== 'visible'
+    || state.busy
+    || state.loadingData
+    || Boolean(state.uploadingPhotosText)
+    || Boolean(state.dragArtId)
+    || Boolean($('mgr-dialog')?.open)
+  )) return;
+
+  const isAdmin = state.me.role === 'admin';
+  const tab = state.tab;
+  managerPollInFlight = true;
+  try {
+    if (tab === 'traffic' && isAdmin) {
+      const next = await callManager('managerSiteTraffic');
+      if (next) {
+        state.siteTraffic = next;
+        state.trafficUpdatedAt = Date.now();
+        if (state.tab === 'traffic') patchTrafficLiveDOM();
+        else updateAllNavBadges(isAdmin);
+      }
+      return;
+    }
+    if (!manual && isEditingInsideMain()) return;
+    if (!manual && tab === 'artworks' && state.uploadPanelOpen) return;
+
+    if (tab === 'analytics') {
+      const next = await callManager('managerAnalytics', { range: state.range });
+      const snap = JSON.stringify(next || null);
+      if (next && tabLiveSnapshots.get('analytics') !== snap) {
+        tabLiveSnapshots.set('analytics', snap);
+        state.analytics = next;
+        if (state.tab === 'analytics') patchMainTabDOM(isAdmin);
+      }
+    } else if (tab === 'artworks' || tab === 'bins') {
+      const next = await callManager('managerListArtworks');
+      const list = Array.isArray(next) ? next : [];
+      const snap = JSON.stringify(list);
+      if (tabLiveSnapshots.get('artworks') !== snap) {
+        tabLiveSnapshots.set('artworks', snap);
+        state.artworks = list;
+        if (['artworks', 'bins'].includes(state.tab)) patchMainTabDOM(isAdmin);
+      }
+    } else if (tab === 'site' && isAdmin) {
+      const next = await callManager('managerListSiteStock');
+      const snap = JSON.stringify(next || null);
+      if (next && tabLiveSnapshots.get('site') !== snap) {
+        tabLiveSnapshots.set('site', snap);
+        state.siteStockData = next;
+        if (state.tab === 'site') patchMainTabDOM(isAdmin);
+      }
+    } else if (tab === 'customers' && isAdmin) {
+      const next = await callManager('managerListCustomerBags');
+      const snap = JSON.stringify(next || null);
+      if (next && tabLiveSnapshots.get('customers') !== snap) {
+        tabLiveSnapshots.set('customers', snap);
+        state.customerBagsData = next;
+        if (state.tab === 'customers') patchMainTabDOM(isAdmin);
+      }
+    } else if (tab === 'cafes') {
+      const next = await callManager('managerListCafes');
+      const snap = JSON.stringify(next || null);
+      if (next && tabLiveSnapshots.get('cafes') !== snap) {
+        tabLiveSnapshots.set('cafes', snap);
+        state.cafes = Array.isArray(next?.cafes) ? next.cafes : [];
+        state.cafeStock = Array.isArray(next?.stock) ? next.stock : [];
+        state.batches = Array.isArray(next?.batches) ? next.batches : [];
+        if (state.tab === 'cafes') patchMainTabDOM(isAdmin);
+      }
+    } else if (tab === 'payouts') {
+      const next = await callManager('managerListPayouts');
+      const snap = JSON.stringify(next || null);
+      if (next && tabLiveSnapshots.get('payouts') !== snap) {
+        tabLiveSnapshots.set('payouts', snap);
+        state.payoutData = next;
+        if (state.tab === 'payouts') patchMainTabDOM(isAdmin);
+      }
+    } else if (tab === 'users' && isAdmin) {
+      const next = await callManager('managerListUsers');
+      const list = Array.isArray(next) ? next : [];
+      const snap = JSON.stringify(list);
+      if (tabLiveSnapshots.get('users') !== snap) {
+        tabLiveSnapshots.set('users', snap);
+        state.users = list;
+        if (state.tab === 'users') patchMainTabDOM(isAdmin);
+      }
+    }
+  } catch {
+    // Keep existing snapshot during transient network hiccups
+  } finally {
+    managerPollInFlight = false;
+  }
+}
+
+function syncManagerLivePolling() {
+  const shouldPoll = state.me?.status === 'approved' && !state.trafficLivePaused;
+  if (shouldPoll) {
+    if (!managerPollTimer) {
+      managerPollTimer = setInterval(() => { void pollActiveTabLive(); }, 3000);
+    }
+  } else if (managerPollTimer) {
+    clearInterval(managerPollTimer);
+    managerPollTimer = null;
+  }
+}
 
 function renderTrafficKpisMarkup() {
   const t = state.siteTraffic;
@@ -683,7 +859,7 @@ function renderTrafficKpisMarkup() {
   const dev = t.deviceSplit || {};
   const devTotal = Math.max(1, (dev.mobile || 0) + (dev.desktop || 0));
   return `<div class="mgr-kpi-grid">
-    <div class="mgr-kpi"><span><span class="mgr-live-dot" aria-hidden="true"></span>Active visitors now</span><strong style="color:var(--accent)">${s.activeNow || 0}</strong><small>Seen in last 5 minutes · Mob ${Math.round(((dev.mobile || 0) / devTotal) * 100)}% / Desk ${Math.round(((dev.desktop || 0) / devTotal) * 100)}%</small></div>
+    <div class="mgr-kpi"><span>Active visitors now</span><strong style="color:var(--accent)">${s.activeNow || 0}</strong><small>Seen in last 5 minutes · Mob ${Math.round(((dev.mobile || 0) / devTotal) * 100)}% / Desk ${Math.round(((dev.desktop || 0) / devTotal) * 100)}%</small></div>
     <div class="mgr-kpi"><span>Visitors today (IST)</span><strong>${s.todayVisitors || 0}</strong><small>${s.todayClicks || 0} item clicks today</small></div>
     <div class="mgr-kpi"><span>Visitors yesterday</span><strong>${s.yesterdayVisitors || 0}</strong><small>Last 7d: ${s.last7DaysVisitors || 0}</small></div>
     <div class="mgr-kpi"><span>Last 30 days</span><strong>${s.last30DaysVisitors || 0}</strong><small>${s.totalPageViews || 0} total visits</small></div>
@@ -721,7 +897,7 @@ function renderTrafficActiveBrowsingMarkup() {
   const active = Array.isArray(state.siteTraffic?.activeVisitors) ? state.siteTraffic.activeVisitors : [];
   if (!active.length) return '';
   return `<div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--line)">
-    <p class="mgr-eyebrow" style="margin-bottom:8px"><span class="mgr-live-dot" aria-hidden="true"></span>Currently browsing on hehe.cafe (${active.length})</p>
+    <p class="mgr-eyebrow" style="margin-bottom:8px">Currently browsing on hehe.cafe (${active.length})</p>
     <div style="display:flex;flex-wrap:wrap;gap:6px">${active.slice(0, 16).map(v => `<span class="mgr-dest-tag">${esc([v.city, v.region, v.country].filter(Boolean).join(', ') || 'Unknown')} · ${esc(v.device)} · ${esc(v.lastPath || '#home')} · ${esc(fmtAgo(v.lastSeenAt))}</span>`).join('')}</div>
   </div>`;
 }
@@ -795,8 +971,7 @@ function renderTrafficTab() {
       </div>
       <div class="mgr-head-actions">
         <span id="mgr-traffic-live-pill" class="mgr-live-pill ${state.trafficLivePaused ? 'is-paused' : ''}">
-          <span class="mgr-live-dot" aria-hidden="true"></span>
-          <span id="mgr-traffic-live-label">${state.trafficLivePaused ? 'Paused' : 'Live · 5s'}</span>
+          <span id="mgr-traffic-live-label">${state.trafficLivePaused ? 'Paused' : 'Live · 3s'}</span>
           <span class="mgr-muted">·</span>
           <span id="mgr-traffic-updated-at">${esc(updatedTxt)}</span>
         </span>
@@ -840,7 +1015,7 @@ function syncTrafficGlobe() {
     return;
   }
   const locations = Array.isArray(state.siteTraffic?.topLocations) ? state.siteTraffic.topLocations : [];
-  if (!trafficGlobeController || !host.contains(trafficGlobeController.getCanvas())) {
+    if (!trafficGlobeController || !host.contains(trafficGlobeController.getCanvas())) {
     trafficGlobeController?.destroy();
     trafficGlobeController = mountTrafficGlobe(host, {
       locations,
@@ -857,64 +1032,6 @@ function syncTrafficGlobe() {
       mode: state.trafficGlobeMode,
       focusedKey: state.trafficFocusedLocKey
     });
-  }
-}
-
-function updateTrafficNavBadges() {
-  const activeNow = Number(state.siteTraffic?.summary?.activeNow) || 0;
-  document.querySelectorAll('[data-nav-badge="traffic"]').forEach(el => {
-    el.hidden = activeNow <= 0;
-    el.textContent = activeNow > 0 ? String(activeNow) : '';
-  });
-}
-
-function patchTrafficLiveDOM() {
-  const kpisEl = $('mgr-traffic-kpis');
-  const distEl = $('mgr-traffic-dist-list');
-  const browseEl = $('mgr-traffic-browsing');
-  const lowerEl = $('mgr-traffic-lower');
-  const updEl = $('mgr-traffic-updated-at');
-  if (kpisEl) kpisEl.innerHTML = renderTrafficKpisMarkup();
-  if (distEl) distEl.innerHTML = renderTrafficDistributionListMarkup();
-  if (browseEl) browseEl.innerHTML = renderTrafficActiveBrowsingMarkup();
-  if (lowerEl) lowerEl.innerHTML = renderTrafficLowerMarkup();
-  if (updEl) updEl.textContent = state.trafficUpdatedAt ? `Updated ${fmtClock(state.trafficUpdatedAt)}` : 'Waiting…';
-  updateTrafficNavBadges();
-  syncTrafficGlobe();
-}
-
-async function pollSiteTrafficLive({ manual = false } = {}) {
-  if (trafficPollInFlight) return;
-  if (state.me?.status !== 'approved' || state.me?.role !== 'admin') return;
-  if (!manual && (state.tab !== 'traffic' || state.trafficLivePaused || document.visibilityState !== 'visible')) return;
-  trafficPollInFlight = true;
-  try {
-    const next = await callManager('managerSiteTraffic');
-    if (next) {
-      state.siteTraffic = next;
-      state.trafficUpdatedAt = Date.now();
-      if (state.tab === 'traffic') patchTrafficLiveDOM();
-      else updateTrafficNavBadges();
-    }
-  } catch {
-    // Keep existing snapshot during transient network hiccups
-  } finally {
-    trafficPollInFlight = false;
-  }
-}
-
-function syncTrafficLivePolling() {
-  const shouldPoll = state.me?.status === 'approved'
-    && state.me?.role === 'admin'
-    && state.tab === 'traffic'
-    && !state.trafficLivePaused;
-  if (shouldPoll) {
-    if (!trafficPollTimer) {
-      trafficPollTimer = setInterval(() => { void pollSiteTrafficLive(); }, 5000);
-    }
-  } else if (trafficPollTimer) {
-    clearInterval(trafficPollTimer);
-    trafficPollTimer = null;
   }
 }
 
@@ -1524,13 +1641,28 @@ function renderUsersTab() {
 }
 
 /* Main Shell & Topbar */
+function renderActiveTabBody(isAdmin) {
+  if (state.dataError) {
+    return `<div class="mgr-panel"><p style="color:var(--danger)">${esc(state.dataError)}</p><button type="button" class="mgr-btn outline small" data-action="refresh-all">Try again</button></div>`;
+  }
+  if (state.tab === 'traffic' && isAdmin) return renderTrafficTab();
+  if (state.tab === 'artworks') return renderArtworksTab(isAdmin);
+  if (state.tab === 'site' && isAdmin) return renderSiteStockTab();
+  if (state.tab === 'customers' && isAdmin) return renderCustomersTab();
+  if (state.tab === 'bins') return renderBinsTab(isAdmin);
+  if (state.tab === 'cafes') return renderCafesTab(isAdmin);
+  if (state.tab === 'payouts') return renderPayoutsTab(isAdmin);
+  if (state.tab === 'users' && isAdmin) return renderUsersTab();
+  return renderAnalyticsTab(isAdmin);
+}
+
 function render() {
   const root = $('manager-app');
   if (!root) return;
   if (!state.authReady || state.loadingMe) {
     trafficGlobeController?.destroy();
     trafficGlobeController = null;
-    syncTrafficLivePolling();
+    syncManagerLivePolling();
     root.innerHTML = '<div class="mgr-boot">Checking authorization…</div>';
     renderDrawer();
     return;
@@ -1538,7 +1670,7 @@ function render() {
   if (!state.googleUser) {
     trafficGlobeController?.destroy();
     trafficGlobeController = null;
-    syncTrafficLivePolling();
+    syncManagerLivePolling();
     root.innerHTML = renderSignInGate();
     renderDrawer();
     return;
@@ -1546,50 +1678,14 @@ function render() {
   if (state.me?.status !== 'approved') {
     trafficGlobeController?.destroy();
     trafficGlobeController = null;
-    syncTrafficLivePolling();
+    syncManagerLivePolling();
     root.innerHTML = renderApprovalGate();
     renderDrawer();
     return;
   }
   const isAdmin = state.me.role === 'admin';
-  const pendingUsersCount = isAdmin ? state.users.filter(u => u.status === 'pending').length : 0;
-  const dueCount = (state.payoutData?.summaries || []).filter(r => r.balanceDue > 0).length;
-  const liveSiteCount = state.siteStockData?.summary?.totalOnSite ?? state.artworks.filter(a => a.stage === 'live_online').length;
-  const inBagCount = isAdmin ? (state.customerBagsData?.summary?.inBagCount || 0) : 0;
-  const activeNowCount = isAdmin ? (state.siteTraffic?.summary?.activeNow || 0) : 0;
-  const navItems = [
-    ['analytics', 'Analytics', null],
-    ...(isAdmin ? [['traffic', 'Live traffic', activeNowCount]] : []),
-    ['artworks', 'Artworks', state.artworks.length],
-    ...(isAdmin ? [['site', 'Site stock', liveSiteCount], ['customers', 'Customers', inBagCount || null]] : []),
-    ['bins', 'Pickup bin', state.artworks.filter(a => a.stage === 'delivery_bin').length],
-    ['cafes', 'Cafés', state.cafeStock.filter(s => ['at_cafe', 'return_requested'].includes(s.status)).length],
-    ['payouts', 'Payouts', dueCount || null]
-  ];
-  if (isAdmin) navItems.push(['users', 'Team access', pendingUsersCount || null]);
-
-  let bodyHtml = '';
-  if (state.dataError) {
-    bodyHtml = `<div class="mgr-panel"><p style="color:var(--danger)">${esc(state.dataError)}</p><button type="button" class="mgr-btn outline small" data-action="refresh-all">Try again</button></div>`;
-  } else if (state.tab === 'traffic' && isAdmin) {
-    bodyHtml = renderTrafficTab();
-  } else if (state.tab === 'artworks') {
-    bodyHtml = renderArtworksTab(isAdmin);
-  } else if (state.tab === 'site' && isAdmin) {
-    bodyHtml = renderSiteStockTab();
-  } else if (state.tab === 'customers' && isAdmin) {
-    bodyHtml = renderCustomersTab();
-  } else if (state.tab === 'bins') {
-    bodyHtml = renderBinsTab(isAdmin);
-  } else if (state.tab === 'cafes') {
-    bodyHtml = renderCafesTab(isAdmin);
-  } else if (state.tab === 'payouts') {
-    bodyHtml = renderPayoutsTab(isAdmin);
-  } else if (state.tab === 'users' && isAdmin) {
-    bodyHtml = renderUsersTab();
-  } else {
-    bodyHtml = renderAnalyticsTab(isAdmin);
-  }
+  const navItems = getNavItems(isAdmin);
+  const bodyHtml = renderActiveTabBody(isAdmin);
 
   root.innerHTML = `<div class="mgr-workspace">
     <aside class="mgr-sidebar">
@@ -1601,9 +1697,9 @@ function render() {
       <nav class="mgr-nav" aria-label="Manager sections">
         ${navItems.map(([id, label, count]) => `<button type="button" class="mgr-nav-btn ${state.tab === id ? 'is-active' : ''}" data-action="nav-tab" data-tab="${id}">
           <span class="mgr-nav-label"><svg viewBox="0 0 24 24" aria-hidden="true">${NAV_ICONS[id] || ''}</svg><span>${esc(label)}</span></span>
-          ${id === 'traffic'
-            ? `<span class="mgr-nav-count" data-nav-badge="traffic" ${count > 0 ? '' : 'hidden'}>${count > 0 ? count : ''}</span>`
-            : (count !== null && count !== undefined ? `<span class="mgr-nav-count">${count}</span>` : '')}
+          ${count !== null && count !== undefined
+            ? `<span class="mgr-nav-count" data-nav-badge="${esc(id)}" ${count > 0 || id === 'artworks' || id === 'site' || id === 'bins' || id === 'cafes' ? '' : 'hidden'}>${count > 0 || id === 'artworks' || id === 'site' || id === 'bins' || id === 'cafes' ? count : ''}</span>`
+            : ''}
         </button>`).join('')}
       </nav>
       <div class="mgr-sidebar-foot">
@@ -1632,13 +1728,13 @@ function render() {
     ${navItems.map(([id, label, count]) => `<button type="button" class="mgr-bottom-btn ${state.tab === id ? 'is-active' : ''}" data-action="nav-tab" data-tab="${id}">
       <svg viewBox="0 0 24 24" aria-hidden="true">${NAV_ICONS[id] || ''}</svg>
       <span>${esc(label)}</span>
-      ${id === 'traffic'
-        ? `<span class="mgr-bnav-dot" data-nav-badge="traffic" ${count > 0 ? '' : 'hidden'}>${count > 0 ? count : ''}</span>`
-        : (count ? `<span class="mgr-bnav-dot">${count}</span>` : '')}
+      ${count !== null && count !== undefined
+        ? `<span class="mgr-bnav-dot" data-nav-badge="${esc(id)}" ${count > 0 ? '' : 'hidden'}>${count > 0 ? count : ''}</span>`
+        : ''}
     </button>`).join('')}
   </nav>`;
   syncTrafficGlobe();
-  syncTrafficLivePolling();
+  syncManagerLivePolling();
   renderDrawer();
 }
 
@@ -2543,7 +2639,7 @@ document.addEventListener('click', async event => {
       state.tab = btn.dataset.tab || 'analytics';
       if (state.tab !== 'cafes') state.activeCafeId = '';
       render();
-      if (state.tab === 'traffic') void pollSiteTrafficLive({ manual: true });
+      void pollActiveTabLive({ manual: true });
     } else if (action === 'quick-upload') {
       state.tab = 'artworks';
       state.uploadPanelOpen = true;
@@ -2608,17 +2704,17 @@ document.addEventListener('click', async event => {
       else render();
     } else if (action === 'toggle-traffic-live') {
       state.trafficLivePaused = !state.trafficLivePaused;
-      syncTrafficLivePolling();
+      syncManagerLivePolling();
       const pill = $('mgr-traffic-live-pill');
       const label = $('mgr-traffic-live-label');
       const toggleBtn = $('mgr-traffic-toggle-btn');
       if (pill) pill.classList.toggle('is-paused', state.trafficLivePaused);
-      if (label) label.textContent = state.trafficLivePaused ? 'Paused' : 'Live · 5s';
+      if (label) label.textContent = state.trafficLivePaused ? 'Paused' : 'Live · 3s';
       if (toggleBtn) toggleBtn.textContent = state.trafficLivePaused ? 'Resume live' : 'Pause live';
-      if (!state.trafficLivePaused) void pollSiteTrafficLive({ manual: true });
+      if (!state.trafficLivePaused) void pollActiveTabLive({ manual: true });
     } else if (action === 'refresh-traffic-now') {
       btn.disabled = true;
-      await pollSiteTrafficLive({ manual: true });
+      await pollActiveTabLive({ manual: true });
     } else if (action === 'set-globe-mode') {
       state.trafficGlobeMode = btn.dataset.mode === 'live' ? 'live' : 'all';
       document.querySelectorAll('[data-action="set-globe-mode"]').forEach(b => {
@@ -3344,7 +3440,7 @@ observeGoogleAuth((googleUser, rawUser) => {
 });
 
 document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'visible' && state.tab === 'traffic' && !state.trafficLivePaused) {
-    void pollSiteTrafficLive();
+  if (document.visibilityState === 'visible' && !state.trafficLivePaused) {
+    void pollActiveTabLive();
   }
 });
