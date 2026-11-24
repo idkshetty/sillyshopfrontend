@@ -10,6 +10,7 @@ import {encodeImage,isInlineImage} from './image-data.js';
 let sdkPromise, sdk,realtimePromise,publicConfigPromise;
 const productListeners=new Set();
 let adminProducts=[];
+let siteTrackBackoffUntil=0,bagTrackBackoffUntil=0;
 export async function backend(){
  if(!sdkPromise)sdkPromise=Promise.all([import('https://www.gstatic.com/firebasejs/12.3.0/firebase-app.js'),import('https://www.gstatic.com/firebasejs/12.3.0/firebase-auth.js')]).then(async([appAPI,a])=>{const app=appAPI.getApps().length?appAPI.getApp():appAPI.initializeApp(firebaseConfig);const auth=a.getAuth(app);if(a.browserLocalPersistence&&typeof a.setPersistence==='function')await a.setPersistence(auth,a.browserLocalPersistence).catch(()=>{});sdk={app,auth,a};return sdk;}).catch(error=>{sdkPromise=null;throw error;});return sdkPromise;
 }
@@ -304,7 +305,7 @@ export async function observeProducts(admin,onData,onError){
  };
  productListeners.add(refresh);
  void refresh();
- const timer=setInterval(()=>{if(typeof document==='undefined'||document.visibilityState==='visible')void refresh();},30000);
+ const timer=setInterval(()=>{if(typeof document==='undefined'||document.visibilityState==='visible')void refresh();},60000);
  return async()=>{active=false;clearInterval(timer);productListeners.delete(refresh);const stopPub=await stopPublicPromise;stopPub?.();};
 }
 export async function saveProduct(product,id){
@@ -392,13 +393,15 @@ export async function loadCustomerReviewsAdmin(){return callBackend('loadCustome
 export async function moderateCustomerReview(reviewId,decision){return callBackend('moderateCustomerReview',{reviewId,decision});}
 export async function loadAdminAudit(){return callBackend('loadAdminAudit',{});}
 export async function trackBagSnapshot(payload={}){
+  if(Date.now()<bagTrackBackoffUntil)return;
   try{
     const headers={'Content-Type':'application/json'};
     if(sdk?.auth?.currentUser&&!sdk.auth.currentUser.isAnonymous){
       const tok=await sdk.auth.currentUser.getIdToken().catch(()=>'');
       if(tok)headers.Authorization='Bearer '+tok;
     }
-    await fetch(backendURL()+'/cart-track',{method:'POST',headers,body:JSON.stringify(payload),keepalive:true,signal:AbortSignal.timeout(8000)});
+    const res=await fetch(backendURL()+'/cart-track',{method:'POST',headers,body:JSON.stringify(payload),keepalive:true,signal:AbortSignal.timeout(8000)});
+    if(res.status===429)bagTrackBackoffUntil=Date.now()+60000;
   }catch{}
 }
 export async function observeStockSchedule(onData,onError){
@@ -419,8 +422,10 @@ export async function triggerStockRefreshCheck(){
   }catch{return null;}
 }
 export async function trackSiteEvent(payload={}){
+  if(Date.now()<siteTrackBackoffUntil)return;
   try{
-    await fetch(backendURL()+'/site-track',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload),keepalive:true,signal:AbortSignal.timeout(6000)});
+    const res=await fetch(backendURL()+'/site-track',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload),keepalive:true,signal:AbortSignal.timeout(6000)});
+    if(res.status===429)siteTrackBackoffUntil=Date.now()+60000;
   }catch{}
 }
 export async function callBackend(name,data={}){
@@ -431,7 +436,7 @@ export async function callBackend(name,data={}){
  if(APP_CHECK_SITE_KEY){const check=await import('https://www.gstatic.com/firebasejs/12.3.0/firebase-app-check.js');let instance;try{instance=check.getAppCheck(app);}catch{instance=check.initializeAppCheck(app,{provider:new check.ReCaptchaEnterpriseProvider(APP_CHECK_SITE_KEY),isTokenAutoRefreshEnabled:true});}headers['X-Firebase-AppCheck']=(await check.getToken(instance)).token;}
  let response;try{response=await fetch(url,{method:'POST',headers,body:JSON.stringify(data),signal:AbortSignal.timeout(name==='currentUser'?8000:60000)});}catch{throw new Error('The studio service could not be reached. Refresh your requests before retrying.');}
  const result=await response.json();if(response.status===401&&attempt===0)continue;
- if(!response.ok){const error=new Error(result.error?.message||'The studio service could not complete this operation.');error.code=result.error?.code;throw error;}return result.data;
+ if(!response.ok){const error=new Error(result.error?.message||'The studio service could not complete this operation.');error.code=result.error?.code;error.status=response.status;throw error;}return result.data;
  }
 }
 export function friendlyError(error){

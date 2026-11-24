@@ -17,14 +17,14 @@ import {
 import {
   mountTrafficGlobe,
   resolveLocationCoords
-} from './traffic-globe.js?v=20261125a';
+} from './traffic-globe.js?v=20261125b';
 import {
   pilotControlsMarkup,
   pilotTimelineSvgMarkup,
   pilotEngagementMarkup,
   pilotVisitorsLogMarkup,
   toDatetimeLocalValue
-} from '../pilot-analytics-ui.js?v=20261125a';
+} from '../pilot-analytics-ui.js?v=20261125b';
 
 const $ = id => document.getElementById(id);
 const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -798,9 +798,15 @@ function patchTrafficLiveDOM() {
   syncTrafficGlobe();
 }
 
+let managerPollBackoffUntil = 0;
+let managerPollIntervalMs = 0;
+function currentManagerPollMs() {
+  return state.tab === 'traffic' ? 5000 : 12000;
+}
 async function pollActiveTabLive({ manual = false } = {}) {
   if (managerPollInFlight) return;
   if (state.me?.status !== 'approved') return;
+  if (!manual && Date.now() < managerPollBackoffUntil) return;
   if (!manual && (
     state.trafficLivePaused
     || document.visibilityState !== 'visible'
@@ -889,7 +895,10 @@ async function pollActiveTabLive({ manual = false } = {}) {
         if (state.tab === 'users') patchMainTabDOM(isAdmin);
       }
     }
-  } catch {
+  } catch (err) {
+    if (err?.status === 429 || err?.code === 'resource-exhausted') {
+      managerPollBackoffUntil = Date.now() + 45000;
+    }
     // Keep existing snapshot during transient network hiccups
   } finally {
     managerPollInFlight = false;
@@ -898,13 +907,20 @@ async function pollActiveTabLive({ manual = false } = {}) {
 
 function syncManagerLivePolling() {
   const shouldPoll = state.me?.status === 'approved' && !state.trafficLivePaused;
+  const wantMs = currentManagerPollMs();
   if (shouldPoll) {
+    if (managerPollTimer && managerPollIntervalMs !== wantMs) {
+      clearInterval(managerPollTimer);
+      managerPollTimer = null;
+    }
     if (!managerPollTimer) {
-      managerPollTimer = setInterval(() => { void pollActiveTabLive(); }, 3000);
+      managerPollIntervalMs = wantMs;
+      managerPollTimer = setInterval(() => { void pollActiveTabLive(); }, wantMs);
     }
   } else if (managerPollTimer) {
     clearInterval(managerPollTimer);
     managerPollTimer = null;
+    managerPollIntervalMs = 0;
   }
 }
 
@@ -2736,6 +2752,7 @@ document.addEventListener('click', async event => {
     } else if (action === 'nav-tab') {
       state.tab = btn.dataset.tab || 'analytics';
       if (state.tab !== 'cafes') state.activeCafeId = '';
+      syncManagerLivePolling();
       render();
       void pollActiveTabLive({ manual: true });
     } else if (action === 'quick-upload') {

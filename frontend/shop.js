@@ -591,6 +591,7 @@ function sendSiteBeacon(type,extra={}){
 }
 function trackProductClick(productId){
   if(!productId)return;
+  if(pilotTelemetry?.noteProductView){pilotTelemetry.noteProductView(productId);return;}
   const now=Date.now();
   if(now-(clickedProductsAt.get(productId)||0)<15000)return;
   clickedProductsAt.set(productId,now);
@@ -1148,8 +1149,10 @@ function restoreOpenOrderCardsState(container,{openIds,activeTabs}){
     }
   });
 }
+let customerOrdersBackoffUntil=0;
 async function refreshCustomerOrdersLive(){
   if(!user||user.isAnonymous||accountState.loading)return;
+  if(Date.now()<customerOrdersBackoffUntil)return;
   const uid=user.uid;
   try{
     const fresh=await store.loadCustomerRequests(null);
@@ -1190,7 +1193,7 @@ async function refreshCustomerOrdersLive(){
         if(smallEl)smallEl.textContent=CUSTOMER_STATUS_LABELS[merged[0].status]||merged[0].status;
       }
     }
-  }catch{}
+  }catch(err){if(err?.status===429||err?.code==='resource-exhausted')customerOrdersBackoffUntil=Date.now()+60000;}
 }
 function scheduleLiveCustomerRefresh(){
   clearTimeout(customerLiveRefreshTimer);
@@ -1212,7 +1215,7 @@ function startCustomerOrdersRealtime(uid){
   }).catch(()=>{});
   customerOrdersPollTimer=setInterval(()=>{
     if(route().page==='account'&&document.visibilityState==='visible')void refreshCustomerOrdersLive();
-  },15000);
+  },60000);
 }
 function refreshAccountOrdersList(){
   const host=$('account-orders-list');
@@ -2084,17 +2087,20 @@ async function runContinuousAutoPrint(){
 function stopAdminOrdersLivePoll(){
   clearInterval(adminOrdersPollTimer);adminOrdersPollTimer=null;
 }
+let adminOrdersBackoffUntil=0;
 function syncAdminOrdersLivePoll(){
   const state=thermalPrinter.getState();
   const shouldPoll=Boolean(isAdmin&&(state.autoPrint||(route().page==='admin'&&adminTab==='requests')));
   if(!shouldPoll){stopAdminOrdersLivePoll();return;}
   if(adminOrdersPollTimer)return;
   adminOrdersPollTimer=setInterval(()=>{
+    if(Date.now()<adminOrdersBackoffUntil)return;
     if(document.visibilityState==='visible'||thermalPrinter.getState().autoPrint)void fetchRequests({silent:true});
-  },5000);
+  },15000);
 }
 async function fetchRequests({silent=false,more=false}={}){
   if(!isAdmin||(more&&requestsLoadingMore))return;
+  if(silent&&Date.now()<adminOrdersBackoffUntil)return;
   if(more)requestsLoadingMore=true;
   try{
     const res=await store.loadRequests(more?requestsCursor:null,{paginated:true});
@@ -2130,6 +2136,7 @@ async function fetchRequests({silent=false,more=false}={}){
     }
     requestList=merged;
   }catch(error){
+    if(error?.status===429||error?.code==='resource-exhausted')adminOrdersBackoffUntil=Date.now()+60000;
     if(!silent&&!more){requestsError=store.friendlyError(error);requestsLoaded=true;}
     else if(more)toast(store.friendlyError(error));
   }finally{
@@ -3454,14 +3461,7 @@ if(typeof window!=='undefined'){
   sendSiteBeacon('visit');
   setInterval(()=>{
     if(document.visibilityState==='visible')sendSiteBeacon('ping');
-  },45000);
-  let routePingTimer=null;
-  window.addEventListener('hashchange',()=>{
-    clearTimeout(routePingTimer);
-    routePingTimer=setTimeout(()=>{
-      if(document.visibilityState==='visible'&&route().page!=='admin')sendSiteBeacon('ping');
-    },600);
-  });
+  },90000);
 }
 function refreshStoreContent(){
   contentCategories(siteContent).forEach((c,i)=>Object.assign(CATEGORIES[i],c));

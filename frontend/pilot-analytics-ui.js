@@ -198,6 +198,7 @@ export function mountNetworkAnalyticsPanel(root, { loadTraffic, mountGlobeFn, re
   let timer = null;
   let globe = null;
   let disposed = false;
+  let backoffUntil = 0;
 
   const esc = escHtml;
   const moneyInr = n => '₹' + (Number(n) || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 });
@@ -371,15 +372,22 @@ export function mountNetworkAnalyticsPanel(root, { loadTraffic, mountGlobeFn, re
 
   async function fetchNow() {
     if (disposed || inFlight || typeof loadTraffic !== 'function') return;
+    if (Date.now() < backoffUntil) return;
     inFlight = true;
     try {
       const next = await loadTraffic({ preset, fromMs, toMs, device });
       if (disposed) return;
       data = next;
       errorMsg = '';
+      backoffUntil = 0;
       renderFrame();
     } catch (err) {
-      errorMsg = err?.message || 'Could not load network analytics.';
+      if (err?.status === 429 || err?.code === 'resource-exhausted') {
+        backoffUntil = Date.now() + 60000;
+        errorMsg = 'Live polling paused briefly due to rate limit — retrying automatically in 60s.';
+      } else {
+        errorMsg = err?.message || 'Could not load network analytics.';
+      }
       if (!data) renderFrame();
     } finally {
       inFlight = false;
@@ -390,7 +398,7 @@ export function mountNetworkAnalyticsPanel(root, { loadTraffic, mountGlobeFn, re
   void fetchNow();
   timer = setInterval(() => {
     if (!paused && typeof document !== 'undefined' && document.visibilityState === 'visible') void fetchNow();
-  }, 5000);
+  }, 8000);
 
   return {
     destroy() {

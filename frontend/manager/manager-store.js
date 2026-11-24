@@ -116,6 +116,7 @@ export async function callManager(action, data = {}) {
     if (!response.ok) {
       const err = new Error(result?.error?.message || 'Request failed.');
       err.code = result?.error?.code;
+      err.status = response.status;
       throw err;
     }
     return result.data;

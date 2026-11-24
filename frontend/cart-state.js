@@ -1,31 +1,31 @@
-import {MAX_ITEM_QUANTITY} from './commerce.js';
-import {resolveBackAttachment} from './store-settings.js';
+import { MAX_ITEM_QUANTITY } from './commerce.js';
+import { resolveBackAttachment } from './store-settings.js';
 // Catalogue refreshes must never silently delete a customer's selected items.
-export function selectedCartLines(cart,products,remembered=[],settings=null){
-  return cart.map(item=>{
-    const product=products.find(p=>p.id===item.id)||remembered.find(p=>p.id===item.id)||{id:item.id,title:'Unavailable product',category:'paintings',price:0,stock:0,visible:false,images:[]};
-    const attachment=resolveBackAttachment(item.attachmentId,settings);
-    const attachmentPrice=attachment?(Number(attachment.price)||0):0;
-    const basePaise=Math.round((Number(product.price)||0)*100);
-    const addPaise=Math.round(attachmentPrice*100);
-    const unitPaise=basePaise+addPaise;
+export function selectedCartLines(cart, products, remembered = [], settings = null) {
+  return cart.map(item => {
+    const product = products.find(p => p.id === item.id) || remembered.find(p => p.id === item.id) || { id: item.id, title: 'Unavailable product', category: 'paintings', price: 0, stock: 0, visible: false, images: [] };
+    const attachment = resolveBackAttachment(item.attachmentId, settings);
+    const attachmentPrice = attachment ? (Number(attachment.price) || 0) : 0;
+    const basePaise = Math.round((Number(product.price) || 0) * 100);
+    const addPaise = Math.round(attachmentPrice * 100);
+    const unitPaise = basePaise + addPaise;
     return {
       product,
-      quantity:item.quantity,
-      basePrice:basePaise/100,
+      quantity: item.quantity,
+      basePrice: basePaise / 100,
       attachment,
-      attachmentPrice:addPaise/100,
-      unitPrice:unitPaise/100,
-      total:(unitPaise*item.quantity)/100
+      attachmentPrice: addPaise / 100,
+      unitPrice: unitPaise / 100,
+      total: (unitPaise * item.quantity) / 100
     };
   });
 }
-export function cartIssues(cart,products,displayedProducts=[]){
-  return cart.flatMap(item=>{
-    const product=products.find(p=>p.id===item.id),shown=displayedProducts.find(p=>p.id===item.id),name=product?.title||shown?.title||'An item';
-    if(!product||!product.visible||product.archived)return [`${name} is currently unavailable. Your cart is saved; retry or remove the item.`];
-    if(product.stock<item.quantity)return [`${name}: ${product.stock} available, ${item.quantity} selected. Adjust the quantity or remove the item.`];
-    if(shown&&product.price!==shown.price)return [`The price of ${name} changed. Review the updated cart before saving.`];
+export function cartIssues(cart, products, displayedProducts = []) {
+  return cart.flatMap(item => {
+    const product = products.find(p => p.id === item.id), shown = displayedProducts.find(p => p.id === item.id), name = product?.title || shown?.title || 'An item';
+    if (!product || !product.visible || product.archived) return [`${name} is currently unavailable. Your cart is saved; retry or remove the item.`];
+    if (product.stock < item.quantity) return [`${name}: ${product.stock} available, ${item.quantity} selected. Adjust the quantity or remove the item.`];
+    if (shown && product.price !== shown.price) return [`The price of ${name} changed. Review the updated cart before saving.`];
     return [];
   });
 }

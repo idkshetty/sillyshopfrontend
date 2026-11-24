@@ -87,6 +87,7 @@ export function mountPilotTelemetry({ getRoute, getVisitorId, sendEvent, isSuppr
   let maxScrollPct = currentScrollPct();
   let flushedMaxScroll = 0;
   const pendingDwell = Object.create(null);
+  const pendingClicks = [];
   const recentClickMap = new Map();
 
   const touchActivity = () => {
@@ -124,16 +125,20 @@ export function mountPilotTelemetry({ getRoute, getVisitorId, sendEvent, isSuppr
       recentClickMap.set(productId, now);
     }
 
-    void sendEvent('click', {
+    pendingClicks.push({
       page,
       section,
       targetLabel,
       xPct,
       yPct,
+      path: location.hash || `#${page}`,
       viewportW: window.innerWidth || 0,
       viewportH: window.innerHeight || 0,
+      at: Date.now(),
       ...(productId ? { productId } : {})
     });
+    if (pendingClicks.length > 25) pendingClicks.shift();
+    if (pendingClicks.length >= 8) flushEngagement({ force: true });
   };
 
   function flushEngagement({ force = false } = {}) {
@@ -141,20 +146,23 @@ export function mountPilotTelemetry({ getRoute, getVisitorId, sendEvent, isSuppr
     const page = getRoute?.()?.page || currentPage || 'home';
     if (page === 'admin') return;
     const hasDwell = Object.keys(pendingDwell).length > 0;
+    const hasClicks = pendingClicks.length > 0;
     const scrollGrew = maxScrollPct > flushedMaxScroll;
-    if (!force && pendingDurationSec < 2 && !scrollGrew && !hasDwell) return;
-    if (pendingDurationSec === 0 && !scrollGrew && !hasDwell) return;
+    if (!force && !hasClicks && pendingDurationSec < 2 && !scrollGrew && !hasDwell) return;
+    if (!hasClicks && pendingDurationSec === 0 && !scrollGrew && !hasDwell) return;
 
+    const clicks = pendingClicks.splice(0, 25);
     const payload = {
       page: currentPage || page,
       durationSec: pendingDurationSec,
       maxScrollPct,
-      sectionDwell: { ...pendingDwell }
+      sectionDwell: { ...pendingDwell },
+      ...(clicks.length ? { clicks } : {})
     };
     pendingDurationSec = 0;
     flushedMaxScroll = maxScrollPct;
     for (const k of Object.keys(pendingDwell)) delete pendingDwell[k];
-    void sendEvent('engage', payload);
+    void sendEvent(clicks.length ? 'batch' : 'engage', payload);
   }
 
   const secondTimer = setInterval(() => {
@@ -172,7 +180,7 @@ export function mountPilotTelemetry({ getRoute, getVisitorId, sendEvent, isSuppr
     pendingDurationSec += 1;
     const sec = detectViewportCenterSection(page);
     if (sec) pendingDwell[sec] = (pendingDwell[sec] || 0) + 1;
-    if (pendingDurationSec >= 12) flushEngagement();
+    if (pendingDurationSec >= 20) flushEngagement();
   }, 1000);
 
   const onVisibilityChange = () => {
@@ -206,12 +214,16 @@ export function mountPilotTelemetry({ getRoute, getVisitorId, sendEvent, isSuppr
       const now = Date.now();
       if (now - (recentClickMap.get(productId) || 0) < 1800) return;
       recentClickMap.set(productId, now);
-      void sendEvent('click', {
+      pendingClicks.push({
         page: getRoute?.()?.page || 'product',
         section: 'product',
-        targetLabel: 'View product detail',
+        targetLabel: 'View artwork',
+        path: location.hash || `#product/${productId}`,
+        at: now,
         productId
       });
+      if (pendingClicks.length > 25) pendingClicks.shift();
+      if (pendingClicks.length >= 8) flushEngagement({ force: true });
     },
     destroy() {
       clearInterval(secondTimer);
