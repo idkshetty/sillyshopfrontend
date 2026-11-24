@@ -16,7 +16,7 @@ const LAND_POLYGONS = [
   // Continental Europe & Scandinavia
   [[-9, 37], [-9, 43], [-2, 43], [-4, 48], [2, 51], [8, 54], [8, 58], [5, 61], [14, 68], [28, 71], [42, 68], [60, 68], [60, 52], [46, 45], [39, 47], [29, 41], [23, 37], [18, 40], [14, 40], [12, 44], [6, 44], [3, 42], [-5, 36], [-9, 37]],
   // Asia, Middle East, India & SE Asia
-  [[27, 41], [42, 43], [52, 40], [55, 46], [60, 52], [60, 68], [85, 73], [110, 75], [140, 72], [175, 66], [162, 55], [142, 54], [135, 44], [129, 35], [126, 38], [122, 40], [118, 39], [122, 31], [120, 24], [109, 20], [109, 11], [104, 2], [100, 13], [97, 16], [91, 22], [85, 19], [80, 13], [77.5, 8], [73, 19], [68, 23], [61, 25], [56, 26], [49, 29], [56, 22], [52, 15], [44, 12], [35, 28], [33, 31], [36, 36], [27, 41]],
+  [[27, 41], [42, 43], [52, 40], [55, 46], [60, 52], [60, 68], [85, 73], [110, 75], [140, 72], [175, 66], [162, 55], [142, 54], [135, 44], [129, 35], [126, 38], [122, 40], [118, 39], [122, 31], [120, 24], [109, 20], [109, 11], [104, 2], [100, 13], [97, 16], [91, 22], [86, 20], [82, 16], [80, 13], [77.5, 8], [75, 13], [73, 19], [70, 21], [68, 23], [61, 25], [56, 26], [49, 29], [59, 22], [53, 16], [44, 13], [39, 21], [35, 28], [33, 31], [36, 36], [27, 41]],
   // Sri Lanka
   [[79.8, 9.7], [81.8, 7.6], [80.5, 6.0], [79.7, 7.5], [79.8, 9.7]],
   // Japan
@@ -136,7 +136,7 @@ function isLand(lng, lat) {
 let cachedLandDots = null;
 function getLandDots() {
   if (cachedLandDots) return cachedLandDots;
-  const total = 4800;
+  const total = 9600;
   const golden = Math.PI * (3 - Math.sqrt(5));
   const out = [];
   for (let i = 0; i < total; i++) {
@@ -318,32 +318,32 @@ export function mountTrafficGlobe(container, { locations = [], mode = 'all', onS
     ctx.clearRect(0, 0, width, height);
     const cx = width / 2;
     const cy = height / 2;
-    const R = Math.min(width, height) * 0.43;
+    const R = Math.min(width, height) * 0.455;
 
     // Soft drop shadow under sphere
     ctx.save();
     ctx.beginPath();
-    ctx.arc(cx, cy + R * 0.06, R * 0.99, 0, Math.PI * 2);
-    ctx.fillStyle = 'rgba(15, 23, 42, 0.055)';
+    ctx.arc(cx, cy + R * 0.05, R * 0.99, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(15, 23, 42, 0.045)';
     ctx.fill();
     ctx.restore();
 
     // Cloudflare-style bright white sphere with subtle cool rim shading
     const sphereGrad = ctx.createRadialGradient(
-      cx - R * 0.3, cy - R * 0.32, R * 0.12,
+      cx - R * 0.3, cy - R * 0.32, R * 0.14,
       cx, cy, R
     );
     sphereGrad.addColorStop(0, '#ffffff');
-    sphereGrad.addColorStop(0.68, '#f8fafd');
-    sphereGrad.addColorStop(0.92, '#edf2f8');
-    sphereGrad.addColorStop(1, '#e1e8f2');
+    sphereGrad.addColorStop(0.7, '#fafcfe');
+    sphereGrad.addColorStop(0.93, '#eff4fa');
+    sphereGrad.addColorStop(1, '#e4ebf4');
 
     ctx.beginPath();
     ctx.arc(cx, cy, R, 0, Math.PI * 2);
     ctx.fillStyle = sphereGrad;
     ctx.fill();
     ctx.lineWidth = 1;
-    ctx.strokeStyle = 'rgba(148, 163, 184, 0.32)';
+    ctx.strokeStyle = 'rgba(148, 163, 184, 0.28)';
     ctx.stroke();
 
     const sinLng = Math.sin(rotLng);
@@ -351,8 +351,8 @@ export function mountTrafficGlobe(container, { locations = [], mode = 'all', onS
     const sinLat = Math.sin(rotLat);
     const cosLat = Math.cos(rotLat);
 
-    // Draw halftone landmass dots on front hemisphere
-    const dotSize = Math.max(1.05, R * 0.0115);
+    // Draw crisp Cloudflare-style halftone landmass dots on front hemisphere
+    const dotSize = Math.max(0.75, R * 0.0068);
     for (let i = 0; i < landDots.length; i += 3) {
       const xe = landDots[i];
       const ye = landDots[i + 1];
@@ -364,17 +364,17 @@ export function mountTrafficGlobe(container, { locations = [], mode = 'all', onS
       const z1 = ye * sinLat + z0 * cosLat;
 
       if (z1 <= 0.02) continue;
-      const alpha = Math.min(0.68, 0.14 + z1 * 0.54);
+      const alpha = Math.min(0.62, 0.14 + z1 * 0.48);
       const px = cx + x0 * R;
       const py = cy - y1 * R;
 
-      ctx.fillStyle = `rgba(122, 146, 178, ${alpha.toFixed(2)})`;
+      ctx.fillStyle = `rgba(116, 146, 184, ${alpha.toFixed(2)})`;
       ctx.beginPath();
       ctx.arc(px, py, dotSize, 0, Math.PI * 2);
       ctx.fill();
     }
 
-    // Project and draw visitor markers
+    // Project and draw Cloudflare-style compact, crisp visitor dots
     const nextScreenPins = [];
     for (const pt of points) {
       const x0 = pt.x * cosLng - pt.z * sinLng;
@@ -382,15 +382,15 @@ export function mountTrafficGlobe(container, { locations = [], mode = 'all', onS
       const y1 = pt.y * cosLat - z0 * sinLat;
       const z1 = pt.y * sinLat + z0 * cosLat;
 
-      if (z1 < -0.06) continue;
-      const depthFade = z1 < 0.08 ? Math.max(0.25, (z1 + 0.06) / 0.14) : 1;
+      if (z1 < -0.05) continue;
+      const depthFade = z1 < 0.08 ? Math.max(0.25, (z1 + 0.05) / 0.13) : 1;
       const px = cx + x0 * R;
       const py = cy - y1 * R;
       const isLive = (pt.activeNow || 0) > 0;
       const isFocused = focusedKey && pt.key === focusedKey;
       const dimmed = currentMode === 'live' && !isLive;
-      const ratio = Math.sqrt(Math.max(1, Number(pt.count) || 1) / maxCount);
-      const radius = Math.max(3.6, Math.min(11, 3.6 + ratio * 7.4));
+      const count = Math.max(1, Number(pt.count) || 1);
+      const radius = Math.max(2.1, Math.min(7.8, 1.9 + Math.log10(count + 1) * 2.0));
 
       nextScreenPins.push({ pt, px, py, radius, z1, isLive, dimmed, isFocused, depthFade });
     }
@@ -404,37 +404,31 @@ export function mountTrafficGlobe(container, { locations = [], mode = 'all', onS
       ctx.save();
       ctx.globalAlpha = alpha;
 
-      // Animated live halo ring for active visitors
+      // Subtle animated ring only for active visitors
       if (pin.isLive) {
-        const ringR = pin.radius + 3 + pulsePhase * 12;
+        const ringR = pin.radius + 1.5 + pulsePhase * 6.5;
         ctx.beginPath();
         ctx.arc(pin.px, pin.py, ringR, 0, Math.PI * 2);
-        ctx.strokeStyle = `rgba(29, 95, 230, ${(1 - pulsePhase) * 0.65})`;
-        ctx.lineWidth = 1.6;
+        ctx.strokeStyle = `rgba(29, 95, 230, ${(1 - pulsePhase) * 0.55})`;
+        ctx.lineWidth = 1.1;
         ctx.stroke();
       }
 
       if (pin.isFocused) {
         ctx.beginPath();
-        ctx.arc(pin.px, pin.py, pin.radius + 5, 0, Math.PI * 2);
-        ctx.strokeStyle = 'rgba(29, 95, 230, 0.55)';
-        ctx.lineWidth = 2;
+        ctx.arc(pin.px, pin.py, pin.radius + 3, 0, Math.PI * 2);
+        ctx.strokeStyle = 'rgba(29, 95, 230, 0.7)';
+        ctx.lineWidth = 1.4;
         ctx.stroke();
       }
 
-      // Soft cobalt drop glow
-      ctx.beginPath();
-      ctx.arc(pin.px, pin.py, pin.radius + 2.2, 0, Math.PI * 2);
-      ctx.fillStyle = pin.isLive ? 'rgba(29, 95, 230, 0.28)' : 'rgba(29, 95, 230, 0.2)';
-      ctx.fill();
-
-      // Core pin circle
+      // Crisp cobalt pin dot with thin white separation border
       ctx.beginPath();
       ctx.arc(pin.px, pin.py, pin.radius, 0, Math.PI * 2);
       ctx.fillStyle = '#1d5fe6';
       ctx.fill();
-      ctx.lineWidth = 1.4;
-      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 0.75;
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.85)';
       ctx.stroke();
 
       ctx.restore();

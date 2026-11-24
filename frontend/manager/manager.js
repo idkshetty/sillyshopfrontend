@@ -17,7 +17,7 @@ import {
 import {
   mountTrafficGlobe,
   resolveLocationCoords
-} from './traffic-globe.js?v=20261124c';
+} from './traffic-globe.js?v=20261124d';
 
 const $ = id => document.getElementById(id);
 const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -674,6 +674,29 @@ let trafficGlobeController = null;
 let managerPollTimer = null;
 let managerPollInFlight = false;
 const tabLiveSnapshots = new Map();
+const trafficSectionHtml = new Map();
+
+function captureScrollPositions(rootEl) {
+  const saved = { selfTop: rootEl?.scrollTop || 0, selfLeft: rootEl?.scrollLeft || 0, wraps: [] };
+  if (!rootEl) return saved;
+  rootEl.querySelectorAll('.mgr-table-wrap').forEach((wrap, idx) => {
+    saved.wraps.push({ idx, top: wrap.scrollTop, left: wrap.scrollLeft });
+  });
+  return saved;
+}
+
+function restoreScrollPositions(rootEl, saved) {
+  if (!rootEl || !saved) return;
+  if (saved.selfTop) rootEl.scrollTop = saved.selfTop;
+  if (saved.selfLeft) rootEl.scrollLeft = saved.selfLeft;
+  const wraps = rootEl.querySelectorAll('.mgr-table-wrap');
+  for (const w of saved.wraps) {
+    if (wraps[w.idx]) {
+      wraps[w.idx].scrollTop = w.top;
+      wraps[w.idx].scrollLeft = w.left;
+    }
+  }
+}
 
 function getNavItems(isAdmin) {
   const pendingUsersCount = isAdmin ? state.users.filter(u => u.status === 'pending').length : 0;
@@ -719,22 +742,31 @@ function patchMainTabDOM(isAdmin) {
   const mainEl = document.querySelector('.mgr-main');
   if (!mainEl) return;
   const scrollY = window.scrollY;
+  const savedScroll = captureScrollPositions(mainEl);
   mainEl.innerHTML = renderActiveTabBody(isAdmin);
+  restoreScrollPositions(mainEl, savedScroll);
   updateAllNavBadges(isAdmin);
   if (state.drawerArtworkId) renderDrawer();
   if (window.scrollY !== scrollY) window.scrollTo(0, scrollY);
 }
 
+function patchTrafficSection(key, el, nextHtml) {
+  if (!el || trafficSectionHtml.get(key) === nextHtml) return false;
+  const savedScroll = captureScrollPositions(el);
+  const scrollY = window.scrollY;
+  el.innerHTML = nextHtml;
+  trafficSectionHtml.set(key, nextHtml);
+  restoreScrollPositions(el, savedScroll);
+  if (window.scrollY !== scrollY) window.scrollTo(0, scrollY);
+  return true;
+}
+
 function patchTrafficLiveDOM() {
-  const kpisEl = $('mgr-traffic-kpis');
-  const distEl = $('mgr-traffic-dist-list');
-  const browseEl = $('mgr-traffic-browsing');
-  const lowerEl = $('mgr-traffic-lower');
+  patchTrafficSection('kpis', $('mgr-traffic-kpis'), renderTrafficKpisMarkup());
+  patchTrafficSection('dist', $('mgr-traffic-dist-list'), renderTrafficDistributionListMarkup());
+  patchTrafficSection('browsing', $('mgr-traffic-browsing'), renderTrafficActiveBrowsingMarkup());
+  patchTrafficSection('lower', $('mgr-traffic-lower'), renderTrafficLowerMarkup());
   const updEl = $('mgr-traffic-updated-at');
-  if (kpisEl) kpisEl.innerHTML = renderTrafficKpisMarkup();
-  if (distEl) distEl.innerHTML = renderTrafficDistributionListMarkup();
-  if (browseEl) browseEl.innerHTML = renderTrafficActiveBrowsingMarkup();
-  if (lowerEl) lowerEl.innerHTML = renderTrafficLowerMarkup();
   if (updEl) updEl.textContent = state.trafficUpdatedAt ? `Updated ${fmtClock(state.trafficUpdatedAt)}` : 'Waiting…';
   updateTrafficNavBadges();
   syncTrafficGlobe();
@@ -944,19 +976,19 @@ function renderTrafficLowerMarkup() {
         </div>
       </div>
       ${sortedDemand.length ? `<div class="mgr-table-wrap"><table class="mgr-table">
-        <thead><tr><th>#</th><th>Artwork</th><th>Ref #</th><th>Status</th><th>Total clicks</th><th>In peoples' bags</th></tr></thead>
+        <thead><tr><th>#</th><th>Artwork</th><th>Clicks</th><th>In bags</th><th>Ref #</th><th>Status</th></tr></thead>
         <tbody>${sortedDemand.slice(0, 25).map((item, idx) => `<tr>
           <td><span class="mono mgr-muted">${idx + 1}</span></td>
           <td>
-            <div style="display:flex;align-items:center;gap:8px;min-width:170px">
+            <div style="display:flex;align-items:center;gap:8px;min-width:135px">
               ${item.image ? `<img src="${esc(item.image)}" alt="" style="width:34px;height:34px;border-radius:6px;object-fit:cover;border:1px solid var(--line);flex-shrink:0">` : ''}
               <div><strong>${esc(item.title)}</strong><div class="mgr-art-meta">${esc(item.artist)} · ${money(item.price)}</div></div>
             </div>
           </td>
-          <td>${refPillMarkup(item.refNumber, findArtIdByRef(item.refNumber, item.title))}</td>
-          <td>${item.inStock ? '<span class="mgr-pill is-live_online">In stock</span>' : item.visible ? '<span class="mgr-pill is-sold">Displayed sold</span>' : '<span class="mgr-pill is-curated">Off site</span>'}</td>
           <td><strong>${item.clicks}</strong>${item.todayClicks > 0 ? ` <small class="mgr-muted">(${item.todayClicks} today)</small>` : ''}</td>
           <td>${item.inCartCount > 0 ? `<span class="mgr-cart-count-pill">${item.inCartCount} in ${item.inCartCount === 1 ? 'bag' : 'bags'}</span>` : '<span class="mgr-muted">0</span>'}</td>
+          <td>${refPillMarkup(item.refNumber, findArtIdByRef(item.refNumber, item.title))}</td>
+          <td>${item.inStock ? '<span class="mgr-pill is-live_online">In stock</span>' : item.visible ? '<span class="mgr-pill is-sold">Displayed sold</span>' : '<span class="mgr-pill is-curated">Off site</span>'}</td>
         </tr>`).join('')}</tbody>
       </table></div>` : '<p class="mgr-muted">No product click or bag telemetry recorded yet.</p>'}
     </section>`;
@@ -1685,6 +1717,7 @@ function render() {
   }
   const isAdmin = state.me.role === 'admin';
   const navItems = getNavItems(isAdmin);
+  trafficSectionHtml.clear();
   const bodyHtml = renderActiveTabBody(isAdmin);
 
   root.innerHTML = `<div class="mgr-workspace">
