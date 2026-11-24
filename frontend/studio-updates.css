@@ -1456,9 +1456,10 @@ button,a,.button,.cart-button,.quick-buy-btn,.home-filter-btn,.hero-banner-cta,.
 .admin-audit-table th,.admin-audit-table td{padding:11px 12px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}
 .audit-action-pill{display:inline-flex;padding:3px 8px;border-radius:999px;background:#f2ede3;font:600 11px/1.2 'JetBrains Mono',monospace;color:#3d3832}
 
-.stock-refresh-bar{display:flex;align-items:center;justify-content:center;gap:10px;flex-wrap:wrap;padding:10px 16px;margin:0 0 18px;border-radius:999px;border:1px solid #dfd8ca;background:#faf8f3;color:#181715;font-size:13px;line-height:1.3}
-.stock-refresh-dot{width:8px;height:8px;border-radius:50%;background:#2c6e49;box-shadow:0 0 0 3px rgba(44,110,73,.16);flex-shrink:0;animation:stock-dot-pulse 2s ease-in-out infinite}
-@keyframes stock-dot-pulse{0%,100%{transform:scale(1);opacity:1}50%{transform:scale(1.18);opacity:.72}}
-.stock-refresh-label{font-weight:500;color:#4f4940}
-.stock-refresh-clock{font-family:'JetBrains Mono',monospace;font-size:13.5px;font-weight:700;letter-spacing:.02em;color:#181715;background:#ffffff;border:1px solid #dfd8ca;padding:3px 10px;border-radius:999px;font-variant-numeric:tabular-nums}
-@media(max-width:580px){.stock-refresh-bar{border-radius:14px;padding:10px 12px;gap:6px 8px;font-size:12.5px}.stock-refresh-clock{font-size:12.5px;padding:2px 9px}}
+.stock-refresh-bar{display:flex;align-items:center;justify-content:center;gap:8px;flex-wrap:wrap;width:100%;padding:8px 14px;margin:0;border:0;border-bottom:1px solid rgba(255,255,255,.12);background:#181715;color:#faf8f5;font-size:12.5px;line-height:1.3}
+.stock-refresh-bar[hidden]{display:none!important}
+.stock-refresh-dot{width:8px;height:8px;border-radius:50%;background:#4ade80;box-shadow:0 0 0 3px rgba(74,222,128,.22);flex-shrink:0;animation:stock-dot-pulse 2s ease-in-out infinite}
+@keyframes stock-dot-pulse{0%,100%{transform:scale(1);opacity:1}50%{transform:scale(1.18);opacity:.65}}
+.stock-refresh-label{font-weight:500;color:#e7e1d6}
+.stock-refresh-clock{font-family:'JetBrains Mono',monospace;font-size:12.5px;font-weight:700;letter-spacing:.02em;color:#ffffff;background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.18);padding:2px 9px;border-radius:999px;font-variant-numeric:tabular-nums}
+@media(max-width:580px){.stock-refresh-bar{padding:7px 10px;gap:6px;font-size:12px}.stock-refresh-clock{font-size:12px;padding:2px 8px}}

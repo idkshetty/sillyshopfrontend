@@ -152,9 +152,7 @@ export function homeMarkup(products, storeSettings, content = DEFAULT_CONTENT, {
   const hasFilter = Boolean(filter?.sort || filter?.available || filter?.discounted || filter?.productType || filter?.search);
   const hiddenCompat = `<div class="collection-image" hidden aria-hidden="true"><img src="${e(CATEGORIES[0]?.image || 'assets/paintings.svg')}" alt=""></div>`;
   const bannerHtml = bannerMarkup(storeSettings, sortArtworks(products.filter(p => p.visible && !p.archived), storeSettings?.artworkSort || 'manual'));
-  const refreshBarHtml = stockRefreshBarMarkup(stockSchedule);
   const artworksHtml = `<section id="artworks" class="home-artworks-section" aria-labelledby="home-artworks-heading">
-      ${refreshBarHtml}
       <div class="home-intro home-intro-row">
         <div>
           <p class="eyebrow">${e(content?.home?.eyebrow || 'hehe.cafe · artworks')}</p>

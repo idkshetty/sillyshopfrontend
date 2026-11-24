@@ -14,12 +14,25 @@ import {
   openPrintableChallan,
   openPrintableSettlement
 } from './manager-charts.js';
+import {
+  mountTrafficGlobe,
+  resolveLocationCoords
+} from './traffic-globe.js?v=20261124b';
 
 const $ = id => document.getElementById(id);
 const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const money = n => '₹' + (Number(n) || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 });
 const fmtDate = ts => ts ? new Date(Number(ts)).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : '—';
 const fmtDateTime = ts => ts ? new Date(Number(ts)).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '—';
+const fmtClock = ts => ts ? new Date(Number(ts)).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '—';
+const fmtAgo = ts => {
+  const sec = Math.max(0, Math.floor((Date.now() - Number(ts || 0)) / 1000));
+  if (sec < 10) return 'just now';
+  if (sec < 60) return `${sec}s ago`;
+  const min = Math.floor(sec / 60);
+  if (min < 60) return `${min}m ago`;
+  return `${Math.floor(min / 60)}h ago`;
+};
 const normKey = v => String(v || '').trim().replace(/\s+/g, ' ').toLowerCase();
 const daysBetween = ms => (Number.isFinite(Number(ms)) && Number(ms) > 0) ? Math.max(0, Math.round((Date.now() - Number(ms)) / 86400000)) : 0;
 
@@ -58,6 +71,7 @@ const GENRE_PRESETS = ['Fridge Magnet', 'Clay Frame', 'Original Painting', 'Coas
 
 const NAV_ICONS = {
   analytics: '<path d="M3 3v18h18"/><path d="M7 15v-4"/><path d="M12 15V8"/><path d="M17 15v-6"/>',
+  traffic: '<polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>',
   artworks: '<rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/>',
   site: '<path d="M3 9h18v11H3z"/><path d="M5 4h14l2 5H3z"/><path d="M9 14h6"/>',
   customers: '<path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z"/><path d="M3 6h18"/><path d="M16 10a4 4 0 0 1-8 0"/>',
@@ -88,6 +102,10 @@ const state = {
   customerFilter: 'in_bag',
   customerSearch: '',
   siteTraffic: null,
+  trafficUpdatedAt: 0,
+  trafficLivePaused: false,
+  trafficGlobeMode: 'all',
+  trafficFocusedLocKey: '',
   itemDemandSort: 'clicks',
   importSearch: '',
   artworks: [],
@@ -340,6 +358,7 @@ async function loadWorkspaceData() {
     state.siteStockData = siteStockData || null;
     state.customerBagsData = customerBagsData || null;
     state.siteTraffic = siteTraffic || null;
+    if (siteTraffic) state.trafficUpdatedAt = Date.now();
     const valid = new Set(state.artworks.map(a => a.id));
     for (const sid of [...state.selectedArtIds]) {
       if (!valid.has(sid)) state.selectedArtIds.delete(sid);
@@ -647,113 +666,256 @@ function renderAnalyticsTab(isAdmin) {
           </tr>`).join('')}</tbody>
         </table></div>` : '<p class="mgr-muted">No unsold café returns in this range.</p>'}
       </section>
-    </div>
-    ${isAdmin ? renderSiteTrafficAnalyticsSection() : ''}`;
+    </div>`;
 }
 
-function renderSiteTrafficAnalyticsSection() {
+/* Live Traffic, 3D Visitor Globe & Item Demand Tab */
+let trafficGlobeController = null;
+let trafficPollTimer = null;
+let trafficPollInFlight = false;
+
+function renderTrafficKpisMarkup() {
   const t = state.siteTraffic;
   if (!t) {
-    return `<section class="mgr-panel"><h2>Site Traffic, Visitor Locations &amp; Item Demand</h2><p class="mgr-muted">${state.loadingData ? 'Loading visitor &amp; click analytics…' : 'Visitor tracking initializes automatically once shoppers open hehe.cafe.'}</p></section>`;
+    return `<div class="mgr-panel"><p class="mgr-muted">${state.loadingData ? 'Loading live visitor &amp; click telemetry…' : 'Visitor tracking initializes automatically once shoppers open hehe.cafe.'}</p></div>`;
   }
   const s = t.summary || {};
   const dev = t.deviceSplit || {};
   const devTotal = Math.max(1, (dev.mobile || 0) + (dev.desktop || 0));
-  const maxTrend = Math.max(1, ...(t.dailyTrend || []).map(d => d.uniqueVisitors || 0));
-  const maxLoc = Math.max(1, ...(t.topLocations || []).map(l => l.count || 0));
-  const maxRef = Math.max(1, ...(t.topReferrers || []).map(r => r.count || 0));
+  return `<div class="mgr-kpi-grid">
+    <div class="mgr-kpi"><span><span class="mgr-live-dot" aria-hidden="true"></span>Active visitors now</span><strong style="color:var(--accent)">${s.activeNow || 0}</strong><small>Seen in last 5 minutes · Mob ${Math.round(((dev.mobile || 0) / devTotal) * 100)}% / Desk ${Math.round(((dev.desktop || 0) / devTotal) * 100)}%</small></div>
+    <div class="mgr-kpi"><span>Visitors today (IST)</span><strong>${s.todayVisitors || 0}</strong><small>${s.todayClicks || 0} item clicks today</small></div>
+    <div class="mgr-kpi"><span>Visitors yesterday</span><strong>${s.yesterdayVisitors || 0}</strong><small>Last 7d: ${s.last7DaysVisitors || 0}</small></div>
+    <div class="mgr-kpi"><span>Last 30 days</span><strong>${s.last30DaysVisitors || 0}</strong><small>${s.totalPageViews || 0} total visits</small></div>
+    <div class="mgr-kpi"><span>All-time visitors</span><strong>${s.totalVisitors || 0}</strong><small>${s.totalProductClicks || 0} total item clicks</small></div>
+  </div>`;
+}
 
+function renderTrafficDistributionListMarkup() {
+  const t = state.siteTraffic;
+  const allLocs = Array.isArray(t?.topLocations) ? t.topLocations : [];
+  const locs = state.trafficGlobeMode === 'live'
+    ? allLocs.filter(l => (l.activeNow || 0) > 0)
+    : allLocs;
+  const maxLoc = Math.max(1, ...locs.map(l => l.count || 0));
+  if (!locs.length) {
+    return state.trafficGlobeMode === 'live'
+      ? '<p class="mgr-muted" style="padding:12px 4px">No visitors currently active in the last 5 minutes.</p>'
+      : '<p class="mgr-muted" style="padding:12px 4px">Waiting for visitor location events…</p>';
+  }
+  return locs.map(l => {
+    const key = `${l.label}|${l.country}`;
+    const isFocused = state.trafficFocusedLocKey === key;
+    return `<button type="button" class="mgr-dist-row ${isFocused ? 'is-active' : ''}" data-action="focus-globe-loc" data-loc-key="${esc(key)}">
+      <span class="mgr-dist-label">
+        <span class="mgr-dist-name" title="${esc(`${l.label}, ${l.country}`)}">${esc(l.label)}, ${esc(l.country)}${l.colo ? ` <small class="mgr-muted">(${esc(l.colo)})</small>` : ''}</span>
+        ${l.activeNow > 0 ? `<span class="mgr-pill is-active" style="padding:1px 6px;font-size:10px">${l.activeNow} live</span>` : ''}
+      </span>
+      <span class="mgr-bar-track"><span class="mgr-bar-fill is-cf" style="display:block;width:${Math.max(5, Math.round(((l.count || 0) / maxLoc) * 100))}%"></span></span>
+      <span class="mgr-dist-count">${l.count || 0}</span>
+    </button>`;
+  }).join('');
+}
+
+function renderTrafficActiveBrowsingMarkup() {
+  const active = Array.isArray(state.siteTraffic?.activeVisitors) ? state.siteTraffic.activeVisitors : [];
+  if (!active.length) return '';
+  return `<div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--line)">
+    <p class="mgr-eyebrow" style="margin-bottom:8px"><span class="mgr-live-dot" aria-hidden="true"></span>Currently browsing on hehe.cafe (${active.length})</p>
+    <div style="display:flex;flex-wrap:wrap;gap:6px">${active.slice(0, 16).map(v => `<span class="mgr-dest-tag">${esc([v.city, v.region, v.country].filter(Boolean).join(', ') || 'Unknown')} · ${esc(v.device)} · ${esc(v.lastPath || '#home')} · ${esc(fmtAgo(v.lastSeenAt))}</span>`).join('')}</div>
+  </div>`;
+}
+
+function renderTrafficLowerMarkup() {
+  const t = state.siteTraffic;
+  if (!t) return '';
+  const maxTrend = Math.max(1, ...(t.dailyTrend || []).map(d => d.uniqueVisitors || 0));
+  const maxRef = Math.max(1, ...(t.topReferrers || []).map(r => r.count || 0));
   const sortedDemand = [...(t.itemDemand || [])].sort((x, y) => state.itemDemandSort === 'carts'
     ? ((y.inCartCount - x.inCartCount) || (y.clicks - x.clicks))
     : ((y.clicks - x.clicks) || (y.inCartCount - x.inCartCount)));
 
-  return `<section class="mgr-panel" style="margin-top:6px">
-      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:12px">
+  return `<div class="mgr-split" style="margin-bottom:16px">
+      <section class="mgr-panel" style="margin:0">
+        <h2>Traffic sources</h2>
+        <p class="mgr-muted" style="margin-bottom:10px">Where visitors came from before landing on hehe.cafe.</p>
+        ${(t.topReferrers || []).length ? `<div class="mgr-geo-list">${t.topReferrers.map(r => `<div class="mgr-geo-row">
+          <div class="mgr-geo-row-head"><strong>${esc(r.source)}</strong><strong>${r.count}</strong></div>
+          <div class="mgr-bar-track"><div class="mgr-bar-fill" style="width:${Math.max(4, Math.round((r.count / maxRef) * 100))}%;background:#1d5fe6"></div></div>
+        </div>`).join('')}</div>` : '<p class="mgr-muted">No traffic source events yet.</p>'}
+      </section>
+      <section class="mgr-panel" style="margin:0">
+        <h2>7-day visitor &amp; click trend</h2>
+        <div class="mgr-geo-list" style="margin-top:8px">${(t.dailyTrend || []).slice(-7).map(d => `<div class="mgr-geo-row">
+          <div class="mgr-geo-row-head">
+            <span><strong>${esc(d.label)}</strong></span>
+            <span class="mgr-muted">${d.uniqueVisitors} visitors · ${d.productClicks} clicks</span>
+          </div>
+          <div class="mgr-bar-track"><div class="mgr-bar-fill" style="width:${d.uniqueVisitors ? Math.max(4, Math.round((d.uniqueVisitors / maxTrend) * 100)) : 0}%"></div></div>
+        </div>`).join('')}</div>
+      </section>
+    </div>
+
+    <section class="mgr-panel">
+      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:10px">
         <div>
-          <p class="mgr-eyebrow">Private Storefront Telemetry · hehe.cafe</p>
-          <h2>Site Visitors, Locations &amp; Item Clicks</h2>
+          <h2>Most Clicked Artworks &amp; Bags Demand</h2>
+          <p class="mgr-muted">Live product clicks alongside how many shoppers currently have each artwork inside their bag.</p>
         </div>
-        <div class="mgr-muted" style="font-size:12px">
-          <span class="mgr-live-dot" aria-hidden="true"></span><strong>${s.activeNow || 0} active now</strong> · Mobile ${Math.round(((dev.mobile || 0) / devTotal) * 100)}% / Desktop ${Math.round(((dev.desktop || 0) / devTotal) * 100)}%
+        <div class="mgr-chips" style="margin:0">
+          <button type="button" class="mgr-chip ${state.itemDemandSort === 'clicks' ? 'is-active' : ''}" data-action="set-demand-sort" data-sort="clicks">Most clicked</button>
+          <button type="button" class="mgr-chip ${state.itemDemandSort === 'carts' ? 'is-active' : ''}" data-action="set-demand-sort" data-sort="carts">Most in bags</button>
         </div>
       </div>
-
-      <div class="mgr-kpi-grid" style="margin-bottom:14px">
-        <div class="mgr-kpi"><span><span class="mgr-live-dot" aria-hidden="true"></span>Active visitors now</span><strong style="color:var(--accent)">${s.activeNow || 0}</strong><small>Seen in last 5 minutes</small></div>
-        <div class="mgr-kpi"><span>Visitors today (IST)</span><strong>${s.todayVisitors || 0}</strong><small>${s.todayClicks || 0} item clicks today</small></div>
-        <div class="mgr-kpi"><span>Visitors yesterday</span><strong>${s.yesterdayVisitors || 0}</strong><small>Last 7d: ${s.last7DaysVisitors || 0}</small></div>
-        <div class="mgr-kpi"><span>Last 30 days</span><strong>${s.last30DaysVisitors || 0}</strong><small>${s.totalPageViews || 0} total visits</small></div>
-        <div class="mgr-kpi"><span>All-time visitors</span><strong>${s.totalVisitors || 0}</strong><small>${s.totalProductClicks || 0} total item clicks</small></div>
-      </div>
-
-      <div class="mgr-split" style="margin-bottom:14px">
-        <div class="mgr-panel" style="margin:0;background:var(--surface-soft)">
-          <h2>Where visitors are accessing from</h2>
-          <p class="mgr-muted" style="margin-bottom:10px">City &amp; region geo-location detected on Cloudflare edge.</p>
-          ${(t.topLocations || []).length ? `<div class="mgr-geo-list">${t.topLocations.map(l => `<div class="mgr-geo-row">
-            <div class="mgr-geo-row-head">
-              <span><strong>${esc(l.label)}</strong> <small class="mgr-muted">(${esc(l.country)})</small></span>
-              <span><strong>${l.count}</strong>${l.activeNow > 0 ? ` <span class="mgr-pill is-active" style="padding:1px 6px;font-size:10.5px">${l.activeNow} live</span>` : ''}</span>
+      ${sortedDemand.length ? `<div class="mgr-table-wrap"><table class="mgr-table">
+        <thead><tr><th>#</th><th>Artwork</th><th>Ref #</th><th>Status</th><th>Total clicks</th><th>In peoples' bags</th></tr></thead>
+        <tbody>${sortedDemand.slice(0, 25).map((item, idx) => `<tr>
+          <td><span class="mono mgr-muted">${idx + 1}</span></td>
+          <td>
+            <div style="display:flex;align-items:center;gap:8px;min-width:170px">
+              ${item.image ? `<img src="${esc(item.image)}" alt="" style="width:34px;height:34px;border-radius:6px;object-fit:cover;border:1px solid var(--line);flex-shrink:0">` : ''}
+              <div><strong>${esc(item.title)}</strong><div class="mgr-art-meta">${esc(item.artist)} · ${money(item.price)}</div></div>
             </div>
-            <div class="mgr-bar-track"><div class="mgr-bar-fill" style="width:${Math.max(4, Math.round((l.count / maxLoc) * 100))}%"></div></div>
-          </div>`).join('')}</div>` : '<p class="mgr-muted">Waiting for visitor location events…</p>'}
-          ${(t.activeVisitors || []).length ? `<div style="margin-top:12px;padding-top:10px;border-top:1px solid var(--line)">
-            <p class="mgr-eyebrow" style="margin-bottom:6px">Currently browsing (${t.activeVisitors.length})</p>
-            <div style="display:flex;flex-wrap:wrap;gap:6px">${t.activeVisitors.slice(0, 12).map(v => `<span class="mgr-dest-tag">${esc([v.city, v.region, v.country].filter(Boolean).join(', ') || 'Unknown')} · ${esc(v.device)} · ${esc(v.lastPath || '#home')}</span>`).join('')}</div>
-          </div>` : ''}
-        </div>
-
-        <div style="display:grid;gap:14px">
-          <div class="mgr-panel" style="margin:0;background:var(--surface-soft)">
-            <h2>Traffic sources</h2>
-            <p class="mgr-muted" style="margin-bottom:10px">Where visitors came from before landing on hehe.cafe.</p>
-            ${(t.topReferrers || []).length ? `<div class="mgr-geo-list">${t.topReferrers.map(r => `<div class="mgr-geo-row">
-              <div class="mgr-geo-row-head"><strong>${esc(r.source)}</strong><strong>${r.count}</strong></div>
-              <div class="mgr-bar-track"><div class="mgr-bar-fill" style="width:${Math.max(4, Math.round((r.count / maxRef) * 100))}%;background:var(--accent)"></div></div>
-            </div>`).join('')}</div>` : '<p class="mgr-muted">No traffic source events yet.</p>'}
-          </div>
-          <div class="mgr-panel" style="margin:0;background:var(--surface-soft)">
-            <h2>14-day visitor &amp; click trend</h2>
-            <div class="mgr-geo-list" style="margin-top:8px">${(t.dailyTrend || []).slice(-7).map(d => `<div class="mgr-geo-row">
-              <div class="mgr-geo-row-head">
-                <span><strong>${esc(d.label)}</strong></span>
-                <span class="mgr-muted">${d.uniqueVisitors} visitors · ${d.productClicks} clicks</span>
-              </div>
-              <div class="mgr-bar-track"><div class="mgr-bar-fill" style="width:${d.uniqueVisitors ? Math.max(4, Math.round((d.uniqueVisitors / maxTrend) * 100)) : 0}%"></div></div>
-            </div>`).join('')}</div>
-          </div>
-        </div>
-      </div>
-
-      <div>
-        <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:10px">
-          <div>
-            <h2>Most Clicked Artworks &amp; Bags Demand</h2>
-            <p class="mgr-muted">Live clicks alongside how many shoppers currently have each artwork inside their bag.</p>
-          </div>
-          <div class="mgr-chips" style="margin:0">
-            <button type="button" class="mgr-chip ${state.itemDemandSort === 'clicks' ? 'is-active' : ''}" data-action="set-demand-sort" data-sort="clicks">Most clicked</button>
-            <button type="button" class="mgr-chip ${state.itemDemandSort === 'carts' ? 'is-active' : ''}" data-action="set-demand-sort" data-sort="carts">Most in bags</button>
-          </div>
-        </div>
-        ${sortedDemand.length ? `<div class="mgr-table-wrap"><table class="mgr-table">
-          <thead><tr><th>#</th><th>Artwork</th><th>Ref #</th><th>Status</th><th>Total clicks</th><th>In peoples' bags</th></tr></thead>
-          <tbody>${sortedDemand.slice(0, 25).map((item, idx) => `<tr>
-            <td><span class="mono mgr-muted">${idx + 1}</span></td>
-            <td>
-              <div style="display:flex;align-items:center;gap:8px;min-width:170px">
-                ${item.image ? `<img src="${esc(item.image)}" alt="" style="width:34px;height:34px;border-radius:6px;object-fit:cover;border:1px solid var(--line);flex-shrink:0">` : ''}
-                <div><strong>${esc(item.title)}</strong><div class="mgr-art-meta">${esc(item.artist)} · ${money(item.price)}</div></div>
-              </div>
-            </td>
-            <td>${refPillMarkup(item.refNumber, findArtIdByRef(item.refNumber, item.title))}</td>
-            <td>${item.inStock ? '<span class="mgr-pill is-live_online">In stock</span>' : item.visible ? '<span class="mgr-pill is-sold">Displayed sold</span>' : '<span class="mgr-pill is-curated">Off site</span>'}</td>
-            <td><strong>${item.clicks}</strong>${item.todayClicks > 0 ? ` <small class="mgr-muted">(${item.todayClicks} today)</small>` : ''}</td>
-            <td>${item.inCartCount > 0 ? `<span class="mgr-cart-count-pill">${item.inCartCount} in ${item.inCartCount === 1 ? 'bag' : 'bags'}</span>` : '<span class="mgr-muted">0</span>'}</td>
-          </tr>`).join('')}</tbody>
-        </table></div>` : '<p class="mgr-muted">No product click or bag telemetry recorded yet.</p>'}
-      </div>
+          </td>
+          <td>${refPillMarkup(item.refNumber, findArtIdByRef(item.refNumber, item.title))}</td>
+          <td>${item.inStock ? '<span class="mgr-pill is-live_online">In stock</span>' : item.visible ? '<span class="mgr-pill is-sold">Displayed sold</span>' : '<span class="mgr-pill is-curated">Off site</span>'}</td>
+          <td><strong>${item.clicks}</strong>${item.todayClicks > 0 ? ` <small class="mgr-muted">(${item.todayClicks} today)</small>` : ''}</td>
+          <td>${item.inCartCount > 0 ? `<span class="mgr-cart-count-pill">${item.inCartCount} in ${item.inCartCount === 1 ? 'bag' : 'bags'}</span>` : '<span class="mgr-muted">0</span>'}</td>
+        </tr>`).join('')}</tbody>
+      </table></div>` : '<p class="mgr-muted">No product click or bag telemetry recorded yet.</p>'}
     </section>`;
+}
+
+function renderTrafficTab() {
+  const updatedTxt = state.trafficUpdatedAt ? `Updated ${fmtClock(state.trafficUpdatedAt)}` : 'Waiting…';
+  return `<div class="mgr-head">
+      <div>
+        <p class="mgr-eyebrow">Live Storefront Telemetry · hehe.cafe</p>
+        <h1>Live Traffic &amp; Visitors</h1>
+      </div>
+      <div class="mgr-head-actions">
+        <span id="mgr-traffic-live-pill" class="mgr-live-pill ${state.trafficLivePaused ? 'is-paused' : ''}">
+          <span class="mgr-live-dot" aria-hidden="true"></span>
+          <span id="mgr-traffic-live-label">${state.trafficLivePaused ? 'Paused' : 'Live · 5s'}</span>
+          <span class="mgr-muted">·</span>
+          <span id="mgr-traffic-updated-at">${esc(updatedTxt)}</span>
+        </span>
+        <button type="button" class="mgr-btn outline small" id="mgr-traffic-toggle-btn" data-action="toggle-traffic-live">${state.trafficLivePaused ? 'Resume live' : 'Pause live'}</button>
+        <button type="button" class="mgr-btn outline small" data-action="refresh-traffic-now">Refresh ↻</button>
+      </div>
+    </div>
+
+    <div id="mgr-traffic-kpis">${renderTrafficKpisMarkup()}</div>
+
+    <section class="mgr-panel mgr-globe-card">
+      <div class="mgr-globe-head">
+        <div>
+          <h2>Visitor Distribution</h2>
+          <p class="mgr-muted">Interactive edge geo-distribution &amp; live active visitors across cities.</p>
+        </div>
+        <div class="mgr-head-actions">
+          <div class="mgr-view-toggle" role="group" aria-label="Globe location filter">
+            <button type="button" class="${state.trafficGlobeMode === 'all' ? 'is-active' : ''}" data-action="set-globe-mode" data-mode="all">All visitors</button>
+            <button type="button" class="${state.trafficGlobeMode === 'live' ? 'is-active' : ''}" data-action="set-globe-mode" data-mode="live">Live now</button>
+          </div>
+          <button type="button" class="mgr-btn outline small" data-action="reset-globe">Reset globe</button>
+        </div>
+      </div>
+      <div class="mgr-globe-layout">
+        <div id="mgr-traffic-globe-host" class="mgr-globe-host"></div>
+        <div id="mgr-traffic-dist-list" class="mgr-globe-list-col">${renderTrafficDistributionListMarkup()}</div>
+      </div>
+      <div id="mgr-traffic-browsing">${renderTrafficActiveBrowsingMarkup()}</div>
+    </section>
+
+    <div id="mgr-traffic-lower">${renderTrafficLowerMarkup()}</div>`;
+}
+
+function syncTrafficGlobe() {
+  const isAdmin = state.me?.status === 'approved' && state.me?.role === 'admin';
+  const host = $('mgr-traffic-globe-host');
+  if (!isAdmin || state.tab !== 'traffic' || !host) {
+    trafficGlobeController?.destroy();
+    trafficGlobeController = null;
+    return;
+  }
+  const locations = Array.isArray(state.siteTraffic?.topLocations) ? state.siteTraffic.topLocations : [];
+  if (!trafficGlobeController || !host.contains(trafficGlobeController.getCanvas())) {
+    trafficGlobeController?.destroy();
+    trafficGlobeController = mountTrafficGlobe(host, {
+      locations,
+      mode: state.trafficGlobeMode,
+      onSelect: loc => {
+        state.trafficFocusedLocKey = `${loc.label}|${loc.country}`;
+        document.querySelectorAll('#mgr-traffic-dist-list .mgr-dist-row').forEach(el => {
+          el.classList.toggle('is-active', el.dataset.locKey === state.trafficFocusedLocKey);
+        });
+      }
+    });
+  } else {
+    trafficGlobeController.setLocations(locations, {
+      mode: state.trafficGlobeMode,
+      focusedKey: state.trafficFocusedLocKey
+    });
+  }
+}
+
+function updateTrafficNavBadges() {
+  const activeNow = Number(state.siteTraffic?.summary?.activeNow) || 0;
+  document.querySelectorAll('[data-nav-badge="traffic"]').forEach(el => {
+    el.hidden = activeNow <= 0;
+    el.textContent = activeNow > 0 ? String(activeNow) : '';
+  });
+}
+
+function patchTrafficLiveDOM() {
+  const kpisEl = $('mgr-traffic-kpis');
+  const distEl = $('mgr-traffic-dist-list');
+  const browseEl = $('mgr-traffic-browsing');
+  const lowerEl = $('mgr-traffic-lower');
+  const updEl = $('mgr-traffic-updated-at');
+  if (kpisEl) kpisEl.innerHTML = renderTrafficKpisMarkup();
+  if (distEl) distEl.innerHTML = renderTrafficDistributionListMarkup();
+  if (browseEl) browseEl.innerHTML = renderTrafficActiveBrowsingMarkup();
+  if (lowerEl) lowerEl.innerHTML = renderTrafficLowerMarkup();
+  if (updEl) updEl.textContent = state.trafficUpdatedAt ? `Updated ${fmtClock(state.trafficUpdatedAt)}` : 'Waiting…';
+  updateTrafficNavBadges();
+  syncTrafficGlobe();
+}
+
+async function pollSiteTrafficLive({ manual = false } = {}) {
+  if (trafficPollInFlight) return;
+  if (state.me?.status !== 'approved' || state.me?.role !== 'admin') return;
+  if (!manual && (state.tab !== 'traffic' || state.trafficLivePaused || document.visibilityState !== 'visible')) return;
+  trafficPollInFlight = true;
+  try {
+    const next = await callManager('managerSiteTraffic');
+    if (next) {
+      state.siteTraffic = next;
+      state.trafficUpdatedAt = Date.now();
+      if (state.tab === 'traffic') patchTrafficLiveDOM();
+      else updateTrafficNavBadges();
+    }
+  } catch {
+    // Keep existing snapshot during transient network hiccups
+  } finally {
+    trafficPollInFlight = false;
+  }
+}
+
+function syncTrafficLivePolling() {
+  const shouldPoll = state.me?.status === 'approved'
+    && state.me?.role === 'admin'
+    && state.tab === 'traffic'
+    && !state.trafficLivePaused;
+  if (shouldPoll) {
+    if (!trafficPollTimer) {
+      trafficPollTimer = setInterval(() => { void pollSiteTrafficLive(); }, 5000);
+    }
+  } else if (trafficPollTimer) {
+    clearInterval(trafficPollTimer);
+    trafficPollTimer = null;
+  }
 }
 
 /* Artworks Pipeline + Drag-and-Drop */
@@ -1366,16 +1528,25 @@ function render() {
   const root = $('manager-app');
   if (!root) return;
   if (!state.authReady || state.loadingMe) {
+    trafficGlobeController?.destroy();
+    trafficGlobeController = null;
+    syncTrafficLivePolling();
     root.innerHTML = '<div class="mgr-boot">Checking authorization…</div>';
     renderDrawer();
     return;
   }
   if (!state.googleUser) {
+    trafficGlobeController?.destroy();
+    trafficGlobeController = null;
+    syncTrafficLivePolling();
     root.innerHTML = renderSignInGate();
     renderDrawer();
     return;
   }
   if (state.me?.status !== 'approved') {
+    trafficGlobeController?.destroy();
+    trafficGlobeController = null;
+    syncTrafficLivePolling();
     root.innerHTML = renderApprovalGate();
     renderDrawer();
     return;
@@ -1385,8 +1556,10 @@ function render() {
   const dueCount = (state.payoutData?.summaries || []).filter(r => r.balanceDue > 0).length;
   const liveSiteCount = state.siteStockData?.summary?.totalOnSite ?? state.artworks.filter(a => a.stage === 'live_online').length;
   const inBagCount = isAdmin ? (state.customerBagsData?.summary?.inBagCount || 0) : 0;
+  const activeNowCount = isAdmin ? (state.siteTraffic?.summary?.activeNow || 0) : 0;
   const navItems = [
     ['analytics', 'Analytics', null],
+    ...(isAdmin ? [['traffic', 'Live traffic', activeNowCount]] : []),
     ['artworks', 'Artworks', state.artworks.length],
     ...(isAdmin ? [['site', 'Site stock', liveSiteCount], ['customers', 'Customers', inBagCount || null]] : []),
     ['bins', 'Pickup bin', state.artworks.filter(a => a.stage === 'delivery_bin').length],
@@ -1398,6 +1571,8 @@ function render() {
   let bodyHtml = '';
   if (state.dataError) {
     bodyHtml = `<div class="mgr-panel"><p style="color:var(--danger)">${esc(state.dataError)}</p><button type="button" class="mgr-btn outline small" data-action="refresh-all">Try again</button></div>`;
+  } else if (state.tab === 'traffic' && isAdmin) {
+    bodyHtml = renderTrafficTab();
   } else if (state.tab === 'artworks') {
     bodyHtml = renderArtworksTab(isAdmin);
   } else if (state.tab === 'site' && isAdmin) {
@@ -1426,7 +1601,9 @@ function render() {
       <nav class="mgr-nav" aria-label="Manager sections">
         ${navItems.map(([id, label, count]) => `<button type="button" class="mgr-nav-btn ${state.tab === id ? 'is-active' : ''}" data-action="nav-tab" data-tab="${id}">
           <span class="mgr-nav-label"><svg viewBox="0 0 24 24" aria-hidden="true">${NAV_ICONS[id] || ''}</svg><span>${esc(label)}</span></span>
-          ${count !== null && count !== undefined ? `<span class="mgr-nav-count">${count}</span>` : ''}
+          ${id === 'traffic'
+            ? `<span class="mgr-nav-count" data-nav-badge="traffic" ${count > 0 ? '' : 'hidden'}>${count > 0 ? count : ''}</span>`
+            : (count !== null && count !== undefined ? `<span class="mgr-nav-count">${count}</span>` : '')}
         </button>`).join('')}
       </nav>
       <div class="mgr-sidebar-foot">
@@ -1455,9 +1632,13 @@ function render() {
     ${navItems.map(([id, label, count]) => `<button type="button" class="mgr-bottom-btn ${state.tab === id ? 'is-active' : ''}" data-action="nav-tab" data-tab="${id}">
       <svg viewBox="0 0 24 24" aria-hidden="true">${NAV_ICONS[id] || ''}</svg>
       <span>${esc(label)}</span>
-      ${count ? `<span class="mgr-bnav-dot">${count}</span>` : ''}
+      ${id === 'traffic'
+        ? `<span class="mgr-bnav-dot" data-nav-badge="traffic" ${count > 0 ? '' : 'hidden'}>${count > 0 ? count : ''}</span>`
+        : (count ? `<span class="mgr-bnav-dot">${count}</span>` : '')}
     </button>`).join('')}
   </nav>`;
+  syncTrafficGlobe();
+  syncTrafficLivePolling();
   renderDrawer();
 }
 
@@ -2362,6 +2543,7 @@ document.addEventListener('click', async event => {
       state.tab = btn.dataset.tab || 'analytics';
       if (state.tab !== 'cafes') state.activeCafeId = '';
       render();
+      if (state.tab === 'traffic') void pollSiteTrafficLive({ manual: true });
     } else if (action === 'quick-upload') {
       state.tab = 'artworks';
       state.uploadPanelOpen = true;
@@ -2421,7 +2603,43 @@ document.addEventListener('click', async event => {
       await loadWorkspaceData();
     } else if (action === 'set-demand-sort') {
       state.itemDemandSort = btn.dataset.sort === 'carts' ? 'carts' : 'clicks';
-      render();
+      const lowerEl = $('mgr-traffic-lower');
+      if (lowerEl) lowerEl.innerHTML = renderTrafficLowerMarkup();
+      else render();
+    } else if (action === 'toggle-traffic-live') {
+      state.trafficLivePaused = !state.trafficLivePaused;
+      syncTrafficLivePolling();
+      const pill = $('mgr-traffic-live-pill');
+      const label = $('mgr-traffic-live-label');
+      const toggleBtn = $('mgr-traffic-toggle-btn');
+      if (pill) pill.classList.toggle('is-paused', state.trafficLivePaused);
+      if (label) label.textContent = state.trafficLivePaused ? 'Paused' : 'Live · 5s';
+      if (toggleBtn) toggleBtn.textContent = state.trafficLivePaused ? 'Resume live' : 'Pause live';
+      if (!state.trafficLivePaused) void pollSiteTrafficLive({ manual: true });
+    } else if (action === 'refresh-traffic-now') {
+      btn.disabled = true;
+      await pollSiteTrafficLive({ manual: true });
+    } else if (action === 'set-globe-mode') {
+      state.trafficGlobeMode = btn.dataset.mode === 'live' ? 'live' : 'all';
+      document.querySelectorAll('[data-action="set-globe-mode"]').forEach(b => {
+        b.classList.toggle('is-active', b.dataset.mode === state.trafficGlobeMode);
+      });
+      const distEl = $('mgr-traffic-dist-list');
+      if (distEl) distEl.innerHTML = renderTrafficDistributionListMarkup();
+      syncTrafficGlobe();
+    } else if (action === 'reset-globe') {
+      state.trafficFocusedLocKey = '';
+      document.querySelectorAll('#mgr-traffic-dist-list .mgr-dist-row').forEach(el => el.classList.remove('is-active'));
+      trafficGlobeController?.resetView();
+    } else if (action === 'focus-globe-loc') {
+      const locKey = btn.dataset.locKey || '';
+      const loc = (state.siteTraffic?.topLocations || []).find(l => `${l.label}|${l.country}` === locKey);
+      const coords = loc ? resolveLocationCoords(loc) : null;
+      state.trafficFocusedLocKey = locKey;
+      document.querySelectorAll('#mgr-traffic-dist-list .mgr-dist-row').forEach(el => {
+        el.classList.toggle('is-active', el.dataset.locKey === locKey);
+      });
+      if (coords) trafficGlobeController?.focusLocation(coords.lat, coords.lng, locKey);
     } else if (action === 'schedule-pause' || action === 'schedule-resume' || action === 'schedule-toggle-timer') {
       btn.disabled = true;
       setBusy(true);
@@ -3123,4 +3341,10 @@ observeGoogleAuth((googleUser, rawUser) => {
   state.authReady = true;
   state.meError = err?.message || 'Could not initialize Google sign-in.';
   render();
+});
+
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible' && state.tab === 'traffic' && !state.trafficLivePaused) {
+    void pollSiteTrafficLive();
+  }
 });
