@@ -359,6 +359,28 @@ export async function trackBagSnapshot(payload={}){
     await fetch(backendURL()+'/cart-track',{method:'POST',headers,body:JSON.stringify(payload),keepalive:true,signal:AbortSignal.timeout(8000)});
   }catch{}
 }
+export async function observeStockSchedule(onData,onError){
+  return observePublic('stockSchedule',v=>onData(v&&typeof v==='object'?v:null),onError);
+}
+export async function refreshPublicStoreNow(){
+  try{
+    localStorage.removeItem('silly-public-v2:products');
+    localStorage.removeItem('silly-public-v2:stockSchedule');
+  }catch{}
+  try{await fetchPublicStore({force:true});}catch{}
+}
+export async function triggerStockRefreshCheck(){
+  try{
+    const res=await fetch(backendURL()+'/stock-refresh-check',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}',signal:AbortSignal.timeout(15000)});
+    if(!res.ok)return null;
+    return await res.json();
+  }catch{return null;}
+}
+export async function trackSiteEvent(payload={}){
+  try{
+    await fetch(backendURL()+'/site-track',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload),keepalive:true,signal:AbortSignal.timeout(6000)});
+  }catch{}
+}
 export async function callBackend(name,data={}){
  const {auth,app}=await backend();await auth.authStateReady();if(!auth.currentUser)throw new Error('Sign in to continue.');
  const url=backendURL()+'/api/'+encodeURIComponent(name);

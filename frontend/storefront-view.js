@@ -132,14 +132,29 @@ export function promoBlockMarkup(block) {
   </section>`;
 }
 
-export function homeMarkup(products, storeSettings, content = DEFAULT_CONTENT, { catalogLoading = false, catalogError = '', filter = { sort: '', available: false, discounted: false, productType: '', search: '' }, artists = [], customerReviews = [] } = {}) {
+export function stockRefreshBarMarkup(stockSchedule = null) {
+  if (!stockSchedule || stockSchedule.showTimerOnSite !== true || stockSchedule.autoRefreshEnabled !== true || stockSchedule.paused === true) {
+    return '';
+  }
+  const nextRefreshAt = Number(stockSchedule.nextRefreshAt) || 0;
+  if (nextRefreshAt <= 0) return '';
+  return `<div class="stock-refresh-bar" data-stock-refresh-bar data-next-refresh="${nextRefreshAt}">
+    <span class="stock-refresh-dot" aria-hidden="true"></span>
+    <span class="stock-refresh-label">Next stock refresh in</span>
+    <strong class="stock-refresh-clock" data-stock-refresh-clock>--h --m --s</strong>
+  </div>`;
+}
+
+export function homeMarkup(products, storeSettings, content = DEFAULT_CONTENT, { catalogLoading = false, catalogError = '', filter = { sort: '', available: false, discounted: false, productType: '', search: '' }, artists = [], customerReviews = [], stockSchedule = null } = {}) {
   const sortMode = filter?.sort || storeSettings?.artworkSort || 'manual';
   const CATEGORIES = contentCategories(content);
   const allVisible = filterProducts(products, { sort: sortMode, available: Boolean(filter?.available), discounted: Boolean(filter?.discounted), productType: filter?.productType || '', search: filter?.search || '' });
   const hasFilter = Boolean(filter?.sort || filter?.available || filter?.discounted || filter?.productType || filter?.search);
   const hiddenCompat = `<div class="collection-image" hidden aria-hidden="true"><img src="${e(CATEGORIES[0]?.image || 'assets/paintings.svg')}" alt=""></div>`;
   const bannerHtml = bannerMarkup(storeSettings, sortArtworks(products.filter(p => p.visible && !p.archived), storeSettings?.artworkSort || 'manual'));
+  const refreshBarHtml = stockRefreshBarMarkup(stockSchedule);
   const artworksHtml = `<section id="artworks" class="home-artworks-section" aria-labelledby="home-artworks-heading">
+      ${refreshBarHtml}
       <div class="home-intro home-intro-row">
         <div>
           <p class="eyebrow">${e(content?.home?.eyebrow || 'hehe.cafe · artworks')}</p>

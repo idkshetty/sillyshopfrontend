@@ -87,6 +87,8 @@ const state = {
   customerBagsData: null,
   customerFilter: 'in_bag',
   customerSearch: '',
+  siteTraffic: null,
+  itemDemandSort: 'clicks',
   importSearch: '',
   artworks: [],
   cafes: [],
@@ -316,7 +318,7 @@ async function loadWorkspaceData() {
   setBusy(true);
   try {
     const isAdmin = state.me.role === 'admin';
-    const [analytics, artworks, cafeData, payoutData, users, orders, siteStockData, customerBagsData] = await Promise.all([
+    const [analytics, artworks, cafeData, payoutData, users, orders, siteStockData, customerBagsData, siteTraffic] = await Promise.all([
       callManager('managerAnalytics', { range: state.range }),
       callManager('managerListArtworks'),
       callManager('managerListCafes'),
@@ -324,7 +326,8 @@ async function loadWorkspaceData() {
       isAdmin ? callManager('managerListUsers') : Promise.resolve([]),
       isAdmin ? callManager('managerListOrders') : Promise.resolve([]),
       isAdmin ? callManager('managerListSiteStock').catch(() => null) : Promise.resolve(null),
-      isAdmin ? callManager('managerListCustomerBags').catch(() => null) : Promise.resolve(null)
+      isAdmin ? callManager('managerListCustomerBags').catch(() => null) : Promise.resolve(null),
+      isAdmin ? callManager('managerSiteTraffic').catch(() => null) : Promise.resolve(null)
     ]);
     state.analytics = analytics || null;
     state.artworks = Array.isArray(artworks) ? artworks : [];
@@ -336,6 +339,7 @@ async function loadWorkspaceData() {
     state.orders = Array.isArray(orders) ? orders : [];
     state.siteStockData = siteStockData || null;
     state.customerBagsData = customerBagsData || null;
+    state.siteTraffic = siteTraffic || null;
     const valid = new Set(state.artworks.map(a => a.id));
     for (const sid of [...state.selectedArtIds]) {
       if (!valid.has(sid)) state.selectedArtIds.delete(sid);
@@ -643,7 +647,113 @@ function renderAnalyticsTab(isAdmin) {
           </tr>`).join('')}</tbody>
         </table></div>` : '<p class="mgr-muted">No unsold café returns in this range.</p>'}
       </section>
-    </div>`;
+    </div>
+    ${isAdmin ? renderSiteTrafficAnalyticsSection() : ''}`;
+}
+
+function renderSiteTrafficAnalyticsSection() {
+  const t = state.siteTraffic;
+  if (!t) {
+    return `<section class="mgr-panel"><h2>Site Traffic, Visitor Locations &amp; Item Demand</h2><p class="mgr-muted">${state.loadingData ? 'Loading visitor &amp; click analytics…' : 'Visitor tracking initializes automatically once shoppers open hehe.cafe.'}</p></section>`;
+  }
+  const s = t.summary || {};
+  const dev = t.deviceSplit || {};
+  const devTotal = Math.max(1, (dev.mobile || 0) + (dev.desktop || 0));
+  const maxTrend = Math.max(1, ...(t.dailyTrend || []).map(d => d.uniqueVisitors || 0));
+  const maxLoc = Math.max(1, ...(t.topLocations || []).map(l => l.count || 0));
+  const maxRef = Math.max(1, ...(t.topReferrers || []).map(r => r.count || 0));
+
+  const sortedDemand = [...(t.itemDemand || [])].sort((x, y) => state.itemDemandSort === 'carts'
+    ? ((y.inCartCount - x.inCartCount) || (y.clicks - x.clicks))
+    : ((y.clicks - x.clicks) || (y.inCartCount - x.inCartCount)));
+
+  return `<section class="mgr-panel" style="margin-top:6px">
+      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:12px">
+        <div>
+          <p class="mgr-eyebrow">Private Storefront Telemetry · hehe.cafe</p>
+          <h2>Site Visitors, Locations &amp; Item Clicks</h2>
+        </div>
+        <div class="mgr-muted" style="font-size:12px">
+          <span class="mgr-live-dot" aria-hidden="true"></span><strong>${s.activeNow || 0} active now</strong> · Mobile ${Math.round(((dev.mobile || 0) / devTotal) * 100)}% / Desktop ${Math.round(((dev.desktop || 0) / devTotal) * 100)}%
+        </div>
+      </div>
+
+      <div class="mgr-kpi-grid" style="margin-bottom:14px">
+        <div class="mgr-kpi"><span><span class="mgr-live-dot" aria-hidden="true"></span>Active visitors now</span><strong style="color:var(--accent)">${s.activeNow || 0}</strong><small>Seen in last 5 minutes</small></div>
+        <div class="mgr-kpi"><span>Visitors today (IST)</span><strong>${s.todayVisitors || 0}</strong><small>${s.todayClicks || 0} item clicks today</small></div>
+        <div class="mgr-kpi"><span>Visitors yesterday</span><strong>${s.yesterdayVisitors || 0}</strong><small>Last 7d: ${s.last7DaysVisitors || 0}</small></div>
+        <div class="mgr-kpi"><span>Last 30 days</span><strong>${s.last30DaysVisitors || 0}</strong><small>${s.totalPageViews || 0} total visits</small></div>
+        <div class="mgr-kpi"><span>All-time visitors</span><strong>${s.totalVisitors || 0}</strong><small>${s.totalProductClicks || 0} total item clicks</small></div>
+      </div>
+
+      <div class="mgr-split" style="margin-bottom:14px">
+        <div class="mgr-panel" style="margin:0;background:var(--surface-soft)">
+          <h2>Where visitors are accessing from</h2>
+          <p class="mgr-muted" style="margin-bottom:10px">City &amp; region geo-location detected on Cloudflare edge.</p>
+          ${(t.topLocations || []).length ? `<div class="mgr-geo-list">${t.topLocations.map(l => `<div class="mgr-geo-row">
+            <div class="mgr-geo-row-head">
+              <span><strong>${esc(l.label)}</strong> <small class="mgr-muted">(${esc(l.country)})</small></span>
+              <span><strong>${l.count}</strong>${l.activeNow > 0 ? ` <span class="mgr-pill is-active" style="padding:1px 6px;font-size:10.5px">${l.activeNow} live</span>` : ''}</span>
+            </div>
+            <div class="mgr-bar-track"><div class="mgr-bar-fill" style="width:${Math.max(4, Math.round((l.count / maxLoc) * 100))}%"></div></div>
+          </div>`).join('')}</div>` : '<p class="mgr-muted">Waiting for visitor location events…</p>'}
+          ${(t.activeVisitors || []).length ? `<div style="margin-top:12px;padding-top:10px;border-top:1px solid var(--line)">
+            <p class="mgr-eyebrow" style="margin-bottom:6px">Currently browsing (${t.activeVisitors.length})</p>
+            <div style="display:flex;flex-wrap:wrap;gap:6px">${t.activeVisitors.slice(0, 12).map(v => `<span class="mgr-dest-tag">${esc([v.city, v.region, v.country].filter(Boolean).join(', ') || 'Unknown')} · ${esc(v.device)} · ${esc(v.lastPath || '#home')}</span>`).join('')}</div>
+          </div>` : ''}
+        </div>
+
+        <div style="display:grid;gap:14px">
+          <div class="mgr-panel" style="margin:0;background:var(--surface-soft)">
+            <h2>Traffic sources</h2>
+            <p class="mgr-muted" style="margin-bottom:10px">Where visitors came from before landing on hehe.cafe.</p>
+            ${(t.topReferrers || []).length ? `<div class="mgr-geo-list">${t.topReferrers.map(r => `<div class="mgr-geo-row">
+              <div class="mgr-geo-row-head"><strong>${esc(r.source)}</strong><strong>${r.count}</strong></div>
+              <div class="mgr-bar-track"><div class="mgr-bar-fill" style="width:${Math.max(4, Math.round((r.count / maxRef) * 100))}%;background:var(--accent)"></div></div>
+            </div>`).join('')}</div>` : '<p class="mgr-muted">No traffic source events yet.</p>'}
+          </div>
+          <div class="mgr-panel" style="margin:0;background:var(--surface-soft)">
+            <h2>14-day visitor &amp; click trend</h2>
+            <div class="mgr-geo-list" style="margin-top:8px">${(t.dailyTrend || []).slice(-7).map(d => `<div class="mgr-geo-row">
+              <div class="mgr-geo-row-head">
+                <span><strong>${esc(d.label)}</strong></span>
+                <span class="mgr-muted">${d.uniqueVisitors} visitors · ${d.productClicks} clicks</span>
+              </div>
+              <div class="mgr-bar-track"><div class="mgr-bar-fill" style="width:${d.uniqueVisitors ? Math.max(4, Math.round((d.uniqueVisitors / maxTrend) * 100)) : 0}%"></div></div>
+            </div>`).join('')}</div>
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:10px">
+          <div>
+            <h2>Most Clicked Artworks &amp; Bags Demand</h2>
+            <p class="mgr-muted">Live clicks alongside how many shoppers currently have each artwork inside their bag.</p>
+          </div>
+          <div class="mgr-chips" style="margin:0">
+            <button type="button" class="mgr-chip ${state.itemDemandSort === 'clicks' ? 'is-active' : ''}" data-action="set-demand-sort" data-sort="clicks">Most clicked</button>
+            <button type="button" class="mgr-chip ${state.itemDemandSort === 'carts' ? 'is-active' : ''}" data-action="set-demand-sort" data-sort="carts">Most in bags</button>
+          </div>
+        </div>
+        ${sortedDemand.length ? `<div class="mgr-table-wrap"><table class="mgr-table">
+          <thead><tr><th>#</th><th>Artwork</th><th>Ref #</th><th>Status</th><th>Total clicks</th><th>In peoples' bags</th></tr></thead>
+          <tbody>${sortedDemand.slice(0, 25).map((item, idx) => `<tr>
+            <td><span class="mono mgr-muted">${idx + 1}</span></td>
+            <td>
+              <div style="display:flex;align-items:center;gap:8px;min-width:170px">
+                ${item.image ? `<img src="${esc(item.image)}" alt="" style="width:34px;height:34px;border-radius:6px;object-fit:cover;border:1px solid var(--line);flex-shrink:0">` : ''}
+                <div><strong>${esc(item.title)}</strong><div class="mgr-art-meta">${esc(item.artist)} · ${money(item.price)}</div></div>
+              </div>
+            </td>
+            <td>${refPillMarkup(item.refNumber, findArtIdByRef(item.refNumber, item.title))}</td>
+            <td>${item.inStock ? '<span class="mgr-pill is-live_online">In stock</span>' : item.visible ? '<span class="mgr-pill is-sold">Displayed sold</span>' : '<span class="mgr-pill is-curated">Off site</span>'}</td>
+            <td><strong>${item.clicks}</strong>${item.todayClicks > 0 ? ` <small class="mgr-muted">(${item.todayClicks} today)</small>` : ''}</td>
+            <td>${item.inCartCount > 0 ? `<span class="mgr-cart-count-pill">${item.inCartCount} in ${item.inCartCount === 1 ? 'bag' : 'bags'}</span>` : '<span class="mgr-muted">0</span>'}</td>
+          </tr>`).join('')}</tbody>
+        </table></div>` : '<p class="mgr-muted">No product click or bag telemetry recorded yet.</p>'}
+      </div>
+    </section>`;
 }
 
 /* Artworks Pipeline + Drag-and-Drop */
@@ -1363,6 +1473,100 @@ function filterSiteProducts(list = []) {
   });
 }
 
+function fmtMgrCountdown(ms) {
+  const sec = Math.max(0, Math.floor((Number(ms) || 0) / 1000));
+  const d = Math.floor(sec / 86400);
+  const h = Math.floor((sec % 86400) / 3600);
+  const m = Math.floor((sec % 3600) / 60);
+  const s = sec % 60;
+  const pad = n => String(n).padStart(2, '0');
+  return d > 0 ? `${d}d ${pad(h)}h ${pad(m)}m ${pad(s)}s` : `${pad(h)}h ${pad(m)}m ${pad(s)}s`;
+}
+
+function updateMgrScheduleClock() {
+  const clock = document.querySelector('[data-mgr-schedule-clock]');
+  const sched = state.siteStockData?.stockSchedule;
+  if (!clock || !sched) return;
+  if (sched.paused) {
+    clock.textContent = `Paused · ${fmtMgrCountdown(sched.pausedRemainingMs || (sched.intervalHours || 18) * 3600000)} left`;
+    return;
+  }
+  if (!sched.autoRefreshEnabled) {
+    clock.textContent = 'Auto-refresh off';
+    return;
+  }
+  const rem = (Number(sched.nextRefreshAt) || 0) - Date.now();
+  clock.textContent = rem > 0 ? `Next refresh in ${fmtMgrCountdown(rem)}` : 'Due now — refreshing…';
+}
+if (typeof window !== 'undefined') {
+  setInterval(updateMgrScheduleClock, 1000);
+}
+
+function renderStockSchedulePanel(rawSched) {
+  const s = {
+    autoRefreshEnabled: rawSched?.autoRefreshEnabled === true,
+    showTimerOnSite: rawSched?.showTimerOnSite === true,
+    paused: rawSched?.paused === true,
+    pausedRemainingMs: Number(rawSched?.pausedRemainingMs) || 0,
+    intervalHours: Number(rawSched?.intervalHours) || 18,
+    pickCount: Number(rawSched?.pickCount) || 20,
+    fakeSoldCount: Number.isInteger(Number(rawSched?.fakeSoldCount)) ? Number(rawSched.fakeSoldCount) : 3,
+    defaultPrice: Number(rawSched?.defaultPrice) || 250,
+    nextRefreshAt: Number(rawSched?.nextRefreshAt) || 0,
+    lastRefreshAt: Number(rawSched?.lastRefreshAt) || 0,
+    lastRefreshSummary: rawSched?.lastRefreshSummary || ''
+  };
+  const remMs = s.nextRefreshAt > 0 ? Math.max(0, s.nextRefreshAt - Date.now()) : 0;
+  const clockLabel = s.paused
+    ? `Paused · ${fmtMgrCountdown(s.pausedRemainingMs || s.intervalHours * 3600000)} left`
+    : s.autoRefreshEnabled
+      ? (remMs > 0 ? `Next refresh in ${fmtMgrCountdown(remMs)}` : 'Due now')
+      : 'Auto-refresh off';
+  const statusPill = s.paused
+    ? '<span class="mgr-pill is-pending">Auto-refresh paused</span>'
+    : s.autoRefreshEnabled
+      ? '<span class="mgr-pill is-live_online">Auto-refresh active</span>'
+      : '<span class="mgr-pill">Auto-refresh off</span>';
+  const timerPill = s.showTimerOnSite
+    ? '<span class="mgr-pill is-active">Site timer: Visible</span>'
+    : '<span class="mgr-pill">Site timer: Hidden</span>';
+
+  return `<section class="mgr-panel mgr-schedule-panel">
+      <div class="mgr-schedule-top">
+        <div>
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:5px">
+            <strong>Automatic Stock Refresh &amp; Countdown Timer</strong>
+            ${statusPill}
+            ${timerPill}
+          </div>
+          <div class="mgr-muted">
+            Every <strong>${s.intervalHours}h</strong> picks <strong>${s.pickCount}</strong> warehouse artworks (${s.fakeSoldCount} fake-sold).
+            ${s.lastRefreshAt ? ` Last run: ${fmtDateTime(s.lastRefreshAt)}${s.lastRefreshSummary ? ` (${esc(s.lastRefreshSummary)})` : ''}` : ''}
+          </div>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+          <span class="mgr-schedule-clock" data-mgr-schedule-clock>${esc(clockLabel)}</span>
+          ${s.autoRefreshEnabled && !s.paused
+            ? '<button type="button" class="mgr-btn outline small" data-action="schedule-pause">Pause refresh</button>'
+            : `<button type="button" class="mgr-btn accent small" data-action="schedule-resume">${s.paused ? 'Resume refresh' : 'Start auto-refresh'}</button>`}
+          <button type="button" class="mgr-btn outline small" data-action="schedule-toggle-timer" data-show="${s.showTimerOnSite ? '0' : '1'}">${s.showTimerOnSite ? 'Hide timer on site' : 'Show timer on site'}</button>
+        </div>
+      </div>
+      <form id="mgr-schedule-form" class="mgr-schedule-form">
+        <label class="mgr-field">Every (hours)<input name="intervalHours" type="number" min="1" max="720" step="0.5" value="${s.intervalHours}" required></label>
+        <label class="mgr-field">Artworks / drop<input name="pickCount" type="number" min="1" max="50" value="${s.pickCount}" required></label>
+        <label class="mgr-field">Fake-sold<input name="fakeSoldCount" type="number" min="0" max="50" value="${s.fakeSoldCount}" required></label>
+        <label class="mgr-field">Default ₹<input name="defaultPrice" type="number" min="1" max="500000" value="${s.defaultPrice}" required></label>
+        <label class="mgr-select-box" style="min-height:36px"><input type="checkbox" name="autoRefreshEnabled" ${s.autoRefreshEnabled ? 'checked' : ''}><span>Auto-refresh on</span></label>
+        <label class="mgr-select-box" style="min-height:36px"><input type="checkbox" name="showTimerOnSite" ${s.showTimerOnSite ? 'checked' : ''}><span>Show timer on site</span></label>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;grid-column:1 / -1;justify-content:flex-end">
+          <button type="submit" class="mgr-btn outline small" data-reset-timer="1">Save &amp; reset countdown</button>
+          <button type="submit" class="mgr-btn small">Save schedule →</button>
+        </div>
+      </form>
+    </section>`;
+}
+
 function renderSiteStockTab() {
   const data = state.siteStockData;
   if (!data) {
@@ -1394,6 +1598,8 @@ function renderSiteStockTab() {
         <button type="button" class="mgr-btn outline small" data-action="refresh-all">Reload</button>
       </div>
     </div>
+
+    ${renderStockSchedulePanel(data.stockSchedule)}
 
     <div class="mgr-kpi-grid">
       <div class="mgr-kpi"><span>Live on site</span><strong>${summary.totalOnSite || 0}</strong><small>${liveInStock} in stock · ${liveRealSoldCount} sold</small></div>
@@ -2213,6 +2419,20 @@ document.addEventListener('click', async event => {
       await callManager('managerDismissCustomerBag', { bagId: id });
       toast('Removed customer bag record.');
       await loadWorkspaceData();
+    } else if (action === 'set-demand-sort') {
+      state.itemDemandSort = btn.dataset.sort === 'carts' ? 'carts' : 'clicks';
+      render();
+    } else if (action === 'schedule-pause' || action === 'schedule-resume' || action === 'schedule-toggle-timer') {
+      btn.disabled = true;
+      setBusy(true);
+      const schedAction = action === 'schedule-pause' ? 'pause' : action === 'schedule-resume' ? 'resume' : 'toggle_timer';
+      const nextSched = await callManager('managerUpdateStockSchedule', {
+        action: schedAction,
+        ...(schedAction === 'toggle_timer' ? { showTimerOnSite: btn.dataset.show === '1' } : {})
+      });
+      if (state.siteStockData) state.siteStockData.stockSchedule = nextSched;
+      toast(schedAction === 'pause' ? 'Auto-refresh paused.' : schedAction === 'resume' ? 'Auto-refresh active!' : (nextSched.showTimerOnSite ? 'Countdown timer shown on hehe.cafe.' : 'Countdown timer hidden from visitors.'));
+      render();
     } else if (action === 'open-import-site-modal') {
       openImportSiteModal();
     } else if (action === 'open-refresh-site-modal') {
@@ -2856,6 +3076,21 @@ document.addEventListener('submit', async event => {
       $('mgr-dialog')?.close();
       toast(`Site refreshed: ${res.movedToWarehouse} returned to warehouse · ${res.selectedForSite} live (${res.fakeSoldCount} fake-sold).`);
       await loadWorkspaceData();
+    } else if (form.id === 'mgr-schedule-form') {
+      const resetTimer = event.submitter?.dataset?.resetTimer === '1';
+      const nextSched = await callManager('managerUpdateStockSchedule', {
+        action: 'save',
+        autoRefreshEnabled: form.elements.autoRefreshEnabled?.checked === true,
+        showTimerOnSite: form.elements.showTimerOnSite?.checked === true,
+        intervalHours: Number(fd.get('intervalHours') || 18),
+        pickCount: Number(fd.get('pickCount') || 20),
+        fakeSoldCount: Number(fd.get('fakeSoldCount') ?? 3),
+        defaultPrice: Number(fd.get('defaultPrice') || 250),
+        resetTimer
+      });
+      if (state.siteStockData) state.siteStockData.stockSchedule = nextSched;
+      toast(resetTimer ? 'Schedule saved and countdown reset!' : 'Auto-refresh schedule saved.');
+      render();
     } else if (form.id === 'mgr-edit-user-form') {
       await callManager('managerApproveUser', {
         email: form.dataset.email,

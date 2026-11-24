@@ -512,9 +512,66 @@ function renderCart(){
 function breadcrumbs(current,extra=''){return `<div class="breadcrumbs"><a href="#home">hehe.cafe</a><span>/</span>${extra}<span>${e(current)}</span></div>`;}
 function productCard(p,idx=99){return productCardMarkup(p,siteContent,{index:idx});}
 function story(){return storyMarkup();}
+let stockSchedule=null,stockRefreshTriggeredFor=0,stockClockTimer=null;
+function formatStockCountdown(ms){
+  const sec=Math.max(0,Math.floor(ms/1000));
+  const d=Math.floor(sec/86400);
+  const h=Math.floor((sec%86400)/3600);
+  const m=Math.floor((sec%3600)/60);
+  const s=sec%60;
+  const pad=n=>String(n).padStart(2,'0');
+  return d>0?`${d}d ${pad(h)}h ${pad(m)}m ${pad(s)}s`:`${pad(h)}h ${pad(m)}m ${pad(s)}s`;
+}
+function tickStockRefreshClock(){
+  const clock=document.querySelector('[data-stock-refresh-clock]');
+  const nextAt=Number(stockSchedule?.nextRefreshAt)||0;
+  if(!stockSchedule||stockSchedule.showTimerOnSite!==true||stockSchedule.autoRefreshEnabled!==true||stockSchedule.paused===true||nextAt<=0){
+    return;
+  }
+  const rem=nextAt-Date.now();
+  if(rem>0){
+    if(clock)clock.textContent=formatStockCountdown(rem);
+    return;
+  }
+  if(clock)clock.textContent='Refreshing stock…';
+  if(stockRefreshTriggeredFor!==nextAt){
+    stockRefreshTriggeredFor=nextAt;
+    void(async()=>{
+      const res=await store.triggerStockRefreshCheck();
+      if(res?.schedule)stockSchedule=res.schedule;
+      await store.refreshPublicStoreNow();
+      if(['home','shop'].includes(route().page)&&!isAnimationPlaying())render();
+    })();
+  }
+}
+function startStockClockTicker(){
+  tickStockRefreshClock();
+  if(stockClockTimer)return;
+  stockClockTimer=setInterval(tickStockRefreshClock,1000);
+}
+let siteVisitorId='';
+try{siteVisitorId=localStorage.getItem('silly-visitor-v1')||'';if(!/^[a-zA-Z0-9_-]{8,64}$/.test(siteVisitorId)){siteVisitorId=randomId();localStorage.setItem('silly-visitor-v1',siteVisitorId);}}catch{siteVisitorId=randomId();}
+const clickedProductsSession=new Set();
+function sendSiteBeacon(type,extra={}){
+  if(route().page==='admin'||!siteVisitorId)return;
+  void store.trackSiteEvent({
+    type,
+    visitorId:siteVisitorId,
+    path:location.hash||'#home',
+    referrer:document.referrer||'',
+    device:window.innerWidth<=820?'Mobile':'Desktop',
+    ...extra
+  });
+}
+function trackProductClick(productId){
+  if(!productId||clickedProductsSession.has(productId))return;
+  clickedProductsSession.add(productId);
+  sendSiteBeacon('click',{productId});
+}
 function renderHome(){
   if((!contentReady&&!contentError)||(!settingsReady&&!settingsError)){$('main').innerHTML=pageSkeleton('home');return;}
-  $('main').innerHTML=homeMarkup(products,storeSettings,siteContent,{catalogLoading:!catalogReady&&!catalogError,catalogError,filter,artists,customerReviews:publicReviews});
+  $('main').innerHTML=homeMarkup(products,storeSettings,siteContent,{catalogLoading:!catalogReady&&!catalogError,catalogError,filter,artists,customerReviews:publicReviews,stockSchedule});
+  startStockClockTicker();
 }
 function renderShop(){
   const {page,id}=route();
@@ -583,6 +640,7 @@ function sampleAndWashProductImage(img){
 }
 function renderProduct(){
   const p=visible().find(p=>p.id===route().id);if(!p){if(catalogError){$('main').innerHTML=`<div class="container">${catalogErrorMarkup()}</div>`;return;}if(!catalogReady){$('main').innerHTML=pageSkeleton('product');return;}return renderNotFound();}
+  trackProductClick(p.id);
   const artist=p.artist||'Suprita Chatterjee';
   const slug=artistSlug(artist);
   const productType=p.productType||'Fridge Magnet';
@@ -2366,6 +2424,8 @@ document.addEventListener('click',async event=>{
   if(liveSiteEditor?.isActive?.()&&!event.target.closest('.live-site-editor-ui')&&!event.target.closest('dialog'))return;
   const productLink=event.target.closest('[data-product-card] a[href^="#product/"]');
   if(productLink&&!event.target.closest('[data-action]')&&!event.metaKey&&!event.ctrlKey&&!event.shiftKey&&!event.altKey&&route().page!=='admin'){
+    const pid=productLink.closest('[data-product-card]')?.dataset?.productId||'';
+    if(pid)trackProductClick(pid);
     if(launchProductWashTransition(productLink.closest('[data-product-card]'),productLink.getAttribute('href'))){event.preventDefault();return;}
   }
   const artistLink=event.target.closest('a.artist-lanyard-card[href^="#artist/"]');
@@ -3285,6 +3345,18 @@ store.observePublicReviews(list=>{
   publicReviews=Array.isArray(list)?list:[];
   if(['home',''].includes(route().page)&&!isAnimationPlaying())render();
 },()=>{}).catch(()=>{});
+store.observeStockSchedule(nextSched=>{
+  const prevJson=JSON.stringify(stockSchedule);
+  stockSchedule=nextSched&&typeof nextSched==='object'?nextSched:null;
+  if(prevJson!==JSON.stringify(stockSchedule)&&['home',''].includes(route().page)&&!isAnimationPlaying())render();
+  else startStockClockTicker();
+},()=>{}).catch(()=>{});
+if(typeof window!=='undefined'){
+  sendSiteBeacon('visit');
+  setInterval(()=>{
+    if(document.visibilityState==='visible')sendSiteBeacon('ping');
+  },120000);
+}
 function refreshStoreContent(){
   contentCategories(siteContent).forEach((c,i)=>Object.assign(CATEGORIES[i],c));
   categoryLinks=`<a href="#home">Home &amp; Banner</a><a href="#shop">All Artworks</a><a href="#artists">Artists</a><a href="#about"${storeSettings.aboutVisible?'':' hidden'}>About hehe.cafe</a>`;
