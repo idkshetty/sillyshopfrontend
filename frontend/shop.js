@@ -2094,6 +2094,7 @@ function stopAdminOrdersLivePoll(){
   clearInterval(adminOrdersPollTimer);adminOrdersPollTimer=null;
 }
 let adminOrdersBackoffUntil=0;
+let requestsInFlight=false;
 function syncAdminOrdersLivePoll(){
   const state=thermalPrinter.getState();
   const shouldPoll=Boolean(isAdmin&&(state.autoPrint||(route().page==='admin'&&adminTab==='requests')));
@@ -2107,6 +2108,8 @@ function syncAdminOrdersLivePoll(){
 async function fetchRequests({silent=false,more=false}={}){
   if(!isAdmin||(more&&requestsLoadingMore))return;
   if(silent&&Date.now()<adminOrdersBackoffUntil)return;
+  if(!more&&requestsInFlight)return;
+  if(!more)requestsInFlight=true;
   if(more)requestsLoadingMore=true;
   try{
     const res=await store.loadRequests(more?requestsCursor:null,{paginated:true});
@@ -2147,6 +2150,7 @@ async function fetchRequests({silent=false,more=false}={}){
     else if(more)toast(store.friendlyError(error));
   }finally{
     if(more)requestsLoadingMore=false;
+    else requestsInFlight=false;
   }
   updateAdminOrdersBadge();
   if($('requests-shell'))renderRequests();
