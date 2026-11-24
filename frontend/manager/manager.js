@@ -17,14 +17,14 @@ import {
 import {
   mountTrafficGlobe,
   resolveLocationCoords
-} from './traffic-globe.js?v=20261125b';
+} from './traffic-globe.js?v=20261125c';
 import {
   pilotControlsMarkup,
   pilotTimelineSvgMarkup,
   pilotEngagementMarkup,
   pilotVisitorsLogMarkup,
   toDatetimeLocalValue
-} from '../pilot-analytics-ui.js?v=20261125b';
+} from '../pilot-analytics-ui.js?v=20261125c';
 
 const $ = id => document.getElementById(id);
 const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -775,12 +775,13 @@ function patchMainTabDOM(isAdmin) {
 
 function patchTrafficSection(key, el, nextHtml) {
   if (!el || trafficSectionHtml.get(key) === nextHtml) return false;
+  if (el.contains(document.activeElement)) return false;
   const savedScroll = captureScrollPositions(el);
   const scrollY = window.scrollY;
   el.innerHTML = nextHtml;
   trafficSectionHtml.set(key, nextHtml);
   restoreScrollPositions(el, savedScroll);
-  if (window.scrollY !== scrollY) window.scrollTo(0, scrollY);
+  if (Math.abs(window.scrollY - scrollY) > 2) window.scrollTo(0, scrollY);
   return true;
 }
 
@@ -817,6 +818,7 @@ async function pollActiveTabLive({ manual = false } = {}) {
     || Boolean($('mgr-dialog')?.open)
   )) return;
 
+  if (!manual && isEditingInsideMain()) return;
   const isAdmin = state.me.role === 'admin';
   const tab = state.tab;
   managerPollInFlight = true;
@@ -831,7 +833,6 @@ async function pollActiveTabLive({ manual = false } = {}) {
       }
       return;
     }
-    if (!manual && isEditingInsideMain()) return;
     if (!manual && tab === 'artworks' && state.uploadPanelOpen) return;
 
     if (tab === 'analytics') {
@@ -1045,7 +1046,7 @@ function renderTrafficTab() {
       </div>
       <div class="mgr-head-actions">
         <span id="mgr-traffic-live-pill" class="mgr-live-pill ${state.trafficLivePaused ? 'is-paused' : ''}">
-          <span id="mgr-traffic-live-label">${state.trafficLivePaused ? 'Paused' : 'Live · 3s'}</span>
+          <span id="mgr-traffic-live-label">${state.trafficLivePaused ? 'Paused' : 'Live · 5s'}</span>
           <span class="mgr-muted">·</span>
           <span id="mgr-traffic-updated-at">${esc(updatedTxt)}</span>
         </span>
@@ -2824,7 +2825,7 @@ document.addEventListener('click', async event => {
       const label = $('mgr-traffic-live-label');
       const toggleBtn = $('mgr-traffic-toggle-btn');
       if (pill) pill.classList.toggle('is-paused', state.trafficLivePaused);
-      if (label) label.textContent = state.trafficLivePaused ? 'Paused' : 'Live · 3s';
+      if (label) label.textContent = state.trafficLivePaused ? 'Paused' : 'Live · 5s';
       if (toggleBtn) toggleBtn.textContent = state.trafficLivePaused ? 'Resume live' : 'Pause live';
       if (!state.trafficLivePaused) void pollActiveTabLive({ manual: true });
     } else if (action === 'refresh-traffic-now') {

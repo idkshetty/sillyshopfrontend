@@ -199,18 +199,94 @@ export function mountNetworkAnalyticsPanel(root, { loadTraffic, mountGlobeFn, re
   let globe = null;
   let disposed = false;
   let backoffUntil = 0;
+  const slotHtml = new Map();
 
   const esc = escHtml;
   const moneyInr = n => '₹' + (Number(n) || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 });
 
-  function renderFrame() {
+  function mountShell() {
+    root.innerHTML = `<div class="admin-title">
+      <div>
+        <p class="eyebrow">Pilot Telemetry · Network &amp; Behavior</p>
+        <h1>Network &amp; Pilot Analytics</h1>
+        <p>Understand where visitors come from, where they click, how deep they scroll, and reduce friction before full launch.</p>
+      </div>
+      <div class="admin-title-actions">
+        <button type="button" class="button outline small" id="na-toggle-live" data-na-toggle-live>${paused ? 'Resume live (8s)' : 'Live · 8s (Pause)'}</button>
+        <button type="button" class="button outline small" data-na-refresh>Refresh ↻</button>
+      </div>
+    </div>
+
+    <div id="na-controls"></div>
+    <div id="na-status"></div>
+    <div id="na-body" hidden>
+      <div id="na-kpis"></div>
+      <section class="settings-note" id="na-timeline"></section>
+      <section class="settings-note admin-analytics-globe-card">
+        <div class="pilot-globe-head">
+          <div>
+            <h2>Visitor Distribution Globe</h2>
+            <p class="small muted">Edge geo-location detected automatically · Click any city to focus.</p>
+          </div>
+          <button type="button" class="button outline small" data-na-reset-globe>Reset globe</button>
+        </div>
+        <div class="mgr-globe-layout">
+          <div id="admin-traffic-globe-host" class="mgr-globe-host"></div>
+          <div id="na-dist-list" class="mgr-globe-list-col"></div>
+        </div>
+      </section>
+      <div id="na-engagement"></div>
+      <section class="settings-note" id="na-referrers" style="margin-top:16px"></section>
+      <section class="settings-note" id="na-demand"></section>
+      <section class="settings-note" id="na-visitors-log"></section>
+    </div>`;
+    renderControls();
+  }
+
+  function renderControls() {
+    const ctrlHost = root.querySelector('#na-controls');
+    if (!ctrlHost) return;
+    ctrlHost.innerHTML = pilotControlsMarkup({ preset, device, fromLocal, toLocal, showHeatmapBtn: true });
+  }
+
+  function patchSlot(key, selector, nextHtml) {
+    const el = root.querySelector(selector);
+    if (!el || slotHtml.get(key) === nextHtml) return;
+    if (el.contains(document.activeElement) && ['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement?.tagName)) return;
+    const wraps = [...el.querySelectorAll('.table-wrap, .mgr-table-wrap')].map((w, idx) => ({ idx, top: w.scrollTop, left: w.scrollLeft }));
+    const selfTop = el.scrollTop;
+    const selfLeft = el.scrollLeft;
+    const winY = window.scrollY;
+    el.innerHTML = nextHtml;
+    slotHtml.set(key, nextHtml);
+    if (selfTop) el.scrollTop = selfTop;
+    if (selfLeft) el.scrollLeft = selfLeft;
+    const newWraps = el.querySelectorAll('.table-wrap, .mgr-table-wrap');
+    for (const w of wraps) {
+      if (newWraps[w.idx]) {
+        newWraps[w.idx].scrollTop = w.top;
+        newWraps[w.idx].scrollLeft = w.left;
+      }
+    }
+    if (Math.abs(window.scrollY - winY) > 2) window.scrollTo(0, winY);
+  }
+
+  function patchDataSlots() {
     if (disposed || !root.isConnected) return;
-    const controls = pilotControlsMarkup({ preset, device, fromLocal, toLocal, showHeatmapBtn: true });
+    const toggleBtn = root.querySelector('#na-toggle-live');
+    if (toggleBtn) toggleBtn.textContent = paused ? 'Resume live (8s)' : 'Live · 8s (Pause)';
+
+    const statusHtml = !data
+      ? `<div class="settings-note">${errorMsg ? `<p class="notice">${esc(errorMsg)}</p>` : '<p class="muted">Loading network &amp; behavioral analytics…</p>'}</div>`
+      : (errorMsg ? `<div class="settings-note" style="margin-bottom:12px"><p class="notice">${esc(errorMsg)}</p></div>` : '');
+    patchSlot('status', '#na-status', statusHtml);
+
+    const bodyEl = root.querySelector('#na-body');
     if (!data) {
-      root.innerHTML = `<div class="admin-title"><div><p class="eyebrow">Pilot Telemetry · Network &amp; Behavior</p><h1>Network &amp; Pilot Analytics</h1><p>Real-time visitors, Cloudflare globe, scroll depth, section dwell time, item clicks &amp; on-site heatmaps.</p></div></div>${controls}<div class="settings-note">${errorMsg ? `<p class="notice">${esc(errorMsg)}</p>` : '<p class="muted">Loading network &amp; behavioral analytics…</p>'}</div>`;
-      bindEvents();
+      if (bodyEl) bodyEl.hidden = true;
       return;
     }
+    if (bodyEl) bodyEl.hidden = false;
 
     const s = data.summary || {};
     const locs = Array.isArray(data.topLocations) ? data.topLocations : [];
@@ -220,66 +296,35 @@ export function mountNetworkAnalyticsPanel(root, { loadTraffic, mountGlobeFn, re
       ? ((b.inCartCount - a.inCartCount) || (b.clicks - a.clicks))
       : ((b.clicks - a.clicks) || (b.inCartCount - a.inCartCount)));
 
-    root.innerHTML = `<div class="admin-title">
-      <div>
-        <p class="eyebrow">Pilot Telemetry · Network &amp; Behavior</p>
-        <h1>Network &amp; Pilot Analytics</h1>
-        <p>Understand where visitors come from, where they click, how deep they scroll, and reduce friction before full launch.</p>
-      </div>
-      <div class="admin-title-actions">
-        <button type="button" class="button outline small" data-na-toggle-live>${paused ? 'Resume live (5s)' : 'Live · 5s (Pause)'}</button>
-        <button type="button" class="button outline small" data-na-refresh>Refresh ↻</button>
-      </div>
-    </div>
-
-    ${controls}
-
-    <div class="stats-grid" style="grid-template-columns:repeat(auto-fit,minmax(145px,1fr));margin-bottom:16px">
+    patchSlot('kpis', '#na-kpis', `<div class="stats-grid" style="grid-template-columns:repeat(auto-fit,minmax(145px,1fr));margin-bottom:16px">
       <div class="stat"><span>Active visitors now</span><strong>${s.activeNow || 0}</strong></div>
       <div class="stat"><span>Visitors (${esc(data.window?.label || 'Window')})</span><strong>${s.windowVisitors ?? s.totalVisitors ?? 0}</strong></div>
       <div class="stat"><span>Clicks (${esc(data.window?.label || 'Window')})</span><strong>${s.windowClicks ?? s.totalProductClicks ?? 0}</strong></div>
       <div class="stat"><span>Today (IST)</span><strong>${s.todayVisitors || 0}</strong></div>
       <div class="stat"><span>Yesterday</span><strong>${s.yesterdayVisitors || 0}</strong></div>
       <div class="stat"><span>All-time visitors</span><strong>${s.lifetimeVisitors ?? s.totalVisitors ?? 0}</strong></div>
-    </div>
+    </div>`);
 
-    <section class="settings-note">${pilotTimelineSvgMarkup(data.timeline, data.window)}</section>
+    patchSlot('timeline', '#na-timeline', pilotTimelineSvgMarkup(data.timeline, data.window));
 
-    <section class="settings-note admin-analytics-globe-card">
-      <div class="pilot-globe-head">
-        <div>
-          <h2>Visitor Distribution Globe</h2>
-          <p class="small muted">Edge geo-location detected automatically · Click any city to focus.</p>
-        </div>
-        <button type="button" class="button outline small" data-na-reset-globe>Reset globe</button>
-      </div>
-      <div class="mgr-globe-layout">
-        <div id="admin-traffic-globe-host" class="mgr-globe-host"></div>
-        <div class="mgr-globe-list-col">
-          ${locs.length ? locs.map(l => {
-            const key = `${l.label}|${l.country}`;
-            return `<button type="button" class="mgr-dist-row ${focusedKey === key ? 'is-active' : ''}" data-na-focus-loc="${esc(key)}">
-              <span class="mgr-dist-label"><span class="mgr-dist-name">${esc(l.label)}, ${esc(l.country)}${l.colo ? ` (${esc(l.colo)})` : ''}</span>${l.activeNow > 0 ? ` <small class="pilot-active-badge">${l.activeNow} live</small>` : ''}</span>
-              <span class="mgr-bar-track"><span class="mgr-bar-fill is-cf" style="display:block;width:${Math.max(5, Math.round(((l.count || 0) / maxLoc) * 100))}%"></span></span>
-              <span class="mgr-dist-count">${l.count || 0}</span>
-            </button>`;
-          }).join('') : '<p class="muted">No visitor locations recorded in this window.</p>'}
-        </div>
-      </div>
-    </section>
+    patchSlot('dist', '#na-dist-list', locs.length ? locs.map(l => {
+      const key = `${l.label}|${l.country}`;
+      return `<button type="button" class="mgr-dist-row ${focusedKey === key ? 'is-active' : ''}" data-na-focus-loc="${esc(key)}">
+        <span class="mgr-dist-label"><span class="mgr-dist-name">${esc(l.label)}, ${esc(l.country)}${l.colo ? ` (${esc(l.colo)})` : ''}</span>${l.activeNow > 0 ? ` <small class="pilot-active-badge">${l.activeNow} live</small>` : ''}</span>
+        <span class="mgr-bar-track"><span class="mgr-bar-fill is-cf" style="display:block;width:${Math.max(5, Math.round(((l.count || 0) / maxLoc) * 100))}%"></span></span>
+        <span class="mgr-dist-count">${l.count || 0}</span>
+      </button>`;
+    }).join('') : '<p class="muted">No visitor locations recorded in this window.</p>');
 
-    ${pilotEngagementMarkup(data)}
+    patchSlot('engagement', '#na-engagement', pilotEngagementMarkup(data));
 
-    <section class="settings-note" style="margin-top:16px">
-      <h2>Traffic Sources</h2>
+    patchSlot('referrers', '#na-referrers', `<h2>Traffic Sources</h2>
       ${(data.topReferrers || []).length ? `<div class="pilot-bars-list" style="margin-top:10px">${data.topReferrers.map(r => `<div class="pilot-bar-row">
         <div class="pilot-bar-head"><span><strong>${esc(r.source)}</strong></span><strong>${r.count}</strong></div>
         <div class="pilot-bar-track"><div class="pilot-bar-fill is-blue" style="width:${Math.max(4, Math.round((r.count / maxRef) * 100))}%"></div></div>
-      </div>`).join('')}</div>` : '<p class="muted">No referrer data in this window.</p>'}
-    </section>
+      </div>`).join('')}</div>` : '<p class="muted">No referrer data in this window.</p>'}`);
 
-    <section class="settings-note">
-      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:10px">
+    patchSlot('demand', '#na-demand', `<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:10px">
         <div>
           <h2>Most Clicked Artworks &amp; Bags Demand</h2>
           <p class="small muted">Sorted by clicks or how many customers currently have each piece in their bag.</p>
@@ -298,16 +343,12 @@ export function mountNetworkAnalyticsPanel(root, { loadTraffic, mountGlobeFn, re
           <td>${it.inCartCount || 0}</td>
           <td>${esc(moneyInr(it.price))}</td>
         </tr>`).join('')}</tbody>
-      </table></div>` : '<p class="muted">No product demand recorded yet.</p>'}
-    </section>
+      </table></div>` : '<p class="muted">No product demand recorded yet.</p>'}`);
 
-    <section class="settings-note">
-      <h2>All Visitors Log (${(data.visitorsLog || []).length})</h2>
+    patchSlot('visitorsLog', '#na-visitors-log', `<h2>All Visitors Log (${(data.visitorsLog || []).length})</h2>
       <p class="small muted" style="margin-bottom:10px">Detailed session-by-session breakdown of location, device, referrer, time spent, scroll depth, and clicks.</p>
-      ${pilotVisitorsLogMarkup(data.visitorsLog)}
-    </section>`;
+      ${pilotVisitorsLogMarkup(data.visitorsLog)}`);
 
-    bindEvents();
     syncGlobe();
   }
 
@@ -327,52 +368,81 @@ export function mountNetworkAnalyticsPanel(root, { loadTraffic, mountGlobeFn, re
     }
   }
 
-  function bindEvents() {
-    root.querySelectorAll('[data-pilot-action="set-preset"]').forEach(b => b.addEventListener('click', () => {
-      preset = b.dataset.preset || 'all';
-      void fetchNow();
-    }));
-    root.querySelectorAll('[data-pilot-action="set-device"]').forEach(b => b.addEventListener('click', () => {
-      device = b.dataset.device || 'all';
-      void fetchNow();
-    }));
-    root.querySelector('[data-pilot-action="open-heatmap"]')?.addEventListener('click', () => onOpenHeatmap?.());
-    root.querySelector('[data-pilot-custom-form]')?.addEventListener('submit', e => {
-      e.preventDefault();
-      const fd = new FormData(e.target);
-      fromLocal = String(fd.get('from') || '');
-      toLocal = String(fd.get('to') || '');
-      const f = fromLocal ? Date.parse(fromLocal) : 0;
-      const t = toLocal ? Date.parse(toLocal) : 0;
-      if (!Number.isFinite(f) || !Number.isFinite(t) || f <= 0 || t <= f) return;
-      preset = 'custom';
-      fromMs = f;
-      toMs = t;
-      void fetchNow();
-    });
-    root.querySelector('[data-na-toggle-live]')?.addEventListener('click', () => {
+  const onClick = event => {
+    const t = event.target;
+    if (!t || !root.contains(t)) return;
+    const presetBtn = t.closest('[data-pilot-action="set-preset"]');
+    if (presetBtn) {
+      preset = presetBtn.dataset.preset || 'all';
+      renderControls();
+      void fetchNow({ manual: true });
+      return;
+    }
+    const devBtn = t.closest('[data-pilot-action="set-device"]');
+    if (devBtn) {
+      device = devBtn.dataset.device || 'all';
+      renderControls();
+      void fetchNow({ manual: true });
+      return;
+    }
+    if (t.closest('[data-pilot-action="open-heatmap"]')) {
+      onOpenHeatmap?.();
+      return;
+    }
+    if (t.closest('[data-na-toggle-live]')) {
       paused = !paused;
-      renderFrame();
-      if (!paused) void fetchNow();
-    });
-    root.querySelector('[data-na-refresh]')?.addEventListener('click', () => void fetchNow());
-    root.querySelector('[data-na-reset-globe]')?.addEventListener('click', () => { focusedKey = ''; globe?.resetView(); });
-    root.querySelectorAll('[data-na-demand-sort]').forEach(b => b.addEventListener('click', () => {
-      itemSort = b.dataset.naDemandSort === 'carts' ? 'carts' : 'clicks';
-      renderFrame();
-    }));
-    root.querySelectorAll('[data-na-focus-loc]').forEach(b => b.addEventListener('click', () => {
-      const key = b.dataset.naFocusLoc || '';
+      const btn = root.querySelector('#na-toggle-live');
+      if (btn) btn.textContent = paused ? 'Resume live (8s)' : 'Live · 8s (Pause)';
+      if (!paused) void fetchNow({ manual: true });
+      return;
+    }
+    if (t.closest('[data-na-refresh]')) {
+      void fetchNow({ manual: true });
+      return;
+    }
+    if (t.closest('[data-na-reset-globe]')) {
+      focusedKey = '';
+      globe?.resetView();
+      return;
+    }
+    const sortBtn = t.closest('[data-na-demand-sort]');
+    if (sortBtn) {
+      itemSort = sortBtn.dataset.naDemandSort === 'carts' ? 'carts' : 'clicks';
+      patchDataSlots();
+      return;
+    }
+    const locBtn = t.closest('[data-na-focus-loc]');
+    if (locBtn) {
+      const key = locBtn.dataset.naFocusLoc || '';
       const loc = (data?.topLocations || []).find(l => `${l.label}|${l.country}` === key);
       const coords = loc && resolveCoordsFn ? resolveCoordsFn(loc) : null;
       focusedKey = key;
+      root.querySelectorAll('#na-dist-list .mgr-dist-row').forEach(el => el.classList.toggle('is-active', el.dataset.naFocusLoc === key));
       if (coords) globe?.focusLocation(coords.lat, coords.lng, key);
-    }));
-  }
+    }
+  };
 
-  async function fetchNow() {
+  const onSubmit = event => {
+    const form = event.target?.closest?.('[data-pilot-custom-form]');
+    if (!form || !root.contains(form)) return;
+    event.preventDefault();
+    const fd = new FormData(form);
+    fromLocal = String(fd.get('from') || '');
+    toLocal = String(fd.get('to') || '');
+    const f = fromLocal ? Date.parse(fromLocal) : 0;
+    const t = toLocal ? Date.parse(toLocal) : 0;
+    if (!Number.isFinite(f) || !Number.isFinite(t) || f <= 0 || t <= f) return;
+    preset = 'custom';
+    fromMs = f;
+    toMs = t;
+    renderControls();
+    void fetchNow({ manual: true });
+  };
+
+  async function fetchNow({ manual = false } = {}) {
     if (disposed || inFlight || typeof loadTraffic !== 'function') return;
-    if (Date.now() < backoffUntil) return;
+    if (!manual && Date.now() < backoffUntil) return;
+    if (!manual && root.querySelector('[data-pilot-custom-form]')?.contains(document.activeElement)) return;
     inFlight = true;
     try {
       const next = await loadTraffic({ preset, fromMs, toMs, device });
@@ -380,7 +450,7 @@ export function mountNetworkAnalyticsPanel(root, { loadTraffic, mountGlobeFn, re
       data = next;
       errorMsg = '';
       backoffUntil = 0;
-      renderFrame();
+      patchDataSlots();
     } catch (err) {
       if (err?.status === 429 || err?.code === 'resource-exhausted') {
         backoffUntil = Date.now() + 60000;
@@ -388,14 +458,17 @@ export function mountNetworkAnalyticsPanel(root, { loadTraffic, mountGlobeFn, re
       } else {
         errorMsg = err?.message || 'Could not load network analytics.';
       }
-      if (!data) renderFrame();
+      if (!data) patchDataSlots();
     } finally {
       inFlight = false;
     }
   }
 
-  renderFrame();
-  void fetchNow();
+  mountShell();
+  root.addEventListener('click', onClick);
+  root.addEventListener('submit', onSubmit);
+  patchDataSlots();
+  void fetchNow({ manual: true });
   timer = setInterval(() => {
     if (!paused && typeof document !== 'undefined' && document.visibilityState === 'visible') void fetchNow();
   }, 8000);
@@ -404,6 +477,8 @@ export function mountNetworkAnalyticsPanel(root, { loadTraffic, mountGlobeFn, re
     destroy() {
       disposed = true;
       clearInterval(timer);
+      root.removeEventListener('click', onClick);
+      root.removeEventListener('submit', onSubmit);
       globe?.destroy();
       globe = null;
     }

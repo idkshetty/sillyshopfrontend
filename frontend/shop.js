@@ -78,6 +78,12 @@ function isAnimationPlaying() {
     '.cart-button[aria-busy="true"], .cart-checkout-flow.is-checking-out, .pos-transaction-container.is-animating, .logoutButton.clicked, .payment-outcome-scene'
   ));
 }
+function isUserInteractingInMain() {
+  const el = document.activeElement;
+  const main = $('main');
+  if (!el || !main || !main.contains(el)) return false;
+  return ['INPUT', 'TEXTAREA', 'SELECT'].includes(el.tagName) || Boolean(el.isContentEditable);
+}
 const checkoutTouched=new Set();
 let checkoutStepMotionToken=0,checkoutStepAnimations=[];
 let toastTimer, orderNote = '';
@@ -2368,7 +2374,7 @@ function onCatalogUpdated(){
     }
     return;
   }
-  render();
+  if(!isUserInteractingInMain())render();
 }
 async function startCatalog(){const generation=++catalogGeneration;if(unsubscribeProducts)unsubscribeProducts();catalogError='';updateBanner();if(!catalogReady){render();if($('cart-dialog').open)renderCart();if($('search-dialog').open)renderSearch();}try{const stop=await store.observeProducts(isAdmin,list=>{if(generation!==catalogGeneration)return;products=mergeWithStarterProducts(list);for(const p of products)rememberedProducts.set(p.id,p);catalogReady=true;catalogSynced=true;catalogError='';reconcileCart();updateBanner();onCatalogUpdated();if($('cart-dialog').open)renderCart();if($('search-dialog').open)renderSearch();},error=>{if(generation!==catalogGeneration)return;if(!products.length)products=[...STARTER_PRODUCTS];catalogReady=true;catalogSynced=true;catalogError='';reconcileCart();updateBanner();if(route().page==='checkout'&&$('checkout-form'))updateCheckoutAvailability();else onCatalogUpdated();if($('cart-dialog').open)renderCart();if($('search-dialog').open)renderSearch();});if(generation!==catalogGeneration)stop();else unsubscribeProducts=stop;}catch(error){if(generation!==catalogGeneration)return;if(!products.length)products=[...STARTER_PRODUCTS];catalogReady=true;catalogSynced=true;catalogError='';reconcileCart();updateBanner();onCatalogUpdated();if($('cart-dialog').open)renderCart();if($('search-dialog').open)renderSearch();}}
 
@@ -3417,7 +3423,7 @@ store.observeSettings(settings=>{
   storeSettings=settings;settingsReady=true;settingsError='';applyStoreBanners();
   if(liveSiteEditor.isActive())return;
   const page=route().page;
-  if((page==='home'||page==='shop'||page==='about')&&!isAnimationPlaying())render();
+  if((page==='home'||page==='shop'||page==='about')&&!isAnimationPlaying()&&!isUserInteractingInMain())render();
   if(page==='admin'){
     if(adminTab==='policies'&&$('admin-toggle-about-page'))$('admin-toggle-about-page').checked=Boolean(storeSettings.aboutVisible);
     if(adminTab==='policies'&&$('admin-toggle-story-section'))$('admin-toggle-story-section').checked=storeSettings.storyVisible!==false;
@@ -3434,7 +3440,7 @@ store.observeSettings(settings=>{
 store.observeArtists(list=>{
   artists=normalizeArtists(list);
   if(liveSiteEditor.isActive())return;
-  if(['artists','artist','home'].includes(route().page))render();
+  if(['artists','artist','home'].includes(route().page)&&!isUserInteractingInMain())render();
   if(route().page==='admin'&&adminTab==='artists'&&!artistStudioController?.isDirty?.()){
     if(artistStudioController)artistStudioController.refresh();
     else renderAdminContent();
@@ -3479,7 +3485,7 @@ store.observeContent(value=>{
   if(liveSiteEditor.isActive())return;
   refreshStoreContent();
   if(contentEditor){contentEditor.updatePublished(value);return;}
-  if(changed&&!submitting&&!isAnimationPlaying()&&!['checkout','account','admin'].includes(route().page))render();
+  if(changed&&!submitting&&!isAnimationPlaying()&&!isUserInteractingInMain()&&!['checkout','account','admin'].includes(route().page))render();
 },()=>{contentError='Published page content could not load. Check your connection and deploy the updated Realtime Database rules, then reload. Publishing is disabled until the content loads.';if(!submitting&&!isAnimationPlaying()&&!['checkout','account','admin'].includes(route().page))render();}).catch(()=>{contentError='The page editor could not connect. Reload to try again.';if(!submitting&&!isAnimationPlaying()&&!['checkout','account','admin'].includes(route().page))render();});
 
 // Automatic Firebase Base64 fallback if an external hosted image (e.g. Freeimage.host) fails to load.
