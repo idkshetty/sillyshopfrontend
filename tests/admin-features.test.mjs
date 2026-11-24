@@ -4,10 +4,12 @@ import { ADMIN_NAV_GROUPS, normalizeAdminTab, orderCardMarkup, thermalPrinterDoc
 import { ordersListMarkup } from '../frontend/customer-dashboard.js';
 import { reviewSection } from '../frontend/shop-effects.js';
 
-test('Admin navigation includes Buyer reviews and Activity log tabs', () => {
+test('Admin navigation includes Network & analytics, Buyer reviews and Activity log tabs', () => {
   const storeItems = ADMIN_NAV_GROUPS[0].items.map(([id]) => id);
+  assert.ok(storeItems.includes('analytics'));
   assert.ok(storeItems.includes('reviews'));
   assert.ok(storeItems.includes('audit'));
+  assert.deepEqual(normalizeAdminTab('analytics'), { tab: 'analytics', policyTab: null });
   assert.deepEqual(normalizeAdminTab('reviews'), { tab: 'reviews', policyTab: null });
   assert.deepEqual(normalizeAdminTab('audit'), { tab: 'audit', policyTab: null });
 });

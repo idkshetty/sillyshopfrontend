@@ -17,7 +17,14 @@ import {
 import {
   mountTrafficGlobe,
   resolveLocationCoords
-} from './traffic-globe.js?v=20261124d';
+} from './traffic-globe.js?v=20261125a';
+import {
+  pilotControlsMarkup,
+  pilotTimelineSvgMarkup,
+  pilotEngagementMarkup,
+  pilotVisitorsLogMarkup,
+  toDatetimeLocalValue
+} from '../pilot-analytics-ui.js?v=20261125a';
 
 const $ = id => document.getElementById(id);
 const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -67,7 +74,7 @@ const BIN_STEP_LABELS = [
   ['received_at_studio', 'Received']
 ];
 
-const GENRE_PRESETS = ['Fridge Magnet', 'Clay Frame', 'Original Painting', 'Coaster', 'Keychain', 'Ceramic Study'];
+const GENRE_PRESETS = ['Fridge Magnet', 'Clay Frame', 'Original Painting', 'DIY Kit', 'Coaster', 'Keychain', 'Ceramic Study'];
 
 const NAV_ICONS = {
   analytics: '<path d="M3 3v18h18"/><path d="M7 15v-4"/><path d="M12 15V8"/><path d="M17 15v-6"/>',
@@ -106,6 +113,12 @@ const state = {
   trafficLivePaused: false,
   trafficGlobeMode: 'all',
   trafficFocusedLocKey: '',
+  trafficPreset: 'all',
+  trafficDevice: 'all',
+  trafficFromMs: 0,
+  trafficToMs: 0,
+  trafficFromLocal: '',
+  trafficToLocal: '',
   itemDemandSort: 'clicks',
   importSearch: '',
   artworks: [],
@@ -288,6 +301,16 @@ async function refreshAccess() {
   }
 }
 
+function trafficQueryPayload() {
+  return {
+    preset: state.trafficPreset || 'all',
+    device: state.trafficDevice || 'all',
+    ...(state.trafficPreset === 'custom' && state.trafficFromMs && state.trafficToMs
+      ? { fromMs: state.trafficFromMs, toMs: state.trafficToMs }
+      : {})
+  };
+}
+
 function waPhoneHref(phone) {
   const digits = String(phone || '').replace(/\D+/g, '');
   if (!digits) return '';
@@ -345,7 +368,7 @@ async function loadWorkspaceData() {
       isAdmin ? callManager('managerListOrders') : Promise.resolve([]),
       isAdmin ? callManager('managerListSiteStock').catch(() => null) : Promise.resolve(null),
       isAdmin ? callManager('managerListCustomerBags').catch(() => null) : Promise.resolve(null),
-      isAdmin ? callManager('managerSiteTraffic').catch(() => null) : Promise.resolve(null)
+      isAdmin ? callManager('managerSiteTraffic', trafficQueryPayload()).catch(() => null) : Promise.resolve(null)
     ]);
     state.analytics = analytics || null;
     state.artworks = Array.isArray(artworks) ? artworks : [];
@@ -763,9 +786,12 @@ function patchTrafficSection(key, el, nextHtml) {
 
 function patchTrafficLiveDOM() {
   patchTrafficSection('kpis', $('mgr-traffic-kpis'), renderTrafficKpisMarkup());
+  patchTrafficSection('timeline', $('mgr-traffic-timeline'), pilotTimelineSvgMarkup(state.siteTraffic?.timeline, state.siteTraffic?.window));
   patchTrafficSection('dist', $('mgr-traffic-dist-list'), renderTrafficDistributionListMarkup());
   patchTrafficSection('browsing', $('mgr-traffic-browsing'), renderTrafficActiveBrowsingMarkup());
   patchTrafficSection('lower', $('mgr-traffic-lower'), renderTrafficLowerMarkup());
+  patchTrafficSection('engagement', $('mgr-traffic-engagement'), pilotEngagementMarkup(state.siteTraffic || {}));
+  patchTrafficSection('visitorsLog', $('mgr-traffic-visitors-log'), pilotVisitorsLogMarkup(state.siteTraffic?.visitorsLog || []));
   const updEl = $('mgr-traffic-updated-at');
   if (updEl) updEl.textContent = state.trafficUpdatedAt ? `Updated ${fmtClock(state.trafficUpdatedAt)}` : 'Waiting…';
   updateTrafficNavBadges();
@@ -790,7 +816,7 @@ async function pollActiveTabLive({ manual = false } = {}) {
   managerPollInFlight = true;
   try {
     if (tab === 'traffic' && isAdmin) {
-      const next = await callManager('managerSiteTraffic');
+      const next = await callManager('managerSiteTraffic', trafficQueryPayload());
       if (next) {
         state.siteTraffic = next;
         state.trafficUpdatedAt = Date.now();
@@ -1012,7 +1038,20 @@ function renderTrafficTab() {
       </div>
     </div>
 
+    <div id="mgr-traffic-controls">${pilotControlsMarkup({
+      preset: state.trafficPreset,
+      device: state.trafficDevice,
+      fromLocal: state.trafficFromLocal || toDatetimeLocalValue(Date.now() - 3600000),
+      toLocal: state.trafficToLocal || toDatetimeLocalValue(Date.now()),
+      showHeatmapBtn: true,
+      heatmapHref: 'https://hehe.cafe/#home?heatmap=1'
+    })}</div>
+
     <div id="mgr-traffic-kpis">${renderTrafficKpisMarkup()}</div>
+
+    <section class="mgr-panel" style="margin-bottom:16px">
+      <div id="mgr-traffic-timeline">${pilotTimelineSvgMarkup(state.siteTraffic?.timeline, state.siteTraffic?.window)}</div>
+    </section>
 
     <section class="mgr-panel mgr-globe-card">
       <div class="mgr-globe-head">
@@ -1035,7 +1074,9 @@ function renderTrafficTab() {
       <div id="mgr-traffic-browsing">${renderTrafficActiveBrowsingMarkup()}</div>
     </section>
 
-    <div id="mgr-traffic-lower">${renderTrafficLowerMarkup()}</div>`;
+    <div id="mgr-traffic-lower">${renderTrafficLowerMarkup()}</div>
+    <div id="mgr-traffic-engagement">${pilotEngagementMarkup(state.siteTraffic || {})}</div>
+    <div id="mgr-traffic-visitors-log">${pilotVisitorsLogMarkup(state.siteTraffic?.visitorsLog || [])}</div>`;
 }
 
 function syncTrafficGlobe() {
@@ -1493,6 +1534,7 @@ function renderCafesTab(isAdmin) {
       <div class="mgr-head-actions">
         <button type="button" class="mgr-btn" data-action="open-cafe-modal">+ Add partner café</button>
         ${state.cafes.length && assignableArts.length ? `<button type="button" class="mgr-btn accent" data-action="open-assign-cafe-modal">Send batch to café →</button>` : ''}
+        ${(state.cafes.length || activeStock.length || pastStock.length) ? `<button type="button" class="mgr-btn danger outline small" data-action="clear-all-cafes">Clear all café data</button>` : ''}
         <button type="button" class="mgr-btn outline small" data-action="refresh-all">Refresh ↻</button>
       </div>
     </div>
@@ -2654,6 +2696,29 @@ document.addEventListener('click', async event => {
     state.lookupQuery = '';
     updateLookupResultsOnly();
   }
+  const pilotBtn = event.target.closest('[data-pilot-action]');
+  if (pilotBtn) {
+    const pa = pilotBtn.dataset.pilotAction;
+    if (pa === 'set-preset') {
+      state.trafficPreset = pilotBtn.dataset.preset || 'all';
+      if (state.trafficPreset !== 'custom') { state.trafficFromMs = 0; state.trafficToMs = 0; }
+    } else if (pa === 'set-device') {
+      state.trafficDevice = pilotBtn.dataset.device || 'all';
+    }
+    const ctrlHost = $('mgr-traffic-controls');
+    if (ctrlHost) {
+      ctrlHost.innerHTML = pilotControlsMarkup({
+        preset: state.trafficPreset,
+        device: state.trafficDevice,
+        fromLocal: state.trafficFromLocal || toDatetimeLocalValue(Date.now() - 3600000),
+        toLocal: state.trafficToLocal || toDatetimeLocalValue(Date.now()),
+        showHeatmapBtn: true,
+        heatmapHref: 'https://hehe.cafe/#home?heatmap=1'
+      });
+    }
+    void pollActiveTabLive({ manual: true });
+    return;
+  }
   const btn = event.target.closest('[data-action]');
   if (!btn || btn.disabled) return;
   const action = btn.dataset.action;
@@ -3050,6 +3115,25 @@ document.addEventListener('click', async event => {
       $('mgr-dialog')?.close();
       toast(`Revoked access for ${email}.`);
       await loadWorkspaceData();
+    } else if (action === 'clear-all-cafes') {
+      openConfirmModal({
+        eyebrow: 'Partner Cafés · Cleanup',
+        title: 'Clear all Partner Café data?',
+        message: 'Permanently removes all partner cafés, café shelf stock, batches, and café sales records, and resets any artwork references back to Studio Stock. Online orders and sales are NOT touched.',
+        confirmLabel: 'Clear café data',
+        danger: true,
+        onConfirmAction: 'exec-clear-all-cafes'
+      });
+    } else if (action === 'exec-clear-all-cafes') {
+      btn.disabled = true;
+      btn.textContent = 'Clearing…';
+      setBusy(true);
+      const clearRes = await callManager('managerClearAllCafes', { confirm: 'CLEAR ALL CAFES' });
+      const cleared = clearRes?.cleared || clearRes || {};
+      $('mgr-dialog')?.close();
+      state.activeCafeId = '';
+      toast(`Cleared cafés (${cleared?.cafes || 0} cafés, ${cleared?.stock || 0} shelf items).`);
+      await loadWorkspaceData();
     }
   } catch (error) {
     toast(error?.message || 'Action failed.', { isError: true });
@@ -3246,6 +3330,35 @@ document.addEventListener('input', event => {
 document.addEventListener('submit', async event => {
   event.preventDefault();
   const form = event.target;
+  if (form.matches?.('[data-pilot-custom-form]')) {
+    const fd = new FormData(form);
+    const fromStr = String(fd.get('from') || '');
+    const toStr = String(fd.get('to') || '');
+    const fromMs = fromStr ? Date.parse(fromStr) : 0;
+    const toMs = toStr ? Date.parse(toStr) : 0;
+    if (Number.isFinite(fromMs) && Number.isFinite(toMs) && fromMs > 0 && toMs >= fromMs) {
+      state.trafficPreset = 'custom';
+      state.trafficFromMs = fromMs;
+      state.trafficToMs = toMs;
+      state.trafficFromLocal = fromStr;
+      state.trafficToLocal = toStr;
+      const ctrlHost = $('mgr-traffic-controls');
+      if (ctrlHost) {
+        ctrlHost.innerHTML = pilotControlsMarkup({
+          preset: state.trafficPreset,
+          device: state.trafficDevice,
+          fromLocal: state.trafficFromLocal,
+          toLocal: state.trafficToLocal,
+          showHeatmapBtn: true,
+          heatmapHref: 'https://hehe.cafe/#home?heatmap=1'
+        });
+      }
+      await pollActiveTabLive({ manual: true });
+    } else {
+      toast('Choose a valid From and To date/time.', { isError: true });
+    }
+    return;
+  }
   const submitBtn = form.querySelector('button[type="submit"]');
   const origLabel = submitBtn ? submitBtn.textContent : '';
   if (submitBtn) {

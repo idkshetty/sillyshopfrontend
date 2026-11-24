@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 180" fill="none">
+  <rect width="240" height="180" rx="18" fill="#f6f2ea"/>
+  <rect x="64" y="24" width="112" height="132" rx="18" fill="#ffffff" stroke="#d8cfc0" stroke-width="2.5"/>
+  <rect x="74" y="34" width="92" height="112" rx="12" fill="#fbf9f5" stroke="#ece5d8" stroke-width="1.5" stroke-dasharray="4 4"/>
+  <circle cx="120" cy="76" r="24" fill="#2c3138"/>
+  <circle cx="120" cy="76" r="18" fill="#464d57" stroke="#8f98a6" stroke-width="1.5"/>
+  <path d="M111 76h18M120 67v18" stroke="#c8d0dc" stroke-width="1.5" stroke-linecap="round" opacity=".5"/>
+  <rect x="86" y="114" width="68" height="20" rx="10" fill="#181715"/>
+  <text x="120" y="128" text-anchor="middle" font-family="system-ui,sans-serif" font-size="9.5" font-weight="700" fill="#faf8f5">MAGNET BACK</text>
+</svg>

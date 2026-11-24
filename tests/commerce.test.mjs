@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {cartLines,subtotal,totalWithShipping,shippingForQuantity,shippingPaiseForQuantity,filterProducts,validateCustomer,safeImage,escapeHTML,CATEGORIES} from '../frontend/commerce.js';
+import {cartLines,subtotal,totalWithShipping,shippingForQuantity,shippingPaiseForQuantity,filterProducts,validateCustomer,safeImage,escapeHTML,CATEGORIES,isDiyKit} from '../frontend/commerce.js';
 import {pruneCart} from '../frontend/cart-state.js';
 const products=[{id:'a',title:'Landscape',description:'Mountain painting',category:'paintings',price:10.10,stock:2,visible:true},{id:'b',title:'Clay friend',description:'Small clay model',category:'clay-models',price:0.20,stock:3,visible:true},{id:'c',title:'Rock bird',description:'Painted river stone',category:'rock-paints',price:5.00,stock:2,visible:true},{id:'hidden',title:'Hidden',price:20,stock:5,visible:false},{id:'sold',title:'Sold',price:30,stock:0,visible:true}];
 test('cart drops hidden, removed, sold out, duplicate and malformed lines; caps qty to 1 and allows unlimited distinct items',()=>{
@@ -95,4 +95,33 @@ test('promotions compute bundle tiers, promo codes and 1 rupee payable floor',as
   const hint=nextBundleHint(1,promos);
   assert.equal(hint?.minQty,2);
   assert.equal(hint?.remaining,1);
+});
+
+test('back attachment pricing toggles cleanly and DIY Kit detection keeps 4 primary categories',()=>{
+  const art=[{id:'d1',title:'Paint Your Toad',productType:'DIY Kit',category:'paintings',price:300,stock:2,visible:true}];
+  assert.equal(isDiyKit(art[0]),true);
+  assert.equal(isDiyKit({productType:'Fridge Magnet'}),false);
+  assert.equal(CATEGORIES.length,4);
+
+  const offLines=cartLines([{id:'d1',quantity:1,attachmentId:'stand'}],art,{backAttachmentsEnabled:false});
+  assert.equal(offLines[0].unitPrice,300);
+  assert.equal(offLines[0].attachment,null);
+
+  const onSettings={
+    backAttachmentsEnabled:true,
+    backAttachmentOptions:[
+      {id:'magnet',label:'Fridge Magnet',shortLabel:'Magnet',price:20,enabled:true},
+      {id:'tape',label:'Sticky Tape',shortLabel:'Sticky Tape',price:15,enabled:true},
+      {id:'stand',label:'Desk Buddy Stand',shortLabel:'Desk Stand',price:50,enabled:true}
+    ]
+  };
+  const defOn=cartLines([{id:'d1',quantity:1}],art,onSettings);
+  assert.equal(defOn[0].attachment.id,'magnet');
+  assert.equal(defOn[0].unitPrice,320);
+
+  const standOn=cartLines([{id:'d1',quantity:1,attachmentId:'stand'}],art,onSettings);
+  assert.equal(standOn[0].attachment.id,'stand');
+  assert.equal(standOn[0].attachmentPrice,50);
+  assert.equal(standOn[0].unitPrice,350);
+  assert.equal(subtotal(standOn),350);
 });

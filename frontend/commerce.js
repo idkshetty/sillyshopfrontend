@@ -1,10 +1,13 @@
 import {validLocation} from './location-utils.js';
 import {validImageSource} from './image-data.js';
+import {resolveBackAttachment} from './store-settings.js';
 export const MAX_ITEM_QUANTITY = 1;
 export const SHIPPING_CHARGE = 40;
 export const SHIPPING_PAISE = 4000;
 export const shippingForQuantity = qty => Math.max(0, Math.floor(Number(qty) || 0)) * SHIPPING_CHARGE;
 export const shippingPaiseForQuantity = qty => Math.max(0, Math.floor(Number(qty) || 0)) * SHIPPING_PAISE;
+export const PRODUCT_TYPE_PRESETS = ['Fridge Magnet', 'Clay Frame', 'DIY Kit', 'Original Painting', 'Coaster', 'Keychain', 'Ceramic Study'];
+export const isDiyKit = product => String(product?.productType || '').trim().toLowerCase() === 'diy kit';
 export const CATEGORIES = [
   { id: 'paintings', name: 'Paintings', description: 'Little windows to a world of colour.', image: 'assets/paintings.svg' },
   { id: 'clay-models', name: 'Clay models', description: 'Small characters. Big personalities.', image: 'assets/clay-models.svg' },
@@ -183,7 +186,7 @@ export function sortArtworks(list = [], mode = 'manual') {
     return String(a?.id || '').localeCompare(String(b?.id || ''));
   });
 }
-export function cartLines(cart, products) {
+export function cartLines(cart, products, settings = null) {
   if (!Array.isArray(cart)) return [];
   const seen = new Set();
   return cart.flatMap(item => {
@@ -192,7 +195,20 @@ export function cartLines(cart, products) {
     const product = products.find(p => p.id === item.id && p.visible);
     if (!product || !Number.isInteger(item.quantity) || item.quantity < 1 || product.stock < 1) return [];
     const quantity = Math.min(item.quantity, product.stock, MAX_ITEM_QUANTITY);
-    return [{ product, quantity, total: Math.round(product.price * 100) * quantity / 100 }];
+    const attachment = resolveBackAttachment(item.attachmentId, settings);
+    const attachmentPrice = attachment ? (Number(attachment.price) || 0) : 0;
+    const basePaise = Math.round(product.price * 100);
+    const addPaise = Math.round(attachmentPrice * 100);
+    const unitPaise = basePaise + addPaise;
+    return [{
+      product,
+      quantity,
+      basePrice: basePaise / 100,
+      attachment,
+      attachmentPrice: addPaise / 100,
+      unitPrice: unitPaise / 100,
+      total: (unitPaise * quantity) / 100
+    }];
   });
 }
 export const subtotal = lines => lines.reduce((sum, line) => sum + Math.round(line.total * 100), 0) / 100;

@@ -1,9 +1,23 @@
 import {MAX_ITEM_QUANTITY} from './commerce.js';
+import {resolveBackAttachment} from './store-settings.js';
 // Catalogue refreshes must never silently delete a customer's selected items.
-export function selectedCartLines(cart,products,remembered=[]){
+export function selectedCartLines(cart,products,remembered=[],settings=null){
   return cart.map(item=>{
     const product=products.find(p=>p.id===item.id)||remembered.find(p=>p.id===item.id)||{id:item.id,title:'Unavailable product',category:'paintings',price:0,stock:0,visible:false,images:[]};
-    return {product,quantity:item.quantity,total:Math.round(product.price*100)*item.quantity/100};
+    const attachment=resolveBackAttachment(item.attachmentId,settings);
+    const attachmentPrice=attachment?(Number(attachment.price)||0):0;
+    const basePaise=Math.round((Number(product.price)||0)*100);
+    const addPaise=Math.round(attachmentPrice*100);
+    const unitPaise=basePaise+addPaise;
+    return {
+      product,
+      quantity:item.quantity,
+      basePrice:basePaise/100,
+      attachment,
+      attachmentPrice:addPaise/100,
+      unitPrice:unitPaise/100,
+      total:(unitPaise*item.quantity)/100
+    };
   });
 }
 export function cartIssues(cart,products,displayedProducts=[]){
@@ -51,13 +65,14 @@ export function pruneCart(cart, products, remembered = []) {
     const maxQty = Math.min(MAX_ITEM_QUANTITY, product.stock);
     const rawQty = item.quantity;
     const qty = Number.isInteger(rawQty) && rawQty > 0 ? rawQty : 1;
+    const keepAttach = typeof item.attachmentId === 'string' && item.attachmentId ? { attachmentId: item.attachmentId } : {};
     if (qty > maxQty) {
       changed = true;
-      nextCart.push({ id: item.id, quantity: maxQty });
+      nextCart.push({ id: item.id, quantity: maxQty, ...keepAttach });
       notes.push(`"${name}" quantity was adjusted to ${maxQty} (limit ${MAX_ITEM_QUANTITY} per artwork).`);
     } else {
       if (qty !== rawQty) changed = true;
-      nextCart.push({ id: item.id, quantity: qty });
+      nextCart.push({ id: item.id, quantity: qty, ...keepAttach });
     }
   }
 

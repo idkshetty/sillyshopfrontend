@@ -37,6 +37,9 @@ export function mountLiveSiteEditor({
     host.hidden = true;
     document.body.append(host);
     host.addEventListener('click', handleHostClick);
+    host.addEventListener('keydown', event => {
+      if (event.target?.closest?.('input,textarea,select')) event.stopPropagation();
+    });
     return host;
   }
 

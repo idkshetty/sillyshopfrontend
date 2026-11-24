@@ -62,6 +62,54 @@ export function finalNormalize(target, text) {
   return value;
 }
 
+function selectAllText(doc, el) {
+  try {
+    const selection = doc.getSelection?.();
+    if (!selection) return;
+    const range = doc.createRange();
+    range.selectNodeContents(el);
+    selection.removeAllRanges();
+    selection.addRange(range);
+  } catch { /* selection API unavailable */ }
+}
+
+function getCaretOffset(doc, el) {
+  try {
+    const selection = doc.getSelection?.();
+    if (!selection || !selection.rangeCount) return -1;
+    const range = selection.getRangeAt(0);
+    if (!el.contains(range.endContainer)) return -1;
+    const pre = range.cloneRange();
+    pre.selectNodeContents(el);
+    pre.setEnd(range.endContainer, range.endOffset);
+    return pre.toString().length;
+  } catch { return -1; }
+}
+
+function setCaretOffset(doc, el, offset) {
+  if (offset < 0) return setCaretEnd(doc, el);
+  try {
+    const selection = doc.getSelection?.();
+    if (!selection) return;
+    const walker = doc.createTreeWalker(el, 4 /* NodeFilter.SHOW_TEXT */);
+    let remaining = offset;
+    let node;
+    while ((node = walker.nextNode())) {
+      const len = node.nodeValue?.length || 0;
+      if (remaining <= len) {
+        const range = doc.createRange();
+        range.setStart(node, remaining);
+        range.collapse(true);
+        selection.removeAllRanges();
+        selection.addRange(range);
+        return;
+      }
+      remaining -= len;
+    }
+    setCaretEnd(doc, el);
+  } catch { setCaretEnd(doc, el); }
+}
+
 function setCaretEnd(doc, el) {
   try {
     const selection = doc.getSelection?.();
@@ -276,19 +324,39 @@ export function mountInlineEditing({ doc = null, frame = null, ignoreSelector = 
     }, true);
     targetDoc.addEventListener('keydown', event => {
       if (!editing || !editing.el.contains(event.target)) return;
+      event.stopPropagation();
+      const mod = event.ctrlKey || event.metaKey;
+      if (mod && String(event.key || '').toLowerCase() === 'a') {
+        event.preventDefault();
+        selectAllText(targetDoc, editing.el);
+        return;
+      }
+      if (mod && ['b', 'i', 'u', 'k'].includes(String(event.key || '').toLowerCase())) {
+        event.preventDefault();
+        return;
+      }
       if (event.key === 'Escape') { event.preventDefault(); cancel(); return; }
       if (event.key === 'Enter') {
         event.preventDefault();
-        if (!editing.target.multiline || event.ctrlKey || event.metaKey) { commit(); return; }
+        if (!editing.target.multiline || mod) { commit(); return; }
         insertPlain(targetDoc, editing.el, '\n');
       }
+    }, true);
+    targetDoc.addEventListener('keyup', event => {
+      if (!editing || !editing.el.contains(event.target)) return;
+      event.stopPropagation();
+      if (event.key === ' ' || event.key === 'Enter') event.preventDefault();
     }, true);
     targetDoc.addEventListener('input', event => {
       if (!editing || !editing.el.contains(event.target)) return;
       const { el, target } = editing;
       const raw = readText(el);
       const live = liveNormalize(target, raw);
-      if (live !== raw) { el.textContent = live; setCaretEnd(targetDoc, el); }
+      if (live !== raw || el.children.length > 0) {
+        const caret = getCaretOffset(targetDoc, el);
+        el.textContent = live;
+        setCaretOffset(targetDoc, el, caret >= 0 ? Math.min(caret, live.length) : live.length);
+      }
       mirror(targetDoc, el, target, live);
       onInput?.(target, live);
     }, true);

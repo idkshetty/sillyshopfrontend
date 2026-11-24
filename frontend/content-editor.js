@@ -270,8 +270,24 @@ export function mountContentEditor(root,initial,{onPublish,onUpload,products=()=
     const html=editorPreview(draft,page,products(),settings(),header(),artists());
     if(html!==lastPreviewHtml){
       const scrollTop=page===previousPage?(frame.contentDocument?.documentElement.scrollTop||0):0;
+      const activeControl=document.activeElement&&root.contains(document.activeElement)?document.activeElement:null;
+      const selStart=activeControl&&'selectionStart'in activeControl?activeControl.selectionStart:null;
+      const selEnd=activeControl&&'selectionEnd'in activeControl?activeControl.selectionEnd:null;
       previousPage=page;lastPreviewHtml=html;
-      frame.onload=()=>{frame.contentWindow?.scrollTo(0,scrollTop);applyEditorHighlight(pendingHighlightScroll);pendingHighlightScroll=false;inline.bind();};
+      frame.onload=()=>{
+        frame.contentWindow?.scrollTo(0,scrollTop);
+        applyEditorHighlight(pendingHighlightScroll);
+        pendingHighlightScroll=false;
+        inline.bind();
+        if(activeControl&&activeControl.isConnected&&document.activeElement!==activeControl&&!activeControl.matches?.('iframe')){
+          try{
+            activeControl.focus({preventScroll:true});
+            if(selStart!==null&&selEnd!==null&&typeof activeControl.setSelectionRange==='function'){
+              activeControl.setSelectionRange(selStart,selEnd);
+            }
+          }catch{}
+        }
+      };
       frame.srcdoc=html;
     }else{
       if(pendingHighlightScroll){applyEditorHighlight(true);pendingHighlightScroll=false;}
@@ -316,6 +332,14 @@ export function mountContentEditor(root,initial,{onPublish,onUpload,products=()=
     applyEditorHighlight(true);
     pendingHighlightScroll=false;
   }
+  form.addEventListener('keydown',event=>{
+    if(event.target.closest('input,textarea,select')){
+      event.stopPropagation();
+      if(event.key==='Enter'&&event.target.tagName==='INPUT'&&event.target.type!=='submit'){
+        event.preventDefault();
+      }
+    }
+  });
   form.addEventListener('input',changed);
   form.addEventListener('focusin',event=>{const c=event.target.closest('input,textarea,select');if(c)highlightControl(c);});
   form.addEventListener('click',event=>{const c=event.target.closest('input[type=checkbox],input[type=file],button');if(c)highlightControl(c);});

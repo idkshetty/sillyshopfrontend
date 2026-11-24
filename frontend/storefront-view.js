@@ -1,4 +1,4 @@
-import { escapeHTML as e, safeImage, cardImage, progressiveImageSources, money, SHIPPING_CHARGE, artworkColorFor, artworkThemeStyle, contrastColorFor, sortArtworks, filterProducts } from './commerce.js';
+import { escapeHTML as e, safeImage, cardImage, progressiveImageSources, money, SHIPPING_CHARGE, artworkColorFor, artworkThemeStyle, contrastColorFor, sortArtworks, filterProducts, isDiyKit } from './commerce.js';
 import { artistSlug, mergeArtistsWithProducts } from './artists.js';
 import { contentCategories, DEFAULT_CONTENT } from './store-content.js';
 import { bannerMarkup, FALLBACK_BANNER_ARTWORKS, DEFAULT_HOME_SECTIONS, safeStoreLink } from './store-settings.js';
@@ -36,12 +36,13 @@ export function productCardMarkup(p, content = DEFAULT_CONTENT, { index = 99 } =
   const themeStyle = artworkThemeStyle(p);
   const bgColor = artworkColorFor(p);
   const soldOut = p.stock < 1;
-  return `<article class="product-card ${soldOut ? 'is-sold-out-card' : ''}" data-product-card data-product-id="${e(p.id)}" data-bg-color="${e(bgColor)}" style="${themeStyle}">
+  const diy = isDiyKit(p);
+  return `<article class="product-card ${soldOut ? 'is-sold-out-card' : ''} ${diy ? 'is-diy-kit-card' : ''}" data-product-card data-product-id="${e(p.id)}" data-bg-color="${e(bgColor)}" style="${themeStyle}">
     <a class="product-card-image" href="#product/${e(p.id)}">
       <div class="artwork-mat-frame">
         <img src="${e(prog.src)}"${prog.hdSrc ? ` data-hd-src="${e(prog.hdSrc)}"` : ''}${prog.fallbackSrc ? ` data-fallback-src="${e(prog.fallbackSrc)}"` : ''} alt="${e(p.title)} by ${e(artist)}" ${loadAttr} decoding="async" data-artwork-img>
       </div>
-      ${!soldOut && p.tag ? `<span class="badge unique-badge">${e(p.tag)}</span>` : ''}
+      ${!soldOut && p.tag ? `<span class="badge unique-badge">${e(p.tag)}</span>` : (!soldOut && diy ? '<span class="badge unique-badge">DIY Paint Kit</span>' : '')}
     </a>
     <div class="product-card-body">
       <div class="product-card-meta-top">
@@ -51,6 +52,7 @@ export function productCardMarkup(p, content = DEFAULT_CONTENT, { index = 99 } =
       <h2><a href="#product/${e(p.id)}">${e(p.title)}</a></h2>
       ${soldOut ? '<span class="card-sold-out-pill">Sold out</span>' : ''}
       <p class="artwork-card-description">${e(desc)}</p>
+      ${diy ? '<p class="diy-kit-card-note">Includes line art · base plate · back attachment</p>' : ''}
       ${specs ? `<p class="artwork-card-specs">${e(specs)}</p>` : ''}
       <div class="product-card-price-row">
         <p class="price">${money(p.price)}${p.comparePrice > p.price ? ` <del>${money(p.comparePrice)}</del>` : ''}</p>
@@ -98,7 +100,7 @@ export function homeFilterPanelMarkup(products, filter = {}) {
           <button type="button" class="filter-chip ${filter.available ? 'is-active' : ''}" data-action="toggle-filter-available">In stock only</button>
         </div>
       </div>
-      ${types.length > 1 ? `<div class="filter-panel-group">
+      ${(types.length > 1 || types.some(t => t.toLowerCase() === 'diy kit')) ? `<div class="filter-panel-group">
         <p class="filter-panel-label">Category</p>
         <div class="filter-chip-row">
           <button type="button" class="filter-chip ${!filter.productType ? 'is-active' : ''}" data-action="set-filter-type" data-type="">All types</button>

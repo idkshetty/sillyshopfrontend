@@ -153,6 +153,43 @@ export function mobileGridBreakpointCss(rawBp = 580) {
 }`;
 }
 
+export const DEFAULT_BACK_ATTACHMENTS = [
+  { id: 'magnet', label: 'Fridge Magnet', shortLabel: 'Magnet', price: 20, description: 'Strong ceramic-safe neodymium magnet fixed on the back.', image: 'assets/attachments/magnet-placeholder.svg', enabled: true },
+  { id: 'tape', label: 'Sticky Tape', shortLabel: 'Sticky tape', price: 15, description: 'Double-sided heavy-duty wall mounting strips included.', image: 'assets/attachments/tape-placeholder.svg', enabled: true },
+  { id: 'stand', label: 'Desk Buddy Stand', shortLabel: 'Desk stand', price: 50, description: 'Fold-out tabletop display stand to turn it into a desk buddy.', image: 'assets/attachments/stand-placeholder.svg', enabled: true }
+];
+
+export function normalizeBackAttachments(raw) {
+  const list = Array.isArray(raw) ? raw : (raw && typeof raw === 'object' ? Object.values(raw) : []);
+  const byId = new Map(list.filter(o => o && typeof o === 'object' && typeof o.id === 'string').map(o => [o.id.trim().toLowerCase(), o]));
+  return DEFAULT_BACK_ATTACHMENTS.map(def => {
+    const src = byId.get(def.id) || {};
+    const rawPrice = Number(src.price);
+    const price = Number.isFinite(rawPrice) && rawPrice >= 0 && rawPrice <= 5000 ? Math.round(rawPrice * 100) / 100 : def.price;
+    const label = String(src.label || '').trim().slice(0, 48) || def.label;
+    const shortLabel = String(src.shortLabel || '').trim().slice(0, 24) || def.shortLabel;
+    const description = String(src.description || '').trim().slice(0, 160) || def.description;
+    const image = src.image && validImageSource(src.image) ? safeImage(src.image, def.image) : def.image;
+    return {
+      id: def.id,
+      label,
+      shortLabel,
+      price,
+      description,
+      image,
+      enabled: src.enabled !== false
+    };
+  });
+}
+
+export function resolveBackAttachment(attachmentId, settings = null) {
+  if (!settings || settings.backAttachmentsEnabled !== true) return null;
+  const options = normalizeBackAttachments(settings.backAttachmentOptions).filter(o => o.enabled !== false);
+  if (!options.length) return null;
+  const key = String(attachmentId || '').trim().toLowerCase();
+  return options.find(o => o.id === key) || options[0];
+}
+
 export const DEFAULT_SETTINGS = {
   announcementVisible: false,
   announcementText: 'welcome to hehe.cafe · handmade clay frames & paintings · ₹40/item India Post shipping',
@@ -182,7 +219,9 @@ export const DEFAULT_SETTINGS = {
   mobileBreakpoint: 580,
   aboutVisible: false,
   storyVisible: true,
-  productImageStorage: 'firebase'
+  productImageStorage: 'firebase',
+  backAttachmentsEnabled: false,
+  backAttachmentOptions: DEFAULT_BACK_ATTACHMENTS.map(o => ({ ...o }))
 };
 
 export const FALLBACK_BANNER_ARTWORKS = [
@@ -393,6 +432,8 @@ export function normalizeSettings(value = {}) {
   result.aboutVisible = value.aboutVisible === true;
   result.storyVisible = value.storyVisible !== false;
   result.productImageStorage = value.productImageStorage === 'freeimage' ? 'freeimage' : 'firebase';
+  result.backAttachmentsEnabled = value.backAttachmentsEnabled === true;
+  result.backAttachmentOptions = normalizeBackAttachments(value.backAttachmentOptions);
   return result;
 }
 export function bannerSlidesFor(products = [], settings = DEFAULT_SETTINGS) {
@@ -522,6 +563,25 @@ export function settingsForm(s) {
   <input type="hidden" name="homeSectionOrderJson" value="${e(JSON.stringify(s.homeSectionOrder||DEFAULT_HOME_SECTIONS))}">
   <input type="hidden" name="promoBlocksJson" value="${e(JSON.stringify(s.promoBlocks||[]))}">
   <div id="home-layout-editor-slot"></div>
+  <hr>
+  <h2>Back attachment customization</h2>
+  <p class="small muted">When turned on, shoppers can pick Magnet, Sticky Tape, or Desk Buddy Stand directly in their bag (base price + selected add-on). Turning it off returns immediately to the standard single-price storefront model.</p>
+  <label class="visibility-toggle"><input type="checkbox" name="backAttachmentsEnabled" ${s.backAttachmentsEnabled===true?'checked':''}><span>Enable back attachment options on storefront bag &amp; checkout</span></label>
+  <div class="back-attach-admin-grid">
+    ${normalizeBackAttachments(s.backAttachmentOptions).map(opt => `<div class="back-attach-admin-card" data-attach-row="${e(opt.id)}">
+      <div class="back-attach-admin-head">
+        <img class="back-attach-admin-thumb" src="${e(opt.image)}" alt="${e(opt.label)} preview">
+        <label class="visibility-toggle" style="margin:0;flex:1"><input type="checkbox" name="attach_${e(opt.id)}_enabled" ${opt.enabled!==false?'checked':''}><span>Enable ${e(opt.label)}</span></label>
+      </div>
+      <div class="form-grid" style="margin-top:8px">
+        <label class="field">Display name<input name="attach_${e(opt.id)}_label" maxlength="48" value="${e(opt.label)}"></label>
+        <label class="field">Short chip label<input name="attach_${e(opt.id)}_shortLabel" maxlength="24" value="${e(opt.shortLabel)}"></label>
+        <label class="field">Extra add-on price (₹)<input type="number" name="attach_${e(opt.id)}_price" min="0" max="5000" step="1" value="${e(opt.price)}"></label>
+        <label class="field">Back photo URL (swap anytime)<input name="attach_${e(opt.id)}_image" maxlength="100000" value="${e(opt.image)}"></label>
+        <label class="field wide">Short description<input name="attach_${e(opt.id)}_description" maxlength="160" value="${e(opt.description)}"></label>
+      </div>
+    </div>`).join('')}
+  </div>
   <hr>
   <h2>Customer reviews</h2>
   <label class="visibility-toggle"><input type="checkbox" name="reviewsVisible" ${s.reviewsVisible?'checked':''}><span>Customer reviews visible</span></label>
