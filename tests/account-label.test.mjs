@@ -123,9 +123,19 @@ test('friendlyError maps Firebase network and browser auth errors into clear gui
   const storageMsg=friendlyError({code:'auth/web-storage-unsupported'});
   assert.match(storageMsg,/cookies or storage/i);
 
+  const popupBlockedMsg=friendlyError({code:'auth/popup-blocked'});
+  assert.match(popupBlockedMsg,/Allow popups/i);
+  assert.doesNotMatch(popupBlockedMsg,/Sign in with redirect/i);
+
   const internalMsg=friendlyError({code:'auth/internal-error'});
-  assert.match(internalMsg,/redirect/i);
+  assert.match(internalMsg,/Continue with Google/i);
+  assert.doesNotMatch(internalMsg,/Sign in with redirect/i);
 
   const domainMsg=friendlyError({code:'auth/unauthorized-domain'});
   assert.match(domainMsg,/hehe\.cafe/i);
+
+  const defaultAuth=accountMarkup(null,false);
+  assert.doesNotMatch(defaultAuth,/data-action="signin-redirect"/);
+  const redirectAllowedAuth=accountMarkup(null,false,{allowRedirect:true});
+  assert.match(redirectAllowedAuth,/data-action="signin-redirect"/);
 });

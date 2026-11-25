@@ -3,8 +3,9 @@ import {
   signInWithGoogle,
   signOutManager,
   callManager,
-  uploadArtworkFiles
-} from './manager-store.js?v=20261125j';
+  uploadArtworkFiles,
+  canUseManagerRedirectAuth
+} from './manager-store.js?v=20261125k';
 import {
   revenueTrendChartMarkup,
   genreVelocityMatrixMarkup,
@@ -560,7 +561,7 @@ function renderSignInGate() {
     <p class="mgr-muted">Invite-only workspace for 1-of-1 artwork curation, #Ref tracking, artist pickup bins, partner café batches, and sales analytics.</p>
     ${wrongProvider ? `<p class="mgr-pill is-pending">Signed in as ${esc(state.rawNonGoogleUser.email || 'non-Google user')} — Google Sign-In required.</p>` : ''}
     <button type="button" class="mgr-google-btn" data-action="google-signin">${googleSvg}<span>Continue with Google</span></button>
-    <button type="button" class="mgr-link" data-action="google-signin-redirect">Popup blocked? Continue with redirect →</button>
+    ${canUseManagerRedirectAuth() ? '<button type="button" class="mgr-link" data-action="google-signin-redirect">Popup blocked? Continue with redirect →</button>' : ''}
     ${state.meError ? `<p class="mgr-muted" style="color:var(--danger)">${esc(state.meError)}</p>` : ''}
   </section></div>`;
 }

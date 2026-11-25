@@ -14,6 +14,10 @@ function isInAppBrowser() {
   if (typeof navigator === 'undefined') return false;
   return /\b(Instagram|FBAN|FBAV|FB_IAB|Line\/|Snapchat)\b/i.test(String(navigator.userAgent || ''));
 }
+export function canUseManagerRedirectAuth() {
+  if (typeof location === 'undefined') return false;
+  return String(location.hostname || '').toLowerCase() === String(firebaseConfig.authDomain || '').toLowerCase();
+}
 
 function isAuthNetworkError(error) {
   const code = String(error?.code || '');
@@ -80,10 +84,14 @@ export async function observeGoogleAuth(callback) {
 }
 
 export async function signInWithGoogle({ redirect = false } = {}) {
+  const allowRedirect = canUseManagerRedirectAuth();
+  if (!allowRedirect && isInAppBrowser()) {
+    throw new Error('In-app browsers block Google sign-in. Open hehe.cafe/manager in Chrome or Safari.');
+  }
   const { a, auth } = sdk || await managerFirebase();
   const provider = new a.GoogleAuthProvider();
   provider.setCustomParameters({ prompt: 'select_account' });
-  if (redirect || isInAppBrowser()) {
+  if (allowRedirect && (redirect || isInAppBrowser())) {
     return a.signInWithRedirect(auth, provider);
   }
   const startedAt = Date.now();
@@ -96,7 +104,10 @@ export async function signInWithGoogle({ redirect = false } = {}) {
       || error?.code === 'auth/internal-error'
       || (isAuthNetworkError(error) && isOnline())
       || (error?.code === 'auth/popup-closed-by-user' && Date.now() - startedAt < 1800);
-    if (blocked) return a.signInWithRedirect(auth, provider);
+    if (allowRedirect && blocked) return a.signInWithRedirect(auth, provider);
+    if (error?.code === 'auth/popup-blocked' || error?.code === 'auth/popup-closed-by-user') {
+      throw new Error('Allow popups for hehe.cafe and tap Continue with Google again.');
+    }
     if (isAuthNetworkError(error)) {
       throw new Error('Could not reach Google sign-in. Check your connection or disable ad-blocker/VPN and retry.');
     }

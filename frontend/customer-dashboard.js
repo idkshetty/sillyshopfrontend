@@ -27,7 +27,7 @@ export function filterCustomerRequests(requests=[],{filter='all',query=''}={}){
     return id.includes(q)||id.slice(0,8).includes(q)||st.includes(q)||items.includes(q);
   });
 }
-export function emailAuthCardMarkup({mode='signin',loading=false,error='',notice='',compact=false}={}){
+export function emailAuthCardMarkup({mode='signin',loading=false,error='',notice='',compact=false,allowRedirect=false}={}){
   const isSignup=mode==='signup';
   return `<div class="auth-card-methods${compact?' is-compact':''}">
     <div class="auth-mode-tabs" role="tablist" aria-label="Sign in or create account">
@@ -47,12 +47,12 @@ export function emailAuthCardMarkup({mode='signin',loading=false,error='',notice
     </form>
     <div class="auth-divider" aria-hidden="true"><span>or</span></div>
     <button class="google-signin" data-action="signin" ${loading?'disabled':''}>${googleIcon} <span>${loading?'Checking your account…':'Continue with Google'}</span></button>
-    <button type="button" class="text-link signin-redirect-link" data-action="signin-redirect" ${loading?'disabled':''}>Popup blocked? Sign in with redirect →</button>
+    ${allowRedirect?`<button type="button" class="text-link signin-redirect-link" data-action="signin-redirect" ${loading?'disabled':''}>Popup blocked? Sign in with redirect →</button>`:''}
   </div>`;
 }
-function signInCard(loading,error,{mode='signin',notice=''}={}) {
+function signInCard(loading,error,{mode='signin',notice='',allowRedirect=false}={}) {
   const isSignup=mode==='signup';
-  return `<div class="container"><section class="account-welcome"><div class="account-welcome-art"><img src="assets/silly-sensei-loading.webp" alt="hehe.cafe studio mascot"></div><div class="account-welcome-copy"><p class="eyebrow">Your account</p><h1>${isSignup?'Create your<br>hehe.cafe account':'Sign in to<br>hehe.cafe'}</h1><p>View your artwork orders and manage your delivery details.</p><div class="login-benefits"><p>${icons.requests} Follow your checkout requests</p><p>${icons.profile} Save details for your next visit</p></div>${emailAuthCardMarkup({mode,loading,error,notice})}<p class="small muted">Your account is private. We only use your details to help with your orders.</p><a class="text-link" href="#home">Continue exploring artworks</a></div></section></div>`;
+  return `<div class="container"><section class="account-welcome"><div class="account-welcome-art"><img src="assets/silly-sensei-loading.webp" alt="hehe.cafe studio mascot"></div><div class="account-welcome-copy"><p class="eyebrow">Your account</p><h1>${isSignup?'Create your<br>hehe.cafe account':'Sign in to<br>hehe.cafe'}</h1><p>View your artwork orders and manage your delivery details.</p><div class="login-benefits"><p>${icons.requests} Follow your checkout requests</p><p>${icons.profile} Save details for your next visit</p></div>${emailAuthCardMarkup({mode,loading,error,notice,allowRedirect})}<p class="small muted">Your account is private. We only use your details to help with your orders.</p><a class="text-link" href="#home">Continue exploring artworks</a></div></section></div>`;
 }
 function requestCard(request,{productImages=new Map(),open=false}={}) {
   const c=request.customer, reference=request.id.slice(0,8).toUpperCase();
@@ -279,7 +279,7 @@ function profileForm(user,profile,states) {
 }
 export function accountMarkup(user,admin,state={}) {
   if(state.authLoading)return pageSkeleton('account');
-  if (!user || user.isAnonymous) return signInCard(state.authLoading,state.authError,{mode:state.authMode||'signin',notice:state.authNotice||''});
+  if (!user || user.isAnonymous) return signInCard(state.authLoading,state.authError,{mode:state.authMode||'signin',notice:state.authNotice||'',allowRedirect:Boolean(state.allowRedirect)});
   if(state.loaded===false)return pageSkeleton('account');
   const tab=['requests','profile'].includes(state.tab)?state.tab:'overview',profile=state.profile||{},requests=state.requests||[],products=state.products||[];
   const orderFilter=state.orderFilter||'all',orderQuery=state.orderQuery||'';

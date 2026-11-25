@@ -11,7 +11,7 @@ import {mountReviewEditor,collectReviews} from './review-editor.js';
 import {MAX_ITEM_QUANTITY,CATEGORIES,categoryOf,money,SHIPPING_CHARGE,shippingPaiseForQuantity,totalWithShipping,artworkColorFor,artworkThemeStyle,contrastColorFor,normalizeProduct,sortArtworks,ARTWORK_SORT_MODES,escapeHTML as e,safeImage,cardImage,progressiveImageSources,cartLines,subtotal,filterProducts,validateCustomer} from './commerce.js';
 import {isInlineImage,prepareHdUploadFile} from './image-data.js';
 import {DEFAULT_ARTISTS,artistSlug,normalizeArtists,mergeArtistsWithProducts} from './artists.js';
-import * as store from './store.js?v=20261125j';
+import * as store from './store.js?v=20261125k';
 import {mapPanel,mountDeliveryMap} from './delivery-location.js';
 import {validLocation,locationLink} from './location-utils.js';
 import {openLabel,openBatchLabels,mountLabelTemplate} from './labels.js';
@@ -19,7 +19,7 @@ import {createThermalPrinterController,getUnprintedOrders} from './thermal-print
 import {mountOrdersMap} from './orders-map.js';
 import {POLICY_TABS,normalizeAdminTab,countActionableOrders,canPrintOrderLabel,adminSidebarMarkup,policySubnavMarkup,filterOrders,orderFilterCounts,ordersToolbarMarkup,orderCardMarkup,thermalPrinterDockMarkup} from './admin-ui.js?v=20261125g';
 import {decorateCartButtons,animateCart,animateCartCheckout,playPaymentOutcome,preloadPaymentOutcomeSvg,reviewSection,mountReviews,mountHeroBanner,mountArtistScrollPrompt,sampleArtworkBgFromImage} from './shop-effects.js';
-import {accountMarkup,ordersListMarkup,emailAuthCardMarkup} from './customer-dashboard.js?v=20261125g';
+import {accountMarkup,ordersListMarkup,emailAuthCardMarkup} from './customer-dashboard.js?v=20261125k';
 import {steppedProgress} from './stepped-progress.js';
 import {normalizeProfile,validateProfile,checkoutDefaults} from './profile.js';
 import {logoutMarkup,mountLogout,animateLogout} from './logout.js';
@@ -836,7 +836,7 @@ function renderCheckout(){
   const cleanupBanner=cartCleanupBannerMarkup();
   const entries=lines();checkoutProducts=entries.map(l=>({...l.product,unitPrice:l.unitPrice??l.product.price}));if(!entries.length){$('main').innerHTML=`<div class="container checkout-wrap checkout-empty-wrap">${cleanupBanner}${emptyBagMarkup({inDialog:false})}</div>`;return;}
   if(!user||user.isAnonymous){
-    $('main').innerHTML=`<div class="container checkout-wrap">${cleanupBanner}<div class="page-head">${breadcrumbs('Checkout','<a href="#home">Artworks</a><span>/</span>')}<h1>Sign in to check out</h1><p>Your art bag is saved. Sign in or create an account to enter delivery details and complete your order.</p></div><section class="checkout-info checkout-signin-card"><img class="checkout-signin-cat" src="assets/checkout/cat-coffee.webp" alt="" aria-hidden="true" decoding="async"><div class="checkout-signin-copy"><strong>Sign in or create an account</strong><p>After signing in, you’ll return right here to complete your order.</p>${authLoading?'<p role="status">Checking your sign-in…</p>':emailAuthCardMarkup({mode:authMode,loading:authLoading,error:authError,notice:authNotice,compact:true})}</div></section><p style="margin-top:20px"><a class="text-link" href="#home">← Back to hehe.cafe</a></p></div>`;
+    $('main').innerHTML=`<div class="container checkout-wrap">${cleanupBanner}<div class="page-head">${breadcrumbs('Checkout','<a href="#home">Artworks</a><span>/</span>')}<h1>Sign in to check out</h1><p>Your art bag is saved. Sign in or create an account to enter delivery details and complete your order.</p></div><section class="checkout-info checkout-signin-card"><img class="checkout-signin-cat" src="assets/checkout/cat-coffee.webp" alt="" aria-hidden="true" decoding="async"><div class="checkout-signin-copy"><strong>Sign in or create an account</strong><p>After signing in, you’ll return right here to complete your order.</p>${authLoading?'<p role="status">Checking your sign-in…</p>':emailAuthCardMarkup({mode:authMode,loading:authLoading,error:authError,notice:authNotice,compact:true,allowRedirect:store.canUseRedirectAuth()})}</div></section><p style="margin-top:20px"><a class="text-link" href="#home">← Back to hehe.cafe</a></p></div>`;
     return;
   }
   const pricing = bagPricing(entries);
@@ -1133,7 +1133,7 @@ function renderAccount(){
   if(deferPageRender(render))return;
   deliveryMap?.destroy();deliveryMap=null;
   const verifyCooldownSec=Math.max(0,Math.ceil((verifyCooldownUntil-Date.now())/1000));
-  $('main').innerHTML=accountMarkup(user,isAdmin,{...accountState,products,tab:route().id,states,authLoading,authError,authMode,authNotice,verifyBusy,verifyNotice,verifyCooldownSec,privacyBusy,privacyNotice});applyStoreContent(siteContent,'account');mountLogout();
+  $('main').innerHTML=accountMarkup(user,isAdmin,{...accountState,products,tab:route().id,states,authLoading,authError,authMode,authNotice,verifyBusy,verifyNotice,verifyCooldownSec,privacyBusy,privacyNotice,allowRedirect:store.canUseRedirectAuth()});applyStoreContent(siteContent,'account');mountLogout();
   mountProfileMap();
   if(user&&!user.isAnonymous&&!accountState.loaded&&!accountState.loading)fetchCustomerAccount();
 }

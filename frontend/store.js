@@ -18,6 +18,10 @@ function isInAppBrowser(){
   if(typeof navigator==='undefined')return false;
   return /\b(Instagram|FBAN|FBAV|FB_IAB|Line\/|Snapchat)\b/i.test(String(navigator.userAgent||''));
 }
+export function canUseRedirectAuth(){
+  if(typeof location==='undefined')return false;
+  return String(location.hostname||'').toLowerCase()===String(firebaseConfig.authDomain||'').toLowerCase();
+}
 function isAuthNetworkError(error){
   const code=String(error?.code||'');
   const msg=String(error?.message||'');
@@ -183,6 +187,8 @@ export async function observeAuth(callback) {
         }
       } catch {}
     }
+  } finally {
+    try { if (typeof sessionStorage !== 'undefined') sessionStorage.removeItem('hehe_pending_redirect'); } catch {}
   }
   let version=0;
   return a.onAuthStateChanged(auth, async user => {
@@ -198,12 +204,20 @@ export async function observeAuth(callback) {
 }
 export function signIn({ redirect = false } = {}) {
   const run = ({ a, auth }) => {
+    const allowRedirect = canUseRedirectAuth();
+    if (!allowRedirect && isInAppBrowser()) {
+      return Promise.reject(new Error('In-app browsers block Google sign-in. Open hehe.cafe in Chrome or Safari, or sign in with Email & Password above.'));
+    }
     const provider = new a.GoogleAuthProvider();
     provider.setCustomParameters({ prompt: 'select_account' });
-    if (redirect || isInAppBrowser()) {
+    const startRedirect = () => {
+      try { if (typeof sessionStorage !== 'undefined') sessionStorage.setItem('hehe_pending_redirect', '1'); } catch {}
       return auth.currentUser?.isAnonymous
         ? a.linkWithRedirect(auth.currentUser, provider)
         : a.signInWithRedirect(auth, provider);
+    };
+    if (allowRedirect && (redirect || isInAppBrowser())) {
+      return startRedirect();
     }
     const startedAt = Date.now();
     const attempt = auth.currentUser?.isAnonymous
@@ -223,10 +237,8 @@ export function signIn({ redirect = false } = {}) {
         || error?.code === 'auth/internal-error'
         || (isAuthNetworkError(error) && isOnline())
         || (error?.code === 'auth/popup-closed-by-user' && Date.now() - startedAt < 1800);
-      if (blockedByBrowser) {
-        return auth.currentUser?.isAnonymous
-          ? a.linkWithRedirect(auth.currentUser, provider)
-          : a.signInWithRedirect(auth, provider);
+      if (allowRedirect && blockedByBrowser) {
+        return startRedirect();
       }
       throw error;
     });
@@ -482,10 +494,11 @@ export function friendlyError(error){
       ?'You appear to be offline. Reconnect to the internet and try again.'
       :'Could not reach Google sign-in. Check your internet connection, turn off VPN/ad-blocker/Private DNS if active, or open hehe.cafe in Chrome or Safari and retry.';
   }
-  if(code==='auth/internal-error'||code==='auth/timeout')return 'Sign-in was interrupted or timed out. Please try again, or tap "Popup blocked? Sign in with redirect".';
+  if(code==='auth/internal-error'||code==='auth/timeout')return 'Google sign-in was interrupted or timed out. Please tap "Continue with Google" again, or sign in with Email & Password above.';
   if(code==='auth/web-storage-unsupported')return 'Your browser is blocking cookies or storage needed for sign-in. Open hehe.cafe in Chrome or Safari (not private/restricted mode).';
   if(code==='auth/unauthorized-domain')return 'Sign-in is not allowed on this address. Please open https://hehe.cafe directly.';
-  if(code==='auth/popup-closed-by-user'||code==='auth/popup-blocked')return 'Sign-in popup was closed or blocked by your browser. Tap "Popup blocked? Sign in with redirect" below to continue.';
+  if(code==='auth/popup-blocked')return 'Sign-in popup was blocked by your browser. Allow popups for hehe.cafe and tap "Continue with Google" again, or sign in with Email & Password above.';
+  if(code==='auth/popup-closed-by-user')return 'Google sign-in window was closed before finishing. Tap "Continue with Google" to try again, or sign in with Email & Password above.';
   if(code==='auth/invalid-email')return 'Please enter a valid email address.';
   if(code==='auth/user-disabled')return 'This account has been disabled. Please contact the studio.';
   if(code==='auth/user-not-found'||code==='auth/wrong-password'||code==='auth/invalid-credential')return 'Incorrect email or password. Double-check your details or switch to Create account.';
