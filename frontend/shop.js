@@ -23,12 +23,12 @@ import {accountMarkup,ordersListMarkup,emailAuthCardMarkup} from './customer-das
 import {steppedProgress} from './stepped-progress.js';
 import {normalizeProfile,validateProfile,checkoutDefaults} from './profile.js';
 import {logoutMarkup,mountLogout,animateLogout} from './logout.js';
-import {DEFAULT_SETTINGS,FALLBACK_BANNER_ARTWORKS,MOBILE_BREAKPOINT_OPTIONS,mobileGridBreakpointCss,normalizeSettings,normalizeBackAttachments,resolveBackAttachment,safeStoreLink,bannerMarkup,settingsForm} from './store-settings.js';
+import {DEFAULT_SETTINGS,FALLBACK_BANNER_ARTWORKS,MOBILE_BREAKPOINT_OPTIONS,mobileGridBreakpointCss,normalizeSettings,normalizeBackAttachments,resolveBackAttachment,normalizeDiyKit,safeStoreLink,bannerMarkup,settingsForm} from './store-settings.js?v=20261125f';
 import {PRODUCT_TYPE_PRESETS,isDiyKit} from './commerce.js';
 import {DEFAULT_CONTENT,normalizeContent,contentCategories,applyStoreContent,footerMarkup} from './store-content.js';
-import {homeMarkup,homeFilterPanelMarkup,artistsPageMarkup,artistDetailMarkup,storyMarkup,infoMarkup,productCardMarkup} from './storefront-view.js';
+import {homeMarkup,homeFilterPanelMarkup,artistsPageMarkup,artistDetailMarkup,storyMarkup,infoMarkup,productCardMarkup} from './storefront-view.js?v=20261125f';
 import {mountPilotTelemetry} from './pilot-telemetry.js?v=20261125e';
-import {mountNetworkAnalyticsPanel} from './pilot-analytics-ui.js?v=20261125e';
+import {mountNetworkAnalyticsPanel} from './pilot-analytics-ui.js?v=20261125f';
 import {mountHeatmapOverlay} from './heatmap-overlay.js?v=20261125e';
 import {mountTrafficGlobe,resolveLocationCoords} from './manager/traffic-globe.js';
 import {mountContentEditor} from './content-editor.js';
@@ -90,7 +90,7 @@ let toastTimer, orderNote = '';
 let authLoading=true,authError='',authMode='signin',authNotice='',accountState={requests:[],profile:{},loaded:false,loading:false,orderFilter:'all',orderQuery:''},profileDraftLocation=undefined;
 let verifyCooldownUntil=0,verifyCooldownTimer=null,verifyBusy=false,verifyNotice='',privacyBusy=false,privacyNotice='';
 try {const saved = JSON.parse(localStorage.getItem(cartKey)); if (Array.isArray(saved)) {const seen=new Set(); cart = saved.filter(c=>c && typeof c.id==='string' && !seen.has(c.id) && Number.isInteger(c.quantity) && c.quantity>0 && seen.add(c.id)).map(c=>({id:c.id,quantity:Math.min(c.quantity,MAX_ITEM_QUANTITY),...(typeof c.attachmentId==='string'&&c.attachmentId.trim()?{attachmentId:c.attachmentId.trim()}:{})}));}} catch {}
-const visible = () => sortArtworks(products.filter(p=>p.visible && !p.archived), storeSettings.artworkSort || 'manual');
+const visible = () => sortArtworks(products.filter(p=>p.visible && !p.archived && (storeSettings.diyKitEnabled===true || !isDiyKit(p))), storeSettings.artworkSort || 'manual');
 const imageOf = p => cardImage(p?.backupImages?.[0] || p?.images?.[0], categoryOf(p?.category)?.image);
 const route = () => {const raw=location.hash.slice(1).split('?')[0];const parts=raw.split('/');return {page:parts[0] || 'home',id:parts.slice(1).join('/')};};
 let categoryLinks = `<a href="#home">Home &amp; Banner</a><a href="#shop">All Artworks</a><a href="#artists">Artists</a><a href="#about"${storeSettings.aboutVisible?'':' hidden'}>About hehe.cafe</a>`;
@@ -529,7 +529,7 @@ function renderCart(){
   $('cart-content').innerHTML=`<div class="cart-checkout-flow cart-dark-sheet"><div class="cart-sheet-handle" aria-hidden="true"></div><div class="cart-checkout-pile"><section class="cart-checkout-card cart-checkout-current">${cleanupBanner}<div class="cart-checkout-items">${rows}</div>${bagOffersMarkup(entries,pricing,'cart')}<label class="cart-note cart-dark-note" for="order-note">Note for hehe.cafe <span class="muted">(optional)</span><textarea id="order-note" maxlength="1000" placeholder="Gift note, framing preference, or delivery instructions…">${e(orderNote)}</textarea></label>${ticket}<p class="small cart-limit-note">Limit ${MAX_ITEM_QUANTITY} per artwork · add as many artworks as you like.</p></section><section class="cart-checkout-card cart-checkout-confirmed" aria-hidden="true"><span class="cart-checkout-ready-icon" aria-hidden="true"><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 13l4 4L19 7"/></svg></span><h2>Opening checkout…</h2><p>Confirm your address to complete your order.</p></section></div><button class="cart-checkout-button cart-pill-checkout" type="button" data-action="cart-checkout"><svg class="cart-checkout-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 4h2l2.1 11.5a2 2 0 0 0 2 1.6h8.7a2 2 0 0 0 2-1.5L22 8H6"/><circle cx="10" cy="20" r="1.2"/><circle cx="18" cy="20" r="1.2"/></svg><span class="cart-checkout-label">Checkout · ${money(bagTotal)}</span><span class="cart-pill-chevrons" aria-hidden="true"><svg class="ui-icon ui-chevrons" viewBox="0 0 28 16" aria-hidden="true"><path d="m4 3 5 5-5 5"/><path d="m12 3 5 5-5 5"/><path d="m20 3 5 5-5 5"/></svg></span><svg class="cart-checkout-check" viewBox="0 0 24 24" aria-hidden="true"><path d="m4 12 5 5L20 6"/></svg></button><button class="text-link full cart-dark-browse" data-action="close-dialog" style="display:block;margin:14px auto 4px">Continue browsing</button></div>`;
 }
 function breadcrumbs(current,extra=''){return `<div class="breadcrumbs"><a href="#home">hehe.cafe</a><span>/</span>${extra}<span>${e(current)}</span></div>`;}
-function productCard(p,idx=99){return productCardMarkup(p,siteContent,{index:idx});}
+function productCard(p,idx=99){return productCardMarkup(p,siteContent,{index:idx,settings:storeSettings});}
 function story(){return storyMarkup();}
 let stockSchedule=null,stockRefreshTriggeredFor=0,stockClockTimer=null;
 function formatStockCountdown(ms){
@@ -620,14 +620,14 @@ function renderShop(){
   const {page,id}=route();
   const search=page==='search'?decodeURIComponent(id):(filter.search||'');
   const title=page==='search'?`Search: “${search}”`:'All artworks at hehe.cafe';
-  $('main').innerHTML=`<div class="container"><div class="page-head home-intro-row"><div>${breadcrumbs(page==='search'?'Search':'All artworks')}<h1>${e(title)}</h1><p>Original paintings, small-batch studio pieces and tactile art.</p></div>${homeFilterPanelMarkup(products,filter)}</div><hr class="section-rule rule-terracotta" aria-hidden="true"><div id="product-results"></div></div>`;
+  $('main').innerHTML=`<div class="container"><div class="page-head home-intro-row"><div>${breadcrumbs(page==='search'?'Search':'All artworks')}<h1>${e(title)}</h1><p>Original paintings, small-batch studio pieces and tactile art.</p></div>${homeFilterPanelMarkup(products,filter,storeSettings)}</div><hr class="section-rule rule-terracotta" aria-hidden="true"><div id="product-results"></div></div>`;
   renderProductResults();
 }
 function refreshFilterUI(keepOpen=false){
   const wrap=document.querySelector('.home-filter-wrap');
   if(wrap){
     const tmp=document.createElement('div');
-    tmp.innerHTML=homeFilterPanelMarkup(products,filter);
+    tmp.innerHTML=homeFilterPanelMarkup(products,filter,storeSettings);
     const nextWrap=tmp.firstElementChild;
     wrap.replaceWith(nextWrap);
     if(keepOpen){
@@ -656,9 +656,9 @@ function renderProductResults(){
   const {page,id}=route();
   const activeSearch=page==='search'?decodeURIComponent(id):(filter.search||'');
   const sortMode=filter.sort||storeSettings.artworkSort||'manual';
-  const list=filterProducts(products,{...filter,sort:sortMode,category:'',search:activeSearch});
+  const list=filterProducts(visible(),{...filter,sort:sortMode,category:'',search:activeSearch});
   if($('product-count'))$('product-count').textContent=catalogReady?`${list.length} ${list.length===1?'artwork':'artworks'}`:'';
-  $('product-results').innerHTML=list.length?`<div class="product-grid">${list.map(productCard).join('')}</div>`:catalogError?catalogErrorMarkup():`<div class="empty-state"><h2>No matching artworks found.</h2><p>Try clearing your filters or showing all pieces.</p><button type="button" class="button outline" data-action="reset-filters">Show all artworks</button></div>`;
+  $('product-results').innerHTML=list.length?`<div class="product-grid">${list.map(p=>productCard(p)).join('')}</div>`:catalogError?catalogErrorMarkup():`<div class="empty-state"><h2>No matching artworks found.</h2><p>Try clearing your filters or showing all pieces.</p><button type="button" class="button outline" data-action="reset-filters">Show all artworks</button></div>`;
 }
 function catalogErrorMarkup(){return '<div class="empty-state" role="alert"><h2>The gallery catalogue could not load</h2><p>Check your connection and try again.</p><button class="button outline" data-action="retry">Try again</button></div>';}
 function applyProductWash(hex){
@@ -724,7 +724,7 @@ function renderProduct(){
               <button type="button" class="text-link share-inline-btn" data-action="share-page" data-share-title="${e(`${p.title} by ${artist}`)}" data-share-text="${e(`Look at "${p.title}" (${productType}) by ${artist} on hehe.cafe — ${money(p.price)}`)}" data-share-url="${e(`https://hehe.cafe/#product/${p.id}`)}">Share ↗</button>
             </div>
           </div>
-          ${isDiyKit(p)?'<p class="diy-kit-banner"><strong>DIY Paint Kit</strong> · Includes line art, base plate &amp; back attachment</p>':''}
+          ${isDiyKit(p)?(()=>{const diyCfg=normalizeDiyKit(storeSettings.diyKit);return `<p class="diy-kit-banner"><strong>${e(diyCfg.badgeText)}</strong> · ${e(diyCfg.includesText)}</p>`;})():''}
           <div class="product-tabs" role="tablist" aria-label="Artwork details">
             <button type="button" class="product-tab ${activeProductTab==='desc'?'is-active':''}" role="tab" aria-selected="${activeProductTab==='desc'}" data-action="product-tab" data-tab="desc">Description</button>
             <button type="button" class="product-tab ${activeProductTab==='details'?'is-active':''}" role="tab" aria-selected="${activeProductTab==='details'}" data-action="product-tab" data-tab="details">Details</button>
@@ -1305,6 +1305,17 @@ function draftSettingsFromForm(){
   draft.aboutVisible=data.get('aboutVisible')==='on';
   draft.storyVisible=data.get('storyVisible')==='on';
   draft.backAttachmentsEnabled=data.get('backAttachmentsEnabled')==='on';
+  draft.diyKitEnabled=data.get('diyKitEnabled')==='on';
+  draft.diyKit=normalizeDiyKit({
+    ...(storeSettings.diyKit||{}),
+    showHomepageBanner:data.has('diyKitTitle')?data.get('diyKitShowBanner')==='on':storeSettings.diyKit?.showHomepageBanner!==false,
+    title:data.has('diyKitTitle')?data.get('diyKitTitle'):storeSettings.diyKit?.title,
+    badgeText:data.has('diyKitBadge')?data.get('diyKitBadge'):storeSettings.diyKit?.badgeText,
+    priceHint:data.has('diyKitPriceHint')?data.get('diyKitPriceHint'):storeSettings.diyKit?.priceHint,
+    image:data.has('diyKitImage')?data.get('diyKitImage'):storeSettings.diyKit?.image,
+    subtitle:data.has('diyKitSubtitle')?data.get('diyKitSubtitle'):storeSettings.diyKit?.subtitle,
+    includesText:data.has('diyKitIncludes')?data.get('diyKitIncludes'):storeSettings.diyKit?.includesText
+  });
   draft.backAttachmentOptions=normalizeBackAttachments(storeSettings.backAttachmentOptions).map(opt=>({
     ...opt,
     enabled:data.has(`attach_${opt.id}_label`)?data.get(`attach_${opt.id}_enabled`)==='on':opt.enabled,
@@ -1346,6 +1357,18 @@ async function submitBanners(event){
   value.aboutVisible=data.get('aboutVisible')==='on';
   value.storyVisible=data.get('storyVisible')==='on';
   value.backAttachmentsEnabled=data.get('backAttachmentsEnabled')==='on';
+  value.diyKitEnabled=data.get('diyKitEnabled')==='on';
+  value.diyKit=normalizeDiyKit({
+    ...(storeSettings.diyKit||{}),
+    showHomepageBanner:data.has('diyKitTitle')?data.get('diyKitShowBanner')==='on':storeSettings.diyKit?.showHomepageBanner!==false,
+    title:data.has('diyKitTitle')?data.get('diyKitTitle'):storeSettings.diyKit?.title,
+    badgeText:data.has('diyKitBadge')?data.get('diyKitBadge'):storeSettings.diyKit?.badgeText,
+    priceHint:data.has('diyKitPriceHint')?data.get('diyKitPriceHint'):storeSettings.diyKit?.priceHint,
+    image:data.has('diyKitImage')?data.get('diyKitImage'):storeSettings.diyKit?.image,
+    subtitle:data.has('diyKitSubtitle')?data.get('diyKitSubtitle'):storeSettings.diyKit?.subtitle,
+    includesText:data.has('diyKitIncludes')?data.get('diyKitIncludes'):storeSettings.diyKit?.includesText
+  });
+  for(const fk of ['diyKitShowBanner','diyKitTitle','diyKitBadge','diyKitPriceHint','diyKitImage','diyKitSubtitle','diyKitIncludes'])delete value[fk];
   const baseBackOpts=normalizeBackAttachments(storeSettings.backAttachmentOptions);
   value.backAttachmentOptions=baseBackOpts.map(opt=>{
     const next={

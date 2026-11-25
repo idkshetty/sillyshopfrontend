@@ -125,3 +125,31 @@ test('back attachment pricing toggles cleanly and DIY Kit detection keeps 4 prim
   assert.equal(standOn[0].unitPrice,350);
   assert.equal(subtotal(standOn),350);
 });
+
+test('diyKitEnabled toggles DIY Paint Kit showcase, product cards, and filters cleanly',async()=>{
+  const {normalizeSettings,normalizeDiyKit}=await import('../frontend/store-settings.js');
+  const {homeMarkup,homeFilterPanelMarkup,diyKitShowcaseMarkup}=await import('../frontend/storefront-view.js');
+  const items=[
+    {id:'m1',title:'Moss Toad',productType:'Fridge Magnet',category:'clay-models',price:250,stock:1,visible:true,images:['https://example.com/m1.jpg']},
+    {id:'d1',title:'Paint Your Cat',productType:'DIY Kit',category:'paintings',price:299,stock:2,visible:true,images:['https://example.com/d1.jpg']}
+  ];
+
+  const offSettings=normalizeSettings({diyKitEnabled:false});
+  assert.equal(offSettings.diyKitEnabled,false);
+  assert.equal(diyKitShowcaseMarkup(offSettings,items),'');
+  const offHome=homeMarkup(items,offSettings);
+  assert.ok(offHome.includes('Moss Toad'));
+  assert.equal(offHome.includes('Paint Your Cat'),false);
+  assert.equal(homeFilterPanelMarkup(items,{},offSettings).includes('DIY Kit'),false);
+
+  const onSettings=normalizeSettings({
+    diyKitEnabled:true,
+    diyKit:{title:'Weekend DIY Paint Kit',priceHint:349,badgeText:'Custom DIY'}
+  });
+  assert.equal(onSettings.diyKitEnabled,true);
+  assert.equal(normalizeDiyKit(onSettings.diyKit).priceHint,349);
+  const onHome=homeMarkup(items,onSettings);
+  assert.ok(onHome.includes('Weekend DIY Paint Kit'));
+  assert.ok(onHome.includes('Paint Your Cat'));
+  assert.ok(homeFilterPanelMarkup(items,{},onSettings).includes('DIY Kit'));
+});

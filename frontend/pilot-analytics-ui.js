@@ -39,6 +39,29 @@ export function parseDatetimeLocalValue(str = '') {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
+export function formatIstReadable(ms) {
+  if (!Number.isFinite(Number(ms)) || ms <= 0) return '';
+  return new Date(Number(ms)).toLocaleString('en-IN', {
+    timeZone: 'Asia/Kolkata',
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true
+  });
+}
+
+export function describeCustomRangePreview(fromStr = '', toStr = '') {
+  const f = parseDatetimeLocalValue(fromStr);
+  const t = parseDatetimeLocalValue(toStr);
+  if (!f || !t) return 'Pick From and To date/times (12:00 AM = midnight at start of that date).';
+  if (t < f) return `Selected: ${formatIstReadable(f)} → ${formatIstReadable(t)} · End time is before start time!`;
+  const durMin = Math.max(1, Math.round((Math.max(f + 60000, t) - f) / 60000));
+  const dur = durMin >= 1440 && durMin % 1440 === 0 ? `${durMin / 1440}d` : durMin >= 60 ? (durMin % 60 ? `${Math.floor(durMin / 60)}h ${durMin % 60}m` : `${Math.floor(durMin / 60)}h`) : `${durMin}m`;
+  return `Selected: ${formatIstReadable(f)} → ${formatIstReadable(t)} (${dur} · IST) · 12:00 AM = midnight start of date`;
+}
+
 export function quickRangeBounds(kind = 'today', nowMs = Date.now()) {
   const dayMs = 86400000;
   const istOffset = 19800000;
@@ -94,6 +117,7 @@ export function pilotControlsMarkup({
       <label class="pilot-range-field"><span>To</span><input type="datetime-local" name="to" value="${escHtml(toVal)}"></label>
       <button type="submit" data-pilot-apply-btn class="pilot-chip ${preset === 'custom' ? 'is-active' : ''}">${loading ? 'Applying…' : 'Apply custom range'}</button>
     </form>
+    <p class="pilot-range-preview" data-pilot-range-preview>${escHtml(describeCustomRangePreview(fromVal, toVal))}</p>
     <p class="pilot-range-error" data-pilot-range-msg role="alert" ${rangeError ? '' : 'hidden'}>${escHtml(rangeError)}</p>
   </div>`;
 }
@@ -438,13 +462,33 @@ export function mountNetworkAnalyticsPanel(root, { loadTraffic, callBackend, mou
       ? ((b.inCartCount - a.inCartCount) || (b.clicks - a.clicks))
       : ((b.clicks - a.clicks) || (b.inCartCount - a.inCartCount)));
 
-    patchSlot('kpis', '#na-kpis', `<div class="stats-grid" style="grid-template-columns:repeat(auto-fit,minmax(145px,1fr));margin-bottom:16px">
-      <div class="stat"><span>Active visitors now</span><strong>${s.activeNow || 0}</strong></div>
-      <div class="stat"><span>Visitors (${esc(data.window?.label || 'Window')})</span><strong>${s.windowVisitors ?? s.totalVisitors ?? 0}</strong></div>
-      <div class="stat"><span>Page views (Window)</span><strong>${s.totalPageViews || 0}</strong></div>
-      <div class="stat"><span>Clicks (${esc(data.window?.label || 'Window')})</span><strong>${s.windowClicks ?? s.totalProductClicks ?? 0}${s.windowMajorClicks ? ` (${s.windowMajorClicks} major)` : ''}</strong></div>
-      <div class="stat"><span>Today / Yesterday (IST)</span><strong>${s.todayVisitors || 0} / ${s.yesterdayVisitors || 0}</strong></div>
-      <div class="stat"><span>All-time visitors</span><strong>${s.lifetimeVisitors ?? s.totalVisitors ?? 0}</strong></div>
+    const win = data.window || {};
+    const eng = data.engagement || {};
+    const dev = data.deviceSplit || {};
+    const isAll = !win.preset || win.preset === 'all';
+    const topSrc = (data.topReferrers || [])[0];
+    const earliestTxt = win.earliestDataAt ? formatIstReadable(win.earliestDataAt) : '';
+    const summaryBanner = `<div class="pilot-summary-banner">
+      <span><strong>${esc(win.rangeText || 'All time')}</strong>${win.durationLabel && !isAll ? ` (${esc(win.durationLabel)})` : ''} · <strong>${s.windowVisitors ?? s.totalVisitors ?? 0}</strong> unique ${((s.windowVisitors ?? s.totalVisitors ?? 0) === 1) ? 'visitor' : 'visitors'}, <strong>${s.windowPageViews ?? s.totalPageViews ?? 0}</strong> page views, <strong>${s.windowClicks ?? s.totalProductClicks ?? 0}</strong> clicks</span>
+      ${(s.windowVisitors === 0 && !isAll && earliestTxt)
+        ? `<small class="pilot-muted">No sessions in this range (earliest recorded visit: ${esc(earliestTxt)})</small>`
+        : (win.legacyVisitorsCount > 0 ? `<small class="pilot-muted">${win.legacyVisitorsCount} older session(s) from before detailed tracking lack click/scroll logs</small>` : '')}
+    </div>`;
+
+    patchSlot('kpis', '#na-kpis', isAll ? `${summaryBanner}<div class="stats-grid" style="grid-template-columns:repeat(auto-fit,minmax(145px,1fr));margin-bottom:16px">
+      <div class="stat"><span>Live active now</span><strong>${s.activeNow || 0}</strong><small class="pilot-muted">Last 5 min</small></div>
+      <div class="stat"><span>All-time unique visitors</span><strong>${s.lifetimeVisitors ?? s.totalVisitors ?? 0}</strong><small class="pilot-muted">${dev.mobile || 0} mob · ${dev.desktop || 0} desk</small></div>
+      <div class="stat"><span>Today / Yesterday (IST)</span><strong>${s.todayVisitors || 0} / ${s.yesterdayVisitors || 0}</strong><small class="pilot-muted">Last 7d: ${s.last7DaysVisitors || 0}</small></div>
+      <div class="stat"><span>Total page views</span><strong>${s.lifetimePageViews ?? s.totalPageViews ?? 0}</strong><small class="pilot-muted">Avg ${s.avgViewsPerVisitor || 0}/visitor</small></div>
+      <div class="stat"><span>Total tracked clicks</span><strong>${s.totalProductClicks || 0}</strong><small class="pilot-muted">${s.todayClicks || 0} today</small></div>
+      <div class="stat"><span>Avg time &amp; scroll</span><strong>${esc(formatDurationSec(eng.avgTimeOnSiteSec || 0))}</strong><small class="pilot-muted">Avg scroll ${eng.avgMaxScrollPct || 0}%</small></div>
+    </div>` : `${summaryBanner}<div class="stats-grid" style="grid-template-columns:repeat(auto-fit,minmax(145px,1fr));margin-bottom:16px">
+      <div class="stat"><span>Unique visitors (range)</span><strong>${s.windowVisitors ?? 0}</strong><small class="pilot-muted">${dev.mobile || 0} mob · ${dev.desktop || 0} desk</small></div>
+      <div class="stat"><span>Page views (range)</span><strong>${s.windowPageViews ?? s.totalPageViews ?? 0}</strong><small class="pilot-muted">${s.avgViewsPerVisitor || 0} avg/visitor</small></div>
+      <div class="stat"><span>All clicks (range)</span><strong>${s.windowClicks ?? 0}</strong><small class="pilot-muted">${s.windowMajorClicks || 0} major · ${s.windowProductClicks || 0} artwork</small></div>
+      <div class="stat"><span>Avg time &amp; scroll</span><strong>${esc(formatDurationSec(eng.avgTimeOnSiteSec || 0))}</strong><small class="pilot-muted">Avg scroll ${eng.avgMaxScrollPct || 0}%</small></div>
+      <div class="stat"><span>Top traffic source</span><strong>${esc(topSrc ? topSrc.source : '—')}</strong><small class="pilot-muted">${topSrc ? `${topSrc.count} visitor(s)` : 'No referrers'}</small></div>
+      <div class="stat"><span>Live now · All-time</span><strong>${s.activeNow || 0}</strong><small class="pilot-muted">All-time total: ${s.lifetimeVisitors ?? 0}</small></div>
     </div>`);
 
     const bannerEl = root.querySelector('#na-range-banner strong');
@@ -646,9 +690,12 @@ export function mountNetworkAnalyticsPanel(root, { loadTraffic, callBackend, mou
 
   const onRangeInput = event => {
     const inp = event.target;
-    if (!inp?.closest?.('[data-pilot-custom-form]')) return;
+    const form = inp?.closest?.('[data-pilot-custom-form]');
+    if (!form) return;
     if (inp.name === 'from') fromLocal = String(inp.value || '');
     if (inp.name === 'to') toLocal = String(inp.value || '');
+    const prevEl = root.querySelector('[data-pilot-range-preview]');
+    if (prevEl) prevEl.textContent = describeCustomRangePreview(form.elements.from?.value || fromLocal, form.elements.to?.value || toLocal);
     if (rangeError) showRangeError('');
   };
 

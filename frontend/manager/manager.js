@@ -26,9 +26,11 @@ import {
   pilotRecentClicksMarkup,
   pilotVisitorsLogMarkup,
   parseDatetimeLocalValue,
+  describeCustomRangePreview,
+  formatIstReadable,
   quickRangeBounds,
   toDatetimeLocalValue
-} from '../pilot-analytics-ui.js?v=20261125e';
+} from '../pilot-analytics-ui.js?v=20261125f';
 
 const $ = id => document.getElementById(id);
 const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -950,25 +952,33 @@ function renderTrafficKpisMarkup() {
     return `<div class="mgr-panel"><p class="mgr-muted">${state.loadingData ? 'Loading live visitor &amp; click telemetry…' : 'Visitor tracking initializes automatically once shoppers open hehe.cafe.'}</p></div>`;
   }
   const s = t.summary || {};
+  const win = t.window || {};
   const eng = t.engagement || {};
   const dev = t.deviceSplit || {};
   const devTotal = Math.max(1, (dev.mobile || 0) + (dev.desktop || 0));
-  const isAll = !t.window || t.window.preset === 'all';
+  const isAll = !win.preset || win.preset === 'all';
+  const earliestTxt = win.earliestDataAt ? formatIstReadable(win.earliestDataAt) : '';
+  const banner = `<div class="pilot-summary-banner">
+    <span><strong>${esc(win.rangeText || 'All time')}</strong>${win.durationLabel && !isAll ? ` (${esc(win.durationLabel)})` : ''} · <strong>${s.windowVisitors ?? s.totalVisitors ?? 0}</strong> unique visitors, <strong>${s.windowPageViews ?? s.totalPageViews ?? 0}</strong> views, <strong>${s.windowClicks ?? s.totalProductClicks ?? 0}</strong> clicks</span>
+    ${(s.windowVisitors === 0 && !isAll && earliestTxt)
+      ? `<small class="mgr-muted">No sessions in range (earliest recorded visit: ${esc(earliestTxt)})</small>`
+      : (win.legacyVisitorsCount > 0 ? `<small class="mgr-muted">${win.legacyVisitorsCount} pre-upgrade visitor(s) have timestamps only</small>` : '')}
+  </div>`;
   if (!isAll) {
-    return `<div class="mgr-kpi-grid">
-      <div class="mgr-kpi"><span>Visitors (${esc(t.window?.label || 'Window')})</span><strong>${s.windowVisitors ?? 0}</strong><small>Mob ${Math.round(((dev.mobile || 0) / devTotal) * 100)}% / Desk ${Math.round(((dev.desktop || 0) / devTotal) * 100)}%</small></div>
-      <div class="mgr-kpi"><span>Page views (Window)</span><strong>${s.totalPageViews || 0}</strong><small>${esc(t.window?.rangeText || '')}</small></div>
-      <div class="mgr-kpi"><span>Clicks (${esc(t.window?.label || 'Window')})</span><strong>${s.windowClicks || 0}</strong><small>${s.windowMajorClicks || 0} major · Bag ${eng.bagRatePct || 0}%</small></div>
+    return `${banner}<div class="mgr-kpi-grid">
+      <div class="mgr-kpi"><span>Unique visitors (range)</span><strong>${s.windowVisitors ?? 0}</strong><small>${dev.mobile || 0} mob (${Math.round(((dev.mobile || 0) / devTotal) * 100)}%) · ${dev.desktop || 0} desk</small></div>
+      <div class="mgr-kpi"><span>Page views (range)</span><strong>${s.windowPageViews ?? s.totalPageViews ?? 0}</strong><small>${s.avgViewsPerVisitor || 0} avg views / visitor</small></div>
+      <div class="mgr-kpi"><span>All clicks (range)</span><strong>${s.windowClicks || 0}</strong><small>${s.windowMajorClicks || 0} major · ${s.windowProductClicks || 0} artwork · Bag ${eng.bagRatePct || 0}%</small></div>
       <div class="mgr-kpi"><span>Avg Dwell &amp; Scroll</span><strong>${eng.avgTimeOnSiteSec || 0}s</strong><small>Avg scroll ${eng.avgMaxScrollPct || 0}% · Bounce ${eng.bounceRatePct || 0}%</small></div>
-      <div class="mgr-kpi"><span>Active visitors now</span><strong style="color:var(--accent)">${s.activeNow || 0}</strong><small>All-time: ${s.lifetimeVisitors ?? s.totalVisitors ?? 0}</small></div>
+      <div class="mgr-kpi"><span>Live now · All-time</span><strong style="color:var(--accent)">${s.activeNow || 0}</strong><small>All-time unique: ${s.lifetimeVisitors ?? s.totalVisitors ?? 0}</small></div>
     </div>`;
   }
-  return `<div class="mgr-kpi-grid">
+  return `${banner}<div class="mgr-kpi-grid">
     <div class="mgr-kpi"><span>Active visitors now</span><strong style="color:var(--accent)">${s.activeNow || 0}</strong><small>Seen in last 5 minutes · Mob ${Math.round(((dev.mobile || 0) / devTotal) * 100)}% / Desk ${Math.round(((dev.desktop || 0) / devTotal) * 100)}%</small></div>
     <div class="mgr-kpi"><span>Visitors today (IST)</span><strong>${s.todayVisitors || 0}</strong><small>${s.todayClicks || 0} item clicks today</small></div>
     <div class="mgr-kpi"><span>Visitors yesterday</span><strong>${s.yesterdayVisitors || 0}</strong><small>Last 7d: ${s.last7DaysVisitors || 0}</small></div>
-    <div class="mgr-kpi"><span>Last 30 days</span><strong>${s.last30DaysVisitors || 0}</strong><small>${s.totalPageViews || 0} total visits</small></div>
-    <div class="mgr-kpi"><span>All-time visitors</span><strong>${s.totalVisitors || 0}</strong><small>${s.totalProductClicks || 0} total item clicks</small></div>
+    <div class="mgr-kpi"><span>Last 30 days</span><strong>${s.last30DaysVisitors || 0}</strong><small>${s.lifetimePageViews ?? s.totalPageViews ?? 0} total visits</small></div>
+    <div class="mgr-kpi"><span>All-time visitors</span><strong>${s.lifetimeVisitors ?? s.totalVisitors ?? 0}</strong><small>${s.totalProductClicks || 0} total item clicks</small></div>
   </div>`;
 }
 
@@ -3400,8 +3410,11 @@ document.addEventListener('input', event => {
   } else if (event.target.dataset?.reconPrice && state.reconModal) {
     state.reconModal.priceOverrides[event.target.dataset.reconPrice] = Number(event.target.value) || 0;
   } else if (event.target.closest?.('[data-pilot-custom-form]')) {
+    const form = event.target.closest('[data-pilot-custom-form]');
     if (event.target.name === 'from') state.trafficFromLocal = String(event.target.value || '');
     if (event.target.name === 'to') state.trafficToLocal = String(event.target.value || '');
+    const prevEl = document.querySelector('[data-pilot-range-preview]');
+    if (prevEl) prevEl.textContent = describeCustomRangePreview(form.elements.from?.value || state.trafficFromLocal, form.elements.to?.value || state.trafficToLocal);
     const msgEl = document.querySelector('[data-pilot-range-msg]');
     if (msgEl) { msgEl.textContent = ''; msgEl.hidden = true; }
   }

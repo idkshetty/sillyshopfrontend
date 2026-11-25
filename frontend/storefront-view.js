@@ -1,7 +1,7 @@
 import { escapeHTML as e, safeImage, cardImage, progressiveImageSources, money, SHIPPING_CHARGE, artworkColorFor, artworkThemeStyle, contrastColorFor, sortArtworks, filterProducts, isDiyKit } from './commerce.js';
 import { artistSlug, mergeArtistsWithProducts } from './artists.js';
 import { contentCategories, DEFAULT_CONTENT } from './store-content.js';
-import { bannerMarkup, FALLBACK_BANNER_ARTWORKS, DEFAULT_HOME_SECTIONS, safeStoreLink } from './store-settings.js';
+import { bannerMarkup, FALLBACK_BANNER_ARTWORKS, DEFAULT_HOME_SECTIONS, safeStoreLink, normalizeDiyKit } from './store-settings.js';
 import { reviewSection } from './shop-effects.js';
 import { skeletonMarkup } from './skeletons.js';
 
@@ -21,7 +21,37 @@ export function storyMarkup() {
   </section>`;
 }
 
-export function productCardMarkup(p, content = DEFAULT_CONTENT, { index = 99 } = {}) {
+export function diyKitShowcaseMarkup(settings = null, products = []) {
+  if (!settings || settings.diyKitEnabled !== true) return '';
+  const diy = normalizeDiyKit(settings.diyKit);
+  if (diy.showHomepageBanner === false) return '';
+  const kitProducts = (Array.isArray(products) ? products : []).filter(p => p && p.visible && !p.archived && isDiyKit(p));
+  const kitCount = kitProducts.length;
+  const ctaAttr = kitCount
+    ? `type="button" class="button" data-action="set-filter-type" data-type="DIY Kit"`
+    : `type="button" class="button outline" data-action="set-filter-type" data-type="DIY Kit"`;
+  return `<section class="diy-kit-showcase" aria-label="${e(diy.title)}">
+    <div class="diy-kit-showcase-media">
+      <img src="${e(diy.image)}" alt="${e(diy.title)}" loading="lazy" decoding="async">
+    </div>
+    <div class="diy-kit-showcase-copy">
+      <div class="diy-kit-showcase-top">
+        <span class="badge diy-kit-badge">${e(diy.badgeText)}</span>
+        ${diy.priceHint > 0 ? `<span class="diy-kit-price-hint">From ${money(diy.priceHint)}</span>` : ''}
+      </div>
+      <h3>${e(diy.title)}</h3>
+      <p class="diy-kit-showcase-sub">${e(diy.subtitle)}</p>
+      <p class="diy-kit-showcase-inc">${e(diy.includesText)}</p>
+      <div class="diy-kit-showcase-actions">
+        ${kitCount
+          ? `<button ${ctaAttr}>Browse ${kitCount} DIY ${kitCount === 1 ? 'Kit' : 'Kits'} →</button>`
+          : '<span class="small muted">New DIY Paint Kits dropping soon — add a product with category "DIY Kit" to list it here.</span>'}
+      </div>
+    </div>
+  </section>`;
+}
+
+export function productCardMarkup(p, content = DEFAULT_CONTENT, { index = 99, settings = null } = {}) {
   const CATEGORIES = contentCategories(content);
   const categoryOf = id => CATEGORIES.find(c => c.id === id);
   const fallbackImg = categoryOf(p.category)?.image || 'https://iili.io/ofJ6Nr7.jpg';
@@ -37,12 +67,13 @@ export function productCardMarkup(p, content = DEFAULT_CONTENT, { index = 99 } =
   const bgColor = artworkColorFor(p);
   const soldOut = p.stock < 1;
   const diy = isDiyKit(p);
+  const diyCfg = diy ? normalizeDiyKit(settings?.diyKit) : null;
   return `<article class="product-card ${soldOut ? 'is-sold-out-card' : ''} ${diy ? 'is-diy-kit-card' : ''}" data-product-card data-product-id="${e(p.id)}" data-bg-color="${e(bgColor)}" style="${themeStyle}">
     <a class="product-card-image" href="#product/${e(p.id)}">
       <div class="artwork-mat-frame">
         <img src="${e(prog.src)}"${prog.hdSrc ? ` data-hd-src="${e(prog.hdSrc)}"` : ''}${prog.fallbackSrc ? ` data-fallback-src="${e(prog.fallbackSrc)}"` : ''} alt="${e(p.title)} by ${e(artist)}" ${loadAttr} decoding="async" data-artwork-img>
       </div>
-      ${!soldOut && p.tag ? `<span class="badge unique-badge">${e(p.tag)}</span>` : (!soldOut && diy ? '<span class="badge unique-badge">DIY Paint Kit</span>' : '')}
+      ${!soldOut && p.tag ? `<span class="badge unique-badge">${e(p.tag)}</span>` : (!soldOut && diy ? `<span class="badge unique-badge diy-kit-badge">${e(diyCfg.badgeText)}</span>` : '')}
     </a>
     <div class="product-card-body">
       <div class="product-card-meta-top">
@@ -52,7 +83,7 @@ export function productCardMarkup(p, content = DEFAULT_CONTENT, { index = 99 } =
       <h2><a href="#product/${e(p.id)}">${e(p.title)}</a></h2>
       ${soldOut ? '<span class="card-sold-out-pill">Sold out</span>' : ''}
       <p class="artwork-card-description">${e(desc)}</p>
-      ${diy ? '<p class="diy-kit-card-note">Includes line art · base plate · back attachment</p>' : ''}
+      ${diy ? `<p class="diy-kit-card-note">${e(diyCfg.includesText)}</p>` : ''}
       ${specs ? `<p class="artwork-card-specs">${e(specs)}</p>` : ''}
       <div class="product-card-price-row">
         <p class="price">${money(p.price)}${p.comparePrice > p.price ? ` <del>${money(p.comparePrice)}</del>` : ''}</p>
@@ -68,8 +99,9 @@ export function productCardMarkup(p, content = DEFAULT_CONTENT, { index = 99 } =
   </article>`;
 }
 
-export function homeFilterPanelMarkup(products, filter = {}) {
-  const types = [...new Set((Array.isArray(products) ? products : []).filter(p => p && p.visible && !p.archived).map(p => (p.productType || 'Fridge Magnet').trim()).filter(Boolean))];
+export function homeFilterPanelMarkup(products, filter = {}, settings = null) {
+  const diyAllowed = settings ? settings.diyKitEnabled === true : true;
+  const types = [...new Set((Array.isArray(products) ? products : []).filter(p => p && p.visible && !p.archived && (diyAllowed || !isDiyKit(p))).map(p => (p.productType || 'Fridge Magnet').trim()).filter(Boolean))];
   const sortOptions = [
     ['', 'Studio order'],
     ['title-asc', 'Alphabetical (A → Z)'],
@@ -148,21 +180,25 @@ export function stockRefreshBarMarkup(stockSchedule = null) {
 
 export function homeMarkup(products, storeSettings, content = DEFAULT_CONTENT, { catalogLoading = false, catalogError = '', filter = { sort: '', available: false, discounted: false, productType: '', search: '' }, artists = [], customerReviews = [], stockSchedule = null } = {}) {
   const sortMode = filter?.sort || storeSettings?.artworkSort || 'manual';
+  const diyAllowed = storeSettings?.diyKitEnabled === true;
+  const publicList = (Array.isArray(products) ? products : []).filter(p => diyAllowed || !isDiyKit(p));
   const CATEGORIES = contentCategories(content);
-  const allVisible = filterProducts(products, { sort: sortMode, available: Boolean(filter?.available), discounted: Boolean(filter?.discounted), productType: filter?.productType || '', search: filter?.search || '' });
+  const allVisible = filterProducts(publicList, { sort: sortMode, available: Boolean(filter?.available), discounted: Boolean(filter?.discounted), productType: filter?.productType || '', search: filter?.search || '' });
   const hasFilter = Boolean(filter?.sort || filter?.available || filter?.discounted || filter?.productType || filter?.search);
   const hiddenCompat = `<div class="collection-image" hidden aria-hidden="true"><img src="${e(CATEGORIES[0]?.image || 'assets/paintings.svg')}" alt=""></div>`;
-  const bannerHtml = bannerMarkup(storeSettings, sortArtworks(products.filter(p => p.visible && !p.archived), storeSettings?.artworkSort || 'manual'));
+  const bannerHtml = bannerMarkup(storeSettings, sortArtworks(publicList.filter(p => p.visible && !p.archived), storeSettings?.artworkSort || 'manual'));
+  const diySpotlightHtml = !hasFilter ? diyKitShowcaseMarkup(storeSettings, products) : '';
   const artworksHtml = `<section id="artworks" class="home-artworks-section" aria-labelledby="home-artworks-heading">
       <div class="home-intro home-intro-row">
         <div>
           <p class="eyebrow">${e(content?.home?.eyebrow || 'hehe.cafe · artworks')}</p>
           <h2 id="home-artworks-heading">${e(content?.home?.heading || 'Artistic clay magnets for some hehe')}</h2>
         </div>
-        ${homeFilterPanelMarkup(products, filter)}
+        ${homeFilterPanelMarkup(publicList, filter, storeSettings)}
       </div>
+      ${diySpotlightHtml}
       <div id="product-results">
-        ${catalogLoading ? skeletonMarkup('products', 'Loading artworks…') : catalogError && !allVisible.length ? `<div class="empty-state" role="alert"><h2>Artworks could not load</h2><p>Check your connection and try again.</p><button class="button outline" data-action="retry">Try again</button></div>` : allVisible.length ? `<div class="product-grid">${allVisible.map((p, idx) => productCardMarkup(p, content, { index: idx })).join('')}</div>` : hasFilter ? `<div class="empty-state"><h2>No matching artworks</h2><p>No pieces match those filters yet.</p><button type="button" class="button outline" data-action="reset-filters">Show all artworks</button></div>` : `<div class="product-grid">${FALLBACK_BANNER_ARTWORKS.map((item, idx) => productCardMarkup(item, content, { index: idx })).join('')}</div>`}
+        ${catalogLoading ? skeletonMarkup('products', 'Loading artworks…') : catalogError && !allVisible.length ? `<div class="empty-state" role="alert"><h2>Artworks could not load</h2><p>Check your connection and try again.</p><button class="button outline" data-action="retry">Try again</button></div>` : allVisible.length ? `<div class="product-grid">${allVisible.map((p, idx) => productCardMarkup(p, content, { index: idx, settings: storeSettings })).join('')}</div>` : hasFilter ? `<div class="empty-state"><h2>No matching artworks</h2><p>No pieces match those filters yet.</p><button type="button" class="button outline" data-action="reset-filters">Show all artworks</button></div>` : `<div class="product-grid">${FALLBACK_BANNER_ARTWORKS.map((item, idx) => productCardMarkup(item, content, { index: idx, settings: storeSettings })).join('')}</div>`}
       </div>
     </section>`;
   const storyHtml = storeSettings?.storyVisible === false ? '' : storyMarkup();

@@ -190,6 +190,32 @@ export function resolveBackAttachment(attachmentId, settings = null) {
   return options.find(o => o.id === key) || options[0];
 }
 
+export const DEFAULT_DIY_KIT = {
+  title: 'DIY Paint Kit',
+  subtitle: 'Paint your own handmade hehe.cafe clay frame at home — beginner-friendly & relaxing.',
+  includesText: 'Includes sculpted clay frame · line art guide · acrylic paints · brush · back attachment',
+  priceHint: 299,
+  badgeText: 'DIY Paint Kit',
+  image: 'assets/diy-kit-placeholder.svg',
+  showHomepageBanner: true
+};
+
+export function normalizeDiyKit(raw) {
+  const src = (raw && typeof raw === 'object' && !Array.isArray(raw)) ? raw : {};
+  const rawPrice = Number(src.priceHint);
+  const priceHint = Number.isFinite(rawPrice) && rawPrice >= 0 && rawPrice <= 50000 ? Math.round(rawPrice * 100) / 100 : DEFAULT_DIY_KIT.priceHint;
+  const image = src.image && validImageSource(src.image) ? safeImage(src.image, DEFAULT_DIY_KIT.image) : DEFAULT_DIY_KIT.image;
+  return {
+    title: String(src.title || '').trim().slice(0, 64) || DEFAULT_DIY_KIT.title,
+    subtitle: String(src.subtitle || '').trim().slice(0, 220) || DEFAULT_DIY_KIT.subtitle,
+    includesText: String(src.includesText || '').trim().slice(0, 180) || DEFAULT_DIY_KIT.includesText,
+    priceHint,
+    badgeText: String(src.badgeText || '').trim().slice(0, 28) || DEFAULT_DIY_KIT.badgeText,
+    image,
+    showHomepageBanner: src.showHomepageBanner !== false
+  };
+}
+
 export const DEFAULT_SETTINGS = {
   announcementVisible: false,
   announcementText: 'welcome to hehe.cafe · handmade clay frames & paintings · ₹40/item India Post shipping',
@@ -221,7 +247,9 @@ export const DEFAULT_SETTINGS = {
   storyVisible: true,
   productImageStorage: 'firebase',
   backAttachmentsEnabled: false,
-  backAttachmentOptions: DEFAULT_BACK_ATTACHMENTS.map(o => ({ ...o }))
+  backAttachmentOptions: DEFAULT_BACK_ATTACHMENTS.map(o => ({ ...o })),
+  diyKitEnabled: false,
+  diyKit: { ...DEFAULT_DIY_KIT }
 };
 
 export const FALLBACK_BANNER_ARTWORKS = [
@@ -434,6 +462,8 @@ export function normalizeSettings(value = {}) {
   result.productImageStorage = value.productImageStorage === 'freeimage' ? 'freeimage' : 'firebase';
   result.backAttachmentsEnabled = value.backAttachmentsEnabled === true;
   result.backAttachmentOptions = normalizeBackAttachments(value.backAttachmentOptions);
+  result.diyKitEnabled = value.diyKitEnabled === true;
+  result.diyKit = normalizeDiyKit(value.diyKit);
   return result;
 }
 export function bannerSlidesFor(products = [], settings = DEFAULT_SETTINGS) {
@@ -582,6 +612,24 @@ export function settingsForm(s) {
       </div>
     </div>`).join('')}
   </div>
+  <hr>
+  <h2>DIY Paint Kit</h2>
+  <p class="small muted">Control whether DIY Paint Kit artworks &amp; the homepage spotlight appear on the public storefront. Toggle off anytime to hide all DIY Kits from shoppers without deleting products.</p>
+  <label class="visibility-toggle"><input type="checkbox" name="diyKitEnabled" ${s.diyKitEnabled===true?'checked':''}><span>Enable DIY Paint Kits on storefront (show DIY Kit artworks, filter &amp; spotlight)</span></label>
+  ${(() => { const diy = normalizeDiyKit(s.diyKit); return `<div class="back-attach-admin-card" style="margin-top:10px">
+    <div class="back-attach-admin-head">
+      <img class="back-attach-admin-thumb" src="${e(diy.image)}" alt="${e(diy.title)} preview">
+      <label class="visibility-toggle" style="margin:0;flex:1"><input type="checkbox" name="diyKitShowBanner" ${diy.showHomepageBanner!==false?'checked':''}><span>Show DIY Kit spotlight banner on homepage</span></label>
+    </div>
+    <div class="form-grid" style="margin-top:8px">
+      <label class="field">Spotlight title<input name="diyKitTitle" maxlength="64" value="${e(diy.title)}"></label>
+      <label class="field">Card badge text<input name="diyKitBadge" maxlength="28" value="${e(diy.badgeText)}"></label>
+      <label class="field">Starting price hint (₹)<input type="number" name="diyKitPriceHint" min="0" max="50000" step="1" value="${e(diy.priceHint)}"></label>
+      <label class="field">Placeholder / photo URL (swap anytime)<input name="diyKitImage" maxlength="100000" value="${e(diy.image)}"></label>
+      <label class="field wide">Subtitle<input name="diyKitSubtitle" maxlength="220" value="${e(diy.subtitle)}"></label>
+      <label class="field wide">What's included line (shown on spotlight, cards &amp; product page)<input name="diyKitIncludes" maxlength="180" value="${e(diy.includesText)}"></label>
+    </div>
+  </div>`; })()}
   <hr>
   <h2>Customer reviews</h2>
   <label class="visibility-toggle"><input type="checkbox" name="reviewsVisible" ${s.reviewsVisible?'checked':''}><span>Customer reviews visible</span></label>
