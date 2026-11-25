@@ -564,6 +564,15 @@ export function settingsForm(s) {
   const diy = normalizeDiyKit(s.diyKit);
   const pill = (on, txtOn = 'ON', txtOff = 'OFF') => `<span class="settings-status-pill ${on ? 'is-on' : 'is-off'}">${on ? txtOn : txtOff}</span>`;
   const accRight = (badgeHtml = '') => `<span class="settings-acc-right">${badgeHtml}<span class="settings-acc-chevron" aria-hidden="true">▾</span></span>`;
+  const imageUploadRow = (fieldName, saved, defImg, inputName = '') => `<div class="field wide settings-image-actions">
+    <label class="settings-upload-btn">Upload photo<input ${inputName ? `name="${e(inputName)}" ` : ''}type="file" data-settings-upload="${e(fieldName)}" accept="image/jpeg,image/png,image/webp"></label>
+    <button type="button" class="text-link" data-settings-image-reset="${e(fieldName)}">Reset default</button>
+    <span class="settings-upload-status" data-upload-status="${e(fieldName)}" role="status">${saved ? 'Uploaded photo saved' : ''}</span>
+  </div>`;
+  const imageUrlField = (label, fieldName, currentVal, defImg) => {
+    const saved = isInlineImage(currentVal);
+    return `<label class="field wide">${label}<input name="${e(fieldName)}" maxlength="100000" data-saved-image="${saved}" data-default-image="${e(defImg)}" data-image-url="${e(fieldName)}" placeholder="${saved ? 'Uploaded photo saved · paste URL or upload new below' : 'https://… or upload below'}" value="${saved ? '' : e(currentVal || '')}"></label>`;
+  };
   return `<form id="banner-form" class="settings-note banner-editor">
   <details class="settings-acc-card" name="settings-sections" open data-settings-sec="banner" data-settings-keywords="hero banner headline subtitle artist cta button position offset fallback image explore artworks">
     <summary class="settings-acc-sum">
@@ -603,8 +612,15 @@ export function settingsForm(s) {
         <label class="field"><span class="banner-offset-label"><span>Horizontal fine-tune</span><span id="banner-cta-x-val" class="banner-offset-val">${ctaX}px</span></span><input type="range" name="bannerButtonOffsetX" min="-60" max="60" step="2" value="${ctaX}"></label>
         <label class="field"><span class="banner-offset-label"><span>Vertical fine-tune</span><span id="banner-cta-y-val" class="banner-offset-val">${ctaY}px</span></span><input type="range" name="bannerButtonOffsetY" min="-60" max="60" step="2" value="${ctaY}"></label>
         <div class="field wide"><button type="button" class="text-link" data-action="reset-banner-cta-pos">Reset button position</button></div>
-        <label class="field wide">Fallback banner image URL<input name="bannerImage" maxlength="100000" data-saved-image="${isInlineImage(s.bannerImage)}" placeholder="${isInlineImage(s.bannerImage)?'Image saved · choose a new file or paste a URL to replace':'https://…'}" value="${isInlineImage(s.bannerImage)?'':e(s.bannerImage)}"></label>
-        <label class="field wide">Or choose a fallback banner image<input name="bannerFile" type="file" accept="image/jpeg,image/png,image/webp"></label>
+        ${imageUrlField('Fallback banner image URL', 'bannerImage', s.bannerImage, DEFAULT_SETTINGS.bannerImage)}
+        <div class="field wide settings-image-picker">
+          <img class="back-attach-admin-thumb" data-image-preview="bannerImage" src="${e(safeImage(s.bannerImage, DEFAULT_SETTINGS.bannerImage))}" alt="Fallback banner preview">
+          <div class="settings-image-actions">
+            <label class="settings-upload-btn">Upload photo<input name="bannerFile" type="file" data-settings-upload="bannerImage" accept="image/jpeg,image/png,image/webp"></label>
+            <button type="button" class="text-link" data-settings-image-reset="bannerImage">Reset default</button>
+            <span class="settings-upload-status" data-upload-status="bannerImage" role="status">${isInlineImage(s.bannerImage) ? 'Uploaded photo saved' : ''}</span>
+          </div>
+        </div>
       </div>
     </div>
   </details>
@@ -618,19 +634,24 @@ export function settingsForm(s) {
       <p class="small muted">When turned on, shoppers can pick Magnet, Sticky Tape, or Desk Buddy Stand directly in their bag (base price + selected add-on). Selections appear automatically inside Admin Orders &amp; invoices.</p>
       <label class="visibility-toggle"><input type="checkbox" name="backAttachmentsEnabled" ${s.backAttachmentsEnabled===true?'checked':''}><span>Enable back attachment options on storefront bag &amp; checkout</span></label>
       <div class="back-attach-admin-grid">
-        ${normalizeBackAttachments(s.backAttachmentOptions).map(opt => `<div class="back-attach-admin-card" data-attach-row="${e(opt.id)}">
+        ${normalizeBackAttachments(s.backAttachmentOptions).map(opt => {
+          const defImg = DEFAULT_BACK_ATTACHMENTS.find(d => d.id === opt.id)?.image || opt.image;
+          const fieldName = `attach_${opt.id}_image`;
+          return `<div class="back-attach-admin-card" data-attach-row="${e(opt.id)}">
           <div class="back-attach-admin-head">
-            <img class="back-attach-admin-thumb" src="${e(opt.image)}" alt="${e(opt.label)} preview">
+            <img class="back-attach-admin-thumb" data-image-preview="${e(fieldName)}" src="${e(safeImage(opt.image, defImg))}" alt="${e(opt.label)} preview">
             <label class="visibility-toggle" style="margin:0;flex:1"><input type="checkbox" name="attach_${e(opt.id)}_enabled" ${opt.enabled!==false?'checked':''}><span>Enable ${e(opt.label)}</span></label>
           </div>
           <div class="form-grid" style="margin-top:8px">
             <label class="field">Display name<input name="attach_${e(opt.id)}_label" maxlength="48" value="${e(opt.label)}"></label>
             <label class="field">Short chip label<input name="attach_${e(opt.id)}_shortLabel" maxlength="24" value="${e(opt.shortLabel)}"></label>
             <label class="field">Extra add-on price (₹)<input type="number" name="attach_${e(opt.id)}_price" min="0" max="5000" step="1" value="${e(opt.price)}"></label>
-            <label class="field">Back photo URL (swap anytime)<input name="attach_${e(opt.id)}_image" maxlength="100000" value="${e(opt.image)}"></label>
             <label class="field wide">Short description<input name="attach_${e(opt.id)}_description" maxlength="160" value="${e(opt.description)}"></label>
+            ${imageUrlField('Back photo URL (swap anytime)', fieldName, opt.image, defImg)}
+            ${imageUploadRow(fieldName, isInlineImage(opt.image), defImg)}
           </div>
-        </div>`).join('')}
+        </div>`;
+        }).join('')}
       </div>
     </div>
   </details>
@@ -645,16 +666,17 @@ export function settingsForm(s) {
       <label class="visibility-toggle"><input type="checkbox" name="diyKitEnabled" ${s.diyKitEnabled===true?'checked':''}><span>Enable DIY Paint Kits on storefront (show DIY Kit artworks, category tab &amp; spotlight)</span></label>
       <div class="back-attach-admin-card" style="margin-top:10px">
         <div class="back-attach-admin-head">
-          <img class="back-attach-admin-thumb" src="${e(diy.image)}" alt="${e(diy.title)} preview">
+          <img class="back-attach-admin-thumb" data-image-preview="diyKitImage" src="${e(safeImage(diy.image, DEFAULT_DIY_KIT.image))}" alt="${e(diy.title)} preview">
           <label class="visibility-toggle" style="margin:0;flex:1"><input type="checkbox" name="diyKitShowBanner" ${diy.showHomepageBanner!==false?'checked':''}><span>Show DIY Kit spotlight banner on homepage</span></label>
         </div>
         <div class="form-grid" style="margin-top:8px">
           <label class="field">Spotlight title<input name="diyKitTitle" maxlength="64" value="${e(diy.title)}"></label>
           <label class="field">Card badge text<input name="diyKitBadge" maxlength="28" value="${e(diy.badgeText)}"></label>
           <label class="field">Starting price hint (₹)<input type="number" name="diyKitPriceHint" min="0" max="50000" step="1" value="${e(diy.priceHint)}"></label>
-          <label class="field">Placeholder / photo URL (swap anytime)<input name="diyKitImage" maxlength="100000" value="${e(diy.image)}"></label>
           <label class="field wide">Subtitle<input name="diyKitSubtitle" maxlength="220" value="${e(diy.subtitle)}"></label>
           <label class="field wide">What's included line (shown on spotlight, cards &amp; product page)<input name="diyKitIncludes" maxlength="180" value="${e(diy.includesText)}"></label>
+          ${imageUrlField('Placeholder / photo URL (swap anytime)', 'diyKitImage', diy.image, DEFAULT_DIY_KIT.image)}
+          ${imageUploadRow('diyKitImage', isInlineImage(diy.image), DEFAULT_DIY_KIT.image)}
         </div>
       </div>
     </div>

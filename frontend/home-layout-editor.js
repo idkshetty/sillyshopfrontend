@@ -92,7 +92,14 @@ export function mountHomeLayoutEditor(container, {
               <label class="field">Theme<select data-promo-field="theme" data-promo-id="${e(b.id)}">${PROMO_THEMES.map(([id, label]) => `<option value="${e(id)}" ${b.theme === id ? 'selected' : ''}>${e(label)}</option>`).join('')}</select></label>
               <label class="field">Alignment<select data-promo-field="align" data-promo-id="${e(b.id)}"><option value="left" ${b.align === 'left' ? 'selected' : ''}>Left aligned</option><option value="center" ${b.align === 'center' ? 'selected' : ''}>Centered</option></select></label>
               <label class="field wide">Optional side/feature image URL<input data-promo-field="image" data-promo-id="${e(b.id)}" maxlength="100000" value="${b.image?.startsWith('data:') ? '' : e(b.image || '')}" placeholder="${b.image?.startsWith('data:') ? 'Uploaded image saved · upload below or paste URL' : 'https://… or upload below'}"></label>
-              <label class="field wide content-upload">Upload block image (JPG/PNG/WebP)<input type="file" data-promo-upload="${e(b.id)}" accept="image/jpeg,image/png,image/webp"></label>
+              <div class="field wide settings-image-picker">
+                ${b.image ? `<img class="back-attach-admin-thumb" src="${e(b.image)}" alt="Promo block preview">` : ''}
+                <div class="settings-image-actions">
+                  <label class="settings-upload-btn">Upload photo<input type="file" data-promo-upload="${e(b.id)}" accept="image/jpeg,image/png,image/webp"></label>
+                  ${b.image ? `<button type="button" class="text-link" data-promo-clear-image="${e(b.id)}">Remove photo</button>` : ''}
+                  <span class="settings-upload-status" data-promo-upload-status="${e(b.id)}" role="status">${b.image?.startsWith('data:') ? 'Uploaded photo saved' : ''}</span>
+                </div>
+              </div>
             </div>
           </div>`).join('') : '<p class="small muted">No custom promo blocks added yet.</p>'}
         </div>
@@ -200,16 +207,29 @@ export function mountHomeLayoutEditor(container, {
       else el.addEventListener('input', updateField);
     });
 
+    container.querySelectorAll('[data-promo-clear-image]').forEach(btn => {
+      btn.onclick = () => {
+        const id = btn.dataset.promoClearImage;
+        blocks = blocks.map(b => b.id === id ? { ...b, image: '' } : b);
+        render();
+        emit(`[data-promo-block="${id}"]`);
+      };
+    });
+
     container.querySelectorAll('[data-promo-upload]').forEach(input => {
       input.addEventListener('change', async () => {
         const file = input.files?.[0];
         const id = input.dataset.promoUpload;
+        const statusEl = container.querySelector(`[data-promo-upload-status="${CSS.escape(id)}"]`);
         if (!file || !onUpload) return;
+        if (statusEl) { statusEl.classList.remove('is-error'); statusEl.textContent = 'Preparing photo…'; }
         try {
           const url = await onUpload(file);
           blocks = blocks.map(b => b.id === id ? { ...b, image: url } : b);
           render();
           emit(`[data-promo-block="${id}"]`);
+        } catch (err) {
+          if (statusEl) { statusEl.classList.add('is-error'); statusEl.textContent = err?.message || 'Could not upload photo.'; }
         } finally {
           input.value = '';
         }

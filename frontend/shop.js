@@ -9,7 +9,7 @@ import {mountSalesDashboard} from './sales-dashboard.js';
 import {payRequest,preloadRazorpay} from './payments.js';
 import {mountReviewEditor,collectReviews} from './review-editor.js';
 import {MAX_ITEM_QUANTITY,CATEGORIES,categoryOf,money,SHIPPING_CHARGE,shippingPaiseForQuantity,totalWithShipping,artworkColorFor,artworkThemeStyle,contrastColorFor,normalizeProduct,sortArtworks,ARTWORK_SORT_MODES,escapeHTML as e,safeImage,cardImage,progressiveImageSources,cartLines,subtotal,filterProducts,validateCustomer} from './commerce.js';
-import {prepareHdUploadFile} from './image-data.js';
+import {isInlineImage,prepareHdUploadFile} from './image-data.js';
 import {DEFAULT_ARTISTS,artistSlug,normalizeArtists,mergeArtistsWithProducts} from './artists.js';
 import * as store from './store.js';
 import {mapPanel,mountDeliveryMap} from './delivery-location.js';
@@ -23,7 +23,7 @@ import {accountMarkup,ordersListMarkup,emailAuthCardMarkup} from './customer-das
 import {steppedProgress} from './stepped-progress.js';
 import {normalizeProfile,validateProfile,checkoutDefaults} from './profile.js';
 import {logoutMarkup,mountLogout,animateLogout} from './logout.js';
-import {DEFAULT_SETTINGS,FALLBACK_BANNER_ARTWORKS,MOBILE_BREAKPOINT_OPTIONS,mobileGridBreakpointCss,normalizeSettings,normalizeBackAttachments,resolveBackAttachment,normalizeDiyKit,safeStoreLink,bannerMarkup,settingsToolbarMarkup,settingsForm} from './store-settings.js?v=20261125h';
+import {DEFAULT_SETTINGS,FALLBACK_BANNER_ARTWORKS,MOBILE_BREAKPOINT_OPTIONS,mobileGridBreakpointCss,normalizeSettings,normalizeBackAttachments,resolveBackAttachment,normalizeDiyKit,safeStoreLink,bannerMarkup,settingsToolbarMarkup,settingsForm} from './store-settings.js?v=20261125i';
 import {PRODUCT_TYPE_PRESETS,isDiyKit} from './commerce.js';
 import {DEFAULT_CONTENT,normalizeContent,contentCategories,applyStoreContent,footerMarkup} from './store-content.js';
 import {homeMarkup,homeFilterPanelMarkup,categoryTabsMarkup,artistsPageMarkup,artistDetailMarkup,storyMarkup,infoMarkup,productCardMarkup} from './storefront-view.js?v=20261125g';
@@ -36,7 +36,7 @@ import {mountSitePreviewPanel,openSitePreviewModal} from './site-preview.js';
 import {mountArtistStudio} from './artist-studio.js';
 import {randomId,customizationFields,setProductNote,addReferences,removeReference,refreshReferencePreviews,clearCustomization,checkoutCustomizations,clearCustomizations} from './customization.js';
 import {DEFAULT_PROMOS,normalizePromos,calculateDiscounts,nextBundleHint} from './promotions.js';
-import {mountHomeLayoutEditor} from './home-layout-editor.js';
+import {mountHomeLayoutEditor} from './home-layout-editor.js?v=20261125i';
 import {mountPromosAdmin} from './promos-admin.js';
 import {mountBackupExport} from './backup-export.js';
 import {hamsterLoaderMarkup} from './hamster-loader.js';
@@ -1295,6 +1295,14 @@ function applyStoreBanners(){
   applyAboutPageVisibility();
   applyMobileBreakpoint();
 }
+function readSettingsImageValue(form,fieldName,fallback=''){
+  const ctrl=form?.elements?.[fieldName];
+  const typed=String(ctrl?.value||'').trim();
+  if(typed)return typed;
+  if(form?._inlineImages?.[fieldName])return form._inlineImages[fieldName];
+  if(ctrl?.dataset?.savedImage==='true')return fallback;
+  return fallback;
+}
 function draftSettingsFromForm(){
   const form=$('banner-form');
   if(!form)return storeSettings;
@@ -1303,7 +1311,7 @@ function draftSettingsFromForm(){
   for(const key of ['announcementText','announcementLink','bannerEyebrow','bannerTitle','bannerText','bannerArtistLabel','bannerArtistLink','bannerButton','bannerLink','bannerButtonStyle','bannerButtonPosition','bannerImage']){
     if(data.has(key))draft[key]=String(data.get(key)||'');
   }
-  if(!draft.bannerImage&&form.elements.bannerImage?.dataset.savedImage==='true')draft.bannerImage=storeSettings.bannerImage;
+  draft.bannerImage=readSettingsImageValue(form,'bannerImage',storeSettings.bannerImage);
   draft.announcementVisible=data.get('announcementVisible')==='on';
   draft.bannerVisible=data.get('bannerVisible')==='on';
   draft.bannerShowArtist=data.get('bannerShowArtist')==='on';
@@ -1319,7 +1327,7 @@ function draftSettingsFromForm(){
     title:data.has('diyKitTitle')?data.get('diyKitTitle'):storeSettings.diyKit?.title,
     badgeText:data.has('diyKitBadge')?data.get('diyKitBadge'):storeSettings.diyKit?.badgeText,
     priceHint:data.has('diyKitPriceHint')?data.get('diyKitPriceHint'):storeSettings.diyKit?.priceHint,
-    image:data.has('diyKitImage')?data.get('diyKitImage'):storeSettings.diyKit?.image,
+    image:data.has('diyKitImage')?readSettingsImageValue(form,'diyKitImage',storeSettings.diyKit?.image):storeSettings.diyKit?.image,
     subtitle:data.has('diyKitSubtitle')?data.get('diyKitSubtitle'):storeSettings.diyKit?.subtitle,
     includesText:data.has('diyKitIncludes')?data.get('diyKitIncludes'):storeSettings.diyKit?.includesText
   });
@@ -1329,7 +1337,7 @@ function draftSettingsFromForm(){
     label:data.has(`attach_${opt.id}_label`)?String(data.get(`attach_${opt.id}_label`)||opt.label).trim():opt.label,
     shortLabel:data.has(`attach_${opt.id}_shortLabel`)?String(data.get(`attach_${opt.id}_shortLabel`)||opt.shortLabel).trim():opt.shortLabel,
     price:data.has(`attach_${opt.id}_price`)?Math.max(0,Math.round(Number(data.get(`attach_${opt.id}_price`)||0))):opt.price,
-    image:data.has(`attach_${opt.id}_image`)?String(data.get(`attach_${opt.id}_image`)||opt.image).trim():opt.image,
+    image:data.has(`attach_${opt.id}_image`)?readSettingsImageValue(form,`attach_${opt.id}_image`,opt.image):opt.image,
     description:data.has(`attach_${opt.id}_description`)?String(data.get(`attach_${opt.id}_description`)||opt.description).trim():opt.description
   }));
   if(data.has('mobileBreakpoint'))draft.mobileBreakpoint=Number(data.get('mobileBreakpoint'));
@@ -1363,7 +1371,7 @@ async function submitBanners(event){
     if(topBtn)topBtn.disabled=disabled;
   };
   const value=Object.fromEntries(data);delete value.bannerFile;
-  if(!value.bannerImage&&form.elements.bannerImage.dataset.savedImage==='true')value.bannerImage=storeSettings.bannerImage;
+  value.bannerImage=readSettingsImageValue(form,'bannerImage',storeSettings.bannerImage);
   value.announcementVisible=data.get('announcementVisible')==='on';value.bannerVisible=data.get('bannerVisible')==='on';
   value.bannerShowArtist=data.get('bannerShowArtist')==='on';
   value.bannerButtonVisible=data.get('bannerButtonVisible')==='on';
@@ -1378,7 +1386,7 @@ async function submitBanners(event){
     title:data.has('diyKitTitle')?data.get('diyKitTitle'):storeSettings.diyKit?.title,
     badgeText:data.has('diyKitBadge')?data.get('diyKitBadge'):storeSettings.diyKit?.badgeText,
     priceHint:data.has('diyKitPriceHint')?data.get('diyKitPriceHint'):storeSettings.diyKit?.priceHint,
-    image:data.has('diyKitImage')?data.get('diyKitImage'):storeSettings.diyKit?.image,
+    image:data.has('diyKitImage')?readSettingsImageValue(form,'diyKitImage',storeSettings.diyKit?.image):storeSettings.diyKit?.image,
     subtitle:data.has('diyKitSubtitle')?data.get('diyKitSubtitle'):storeSettings.diyKit?.subtitle,
     includesText:data.has('diyKitIncludes')?data.get('diyKitIncludes'):storeSettings.diyKit?.includesText
   });
@@ -1391,7 +1399,7 @@ async function submitBanners(event){
       label:data.has(`attach_${opt.id}_label`)?String(data.get(`attach_${opt.id}_label`)||opt.label).trim():opt.label,
       shortLabel:data.has(`attach_${opt.id}_shortLabel`)?String(data.get(`attach_${opt.id}_shortLabel`)||opt.shortLabel).trim():opt.shortLabel,
       price:data.has(`attach_${opt.id}_price`)?Math.max(0,Math.round(Number(data.get(`attach_${opt.id}_price`)||0))):opt.price,
-      image:data.has(`attach_${opt.id}_image`)?String(data.get(`attach_${opt.id}_image`)||opt.image).trim():opt.image,
+      image:data.has(`attach_${opt.id}_image`)?readSettingsImageValue(form,`attach_${opt.id}_image`,opt.image):opt.image,
       description:data.has(`attach_${opt.id}_description`)?String(data.get(`attach_${opt.id}_description`)||opt.description).trim():opt.description
     };
     delete value[`attach_${opt.id}_enabled`];
@@ -1864,7 +1872,38 @@ function renderAdminContent(){
           applySettingsCat(btn.dataset.settingsCat||'all',{focus:true});
         });
       });
-      bannerFormEl.addEventListener('change',ev=>{
+      bannerFormEl._inlineImages={};
+      if(isInlineImage(storeSettings.bannerImage))bannerFormEl._inlineImages.bannerImage=storeSettings.bannerImage;
+      if(isInlineImage(storeSettings.diyKit?.image))bannerFormEl._inlineImages.diyKitImage=storeSettings.diyKit.image;
+      for(const opt of normalizeBackAttachments(storeSettings.backAttachmentOptions)){
+        if(isInlineImage(opt.image))bannerFormEl._inlineImages[`attach_${opt.id}_image`]=opt.image;
+      }
+      bannerFormEl.addEventListener('change',async ev=>{
+        const up=ev.target?.closest?.('input[data-settings-upload]');
+        if(up){
+          const target=up.dataset.settingsUpload,file=up.files?.[0];
+          if(!target||!file)return;
+          const statusEl=bannerFormEl.querySelector(`[data-upload-status="${CSS.escape(target)}"]`);
+          if(statusEl){statusEl.classList.remove('is-error');statusEl.textContent='Preparing photo…';}
+          try{
+            const url=await store.uploadImage(file,'store-settings');
+            if(!bannerFormEl.isConnected)return;
+            bannerFormEl._inlineImages[target]=url;
+            const urlInput=bannerFormEl.elements[target];
+            if(urlInput){
+              urlInput.value='';
+              urlInput.dataset.savedImage='true';
+              urlInput.placeholder='Uploaded photo ready · click Save settings to publish';
+            }
+            bannerFormEl.querySelectorAll(`[data-image-preview="${CSS.escape(target)}"]`).forEach(img=>{img.src=url;});
+            if(statusEl)statusEl.textContent='Photo ready · click Save';
+            settingsDirty=true;
+            settingsPreviewController?.update();
+          }catch(err){
+            if(statusEl){statusEl.classList.add('is-error');statusEl.textContent=err?.message||'Could not upload photo.';}
+          }finally{up.value='';}
+          return;
+        }
         const cb=ev.target;
         if(cb?.type!=='checkbox')return;
         const card=cb.closest('.settings-acc-card');
@@ -1881,6 +1920,37 @@ function renderAdminContent(){
           const chip=adminRoot.querySelector('[data-settings-cat="diy"]');
           if(chip)chip.textContent=`DIY Paint Kit${cb.checked?' · ON':''}`;
         }
+      });
+      bannerFormEl.addEventListener('input',ev=>{
+        const urlInput=ev.target?.closest?.('input[data-image-url]');
+        if(!urlInput)return;
+        const target=urlInput.dataset.imageUrl,val=urlInput.value.trim();
+        if(!target)return;
+        delete bannerFormEl._inlineImages[target];
+        urlInput.dataset.savedImage='false';
+        const statusEl=bannerFormEl.querySelector(`[data-upload-status="${CSS.escape(target)}"]`);
+        if(statusEl){statusEl.classList.remove('is-error');statusEl.textContent='';}
+        if(/^(?:https:\/\/|assets\/)/i.test(val)){
+          bannerFormEl.querySelectorAll(`[data-image-preview="${CSS.escape(target)}"]`).forEach(img=>{img.src=val;});
+        }
+      });
+      bannerFormEl.addEventListener('click',ev=>{
+        const resetBtn=ev.target?.closest?.('[data-settings-image-reset]');
+        if(!resetBtn)return;
+        const target=resetBtn.dataset.settingsImageReset;
+        if(!target)return;
+        delete bannerFormEl._inlineImages[target];
+        const urlInput=bannerFormEl.elements[target];
+        const defImg=urlInput?.dataset?.defaultImage||'';
+        if(urlInput){
+          urlInput.value=defImg;
+          urlInput.dataset.savedImage='false';
+        }
+        if(defImg)bannerFormEl.querySelectorAll(`[data-image-preview="${CSS.escape(target)}"]`).forEach(img=>{img.src=defImg;});
+        const statusEl=bannerFormEl.querySelector(`[data-upload-status="${CSS.escape(target)}"]`);
+        if(statusEl){statusEl.classList.remove('is-error');statusEl.textContent='Default restored';}
+        settingsDirty=true;
+        settingsPreviewController?.update();
       });
       const reqSec=new URLSearchParams((location.hash.split('?')[1]||'')).get('sec');
       if(reqSec&&bannerFormEl.querySelector(`.settings-acc-card[data-settings-sec="${CSS.escape(reqSec)}"]`)){

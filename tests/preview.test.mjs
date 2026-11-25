@@ -147,3 +147,29 @@ test('closed dialogs and inactive overlays cannot intercept pointer touches',()=
  assert(!/\.customer-sidebar-bottom\{[^}]*grid-template-columns:\s*1fr auto/.test(css));
  assert.match(logoutCss,/min-width:\s*160px;/);
 });
+test('storefront settings image fields all provide direct file upload and preserve inline uploads safely',()=>{
+ const settings=normalizeSettings({
+  ...DEFAULT_SETTINGS,
+  bannerImage:inline,
+  diyKit:{...DEFAULT_SETTINGS.diyKit,image:inline},
+  backAttachmentOptions:[
+   {id:'magnet',image:inline,price:20,enabled:true},
+   {id:'tape',image:'assets/attachments/tape-placeholder.svg',price:15,enabled:true},
+   {id:'stand',image:'assets/attachments/stand-placeholder.svg',price:50,enabled:true}
+  ]
+ });
+ const doc=new DOMParser().parseFromString(settingsForm(settings),'text/html');
+ for(const fieldName of ['bannerImage','attach_magnet_image','attach_tape_image','attach_stand_image','diyKitImage']){
+  const uploadInput=doc.querySelector(`input[type="file"][data-settings-upload="${fieldName}"]`);
+  assert(uploadInput,`missing upload input for ${fieldName}`);
+  const resetBtn=doc.querySelector(`[data-settings-image-reset="${fieldName}"]`);
+  assert(resetBtn,`missing reset button for ${fieldName}`);
+  assert(doc.querySelector(`[data-image-preview="${fieldName}"]`),`missing preview img for ${fieldName}`);
+ }
+ for(const savedField of ['bannerImage','attach_magnet_image','diyKitImage']){
+  const urlInput=doc.querySelector(`input[name="${savedField}"]`);
+  assert.equal(urlInput.dataset.savedImage,'true');
+  assert.equal(urlInput.value,'');
+ }
+ assert.equal(doc.querySelector('input[name="attach_tape_image"]').value,'assets/attachments/tape-placeholder.svg');
+});
