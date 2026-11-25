@@ -7,6 +7,7 @@ import {accountMarkup} from '../frontend/customer-dashboard.js';
 import {canPrintOrderLabel,orderCardMarkup} from '../frontend/admin-ui.js';
 import {infoMarkup} from '../frontend/storefront-view.js';
 import {DEFAULT_CONTENT} from '../frontend/store-content.js';
+import {friendlyError} from '../frontend/store.js';
 const request={id:'label-test',customer:{firstName:'Test',lastName:'Customer',address:'12 Test Lane',apartment:'',city:'Bengaluru',state:'Karnataka',postalCode:'560001',phone:'9876543210',location:{latitude:12.97,longitude:77.59,confirmed:true,source:'pin',accuracy:0,formattedAddress:'Bengaluru'}},items:[{quantity:1}]};
 test('profile accepts optional address fields and safely retains a confirmed delivery pin',()=>{
   const p=normalizeProfile({firstName:' Test ',lastName:'Customer'});assert.equal(validateProfile(p),'');assert.equal(p.firstName,'Test');
@@ -109,4 +110,22 @@ test('pending checkout shows Payment pending (not Payment failed), non-printable
   assert.match(privacyHtml,/<h2 id="policy-sec-/);
   assert.match(privacyHtml,/data-action="scroll-policy-sec"/);
   assert.doesNotMatch(privacyHtml,/href="#policy-sec-/);
+});
+test('friendlyError maps Firebase network and browser auth errors into clear guidance',()=>{
+  const netMsg=friendlyError({code:'auth/network-request-failed',message:'Firebase: Error (auth/network-request-failed).'});
+  assert.doesNotMatch(netMsg,/Firebase: Error/i);
+  assert.match(netMsg,/internet|Google sign-in|Chrome or Safari/i);
+
+  const msgOnly=friendlyError({message:'Firebase: Error (auth/network-request-failed).'});
+  assert.doesNotMatch(msgOnly,/Firebase: Error/i);
+  assert.match(msgOnly,/Google sign-in/i);
+
+  const storageMsg=friendlyError({code:'auth/web-storage-unsupported'});
+  assert.match(storageMsg,/cookies or storage/i);
+
+  const internalMsg=friendlyError({code:'auth/internal-error'});
+  assert.match(internalMsg,/redirect/i);
+
+  const domainMsg=friendlyError({code:'auth/unauthorized-domain'});
+  assert.match(domainMsg,/hehe\.cafe/i);
 });

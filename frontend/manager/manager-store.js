@@ -6,6 +6,43 @@ const MAX_FREEIMAGE_BYTES = 20 * 1024 * 1024;
 let sdkPromise = null;
 let sdk = null;
 
+function isOnline() {
+  return typeof navigator === 'undefined' || navigator.onLine !== false;
+}
+
+function isInAppBrowser() {
+  if (typeof navigator === 'undefined') return false;
+  return /\b(Instagram|FBAN|FBAV|FB_IAB|Line\/|Snapchat)\b/i.test(String(navigator.userAgent || ''));
+}
+
+function isAuthNetworkError(error) {
+  const code = String(error?.code || '');
+  const msg = String(error?.message || '');
+  return code === 'auth/network-request-failed' || code === 'auth/timeout' || /auth\/network-request-failed/i.test(msg);
+}
+
+async function withAuthNetworkRetry(fn, { retries = 1, delayMs = 650 } = {}) {
+  for (let i = 0; ; i++) {
+    try {
+      return await fn();
+    } catch (error) {
+      if (i >= retries || !isAuthNetworkError(error) || !isOnline()) throw error;
+      await new Promise(resolve => setTimeout(resolve, delayMs * (i + 1)));
+    }
+  }
+}
+
+async function getFreshIdToken(user, forceRefresh = false) {
+  try {
+    return await withAuthNetworkRetry(() => user.getIdToken(forceRefresh), { retries: 2, delayMs: 600 });
+  } catch (error) {
+    if (forceRefresh && isAuthNetworkError(error)) {
+      return await withAuthNetworkRetry(() => user.getIdToken(false), { retries: 1, delayMs: 600 });
+    }
+    throw error;
+  }
+}
+
 export async function managerFirebase() {
   if (!sdkPromise) {
     sdkPromise = Promise.all([
@@ -46,7 +83,7 @@ export async function signInWithGoogle({ redirect = false } = {}) {
   const { a, auth } = sdk || await managerFirebase();
   const provider = new a.GoogleAuthProvider();
   provider.setCustomParameters({ prompt: 'select_account' });
-  if (redirect) {
+  if (redirect || isInAppBrowser()) {
     return a.signInWithRedirect(auth, provider);
   }
   const startedAt = Date.now();
@@ -56,8 +93,13 @@ export async function signInWithGoogle({ redirect = false } = {}) {
     const blocked = error?.code === 'auth/popup-blocked'
       || error?.code === 'auth/operation-not-supported-in-this-environment'
       || error?.code === 'auth/cancelled-popup-request'
+      || error?.code === 'auth/internal-error'
+      || (isAuthNetworkError(error) && isOnline())
       || (error?.code === 'auth/popup-closed-by-user' && Date.now() - startedAt < 1800);
     if (blocked) return a.signInWithRedirect(auth, provider);
+    if (isAuthNetworkError(error)) {
+      throw new Error('Could not reach Google sign-in. Check your connection or disable ad-blocker/VPN and retry.');
+    }
     throw error;
   }
 }
@@ -74,7 +116,15 @@ async function buildAuthHeaders(contentType, forceRefresh = false) {
   if (!isGoogleSession(current)) {
     throw new Error('Sign in with a verified Google account to continue.');
   }
-  const token = await current.getIdToken(forceRefresh);
+  let token;
+  try {
+    token = await getFreshIdToken(current, forceRefresh);
+  } catch (error) {
+    if (isAuthNetworkError(error)) {
+      throw new Error('Could not reach Google sign-in. Check your connection or disable ad-blocker/VPN and retry.');
+    }
+    throw error;
+  }
   const headers = {
     'Content-Type': contentType,
     'X-Firebase-Project': firebaseConfig.projectId,

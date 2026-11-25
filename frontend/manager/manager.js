@@ -4,7 +4,7 @@ import {
   signOutManager,
   callManager,
   uploadArtworkFiles
-} from './manager-store.js';
+} from './manager-store.js?v=20261125j';
 import {
   revenueTrendChartMarkup,
   genreVelocityMatrixMarkup,

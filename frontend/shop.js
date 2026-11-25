@@ -11,7 +11,7 @@ import {mountReviewEditor,collectReviews} from './review-editor.js';
 import {MAX_ITEM_QUANTITY,CATEGORIES,categoryOf,money,SHIPPING_CHARGE,shippingPaiseForQuantity,totalWithShipping,artworkColorFor,artworkThemeStyle,contrastColorFor,normalizeProduct,sortArtworks,ARTWORK_SORT_MODES,escapeHTML as e,safeImage,cardImage,progressiveImageSources,cartLines,subtotal,filterProducts,validateCustomer} from './commerce.js';
 import {isInlineImage,prepareHdUploadFile} from './image-data.js';
 import {DEFAULT_ARTISTS,artistSlug,normalizeArtists,mergeArtistsWithProducts} from './artists.js';
-import * as store from './store.js';
+import * as store from './store.js?v=20261125j';
 import {mapPanel,mountDeliveryMap} from './delivery-location.js';
 import {validLocation,locationLink} from './location-utils.js';
 import {openLabel,openBatchLabels,mountLabelTemplate} from './labels.js';

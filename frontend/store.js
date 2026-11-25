@@ -11,6 +11,38 @@ let sdkPromise, sdk,realtimePromise,publicConfigPromise;
 const productListeners=new Set();
 let adminProducts=[];
 let siteTrackBackoffUntil=0,bagTrackBackoffUntil=0;
+function isOnline(){
+  return typeof navigator==='undefined'||navigator.onLine!==false;
+}
+function isInAppBrowser(){
+  if(typeof navigator==='undefined')return false;
+  return /\b(Instagram|FBAN|FBAV|FB_IAB|Line\/|Snapchat)\b/i.test(String(navigator.userAgent||''));
+}
+function isAuthNetworkError(error){
+  const code=String(error?.code||'');
+  const msg=String(error?.message||'');
+  return code==='auth/network-request-failed'||code==='auth/timeout'||/auth\/network-request-failed/i.test(msg);
+}
+async function withAuthNetworkRetry(fn,{retries=1,delayMs=650}={}){
+  for(let i=0;;i++){
+    try{
+      return await fn();
+    }catch(error){
+      if(i>=retries||!isAuthNetworkError(error)||!isOnline())throw error;
+      await new Promise(resolve=>setTimeout(resolve,delayMs*(i+1)));
+    }
+  }
+}
+async function getFreshIdToken(user,forceRefresh=false){
+  try{
+    return await withAuthNetworkRetry(()=>user.getIdToken(forceRefresh),{retries:2,delayMs:600});
+  }catch(error){
+    if(forceRefresh&&isAuthNetworkError(error)){
+      return await withAuthNetworkRetry(()=>user.getIdToken(false),{retries:1,delayMs:600});
+    }
+    throw error;
+  }
+}
 export async function backend(){
  if(!sdkPromise)sdkPromise=Promise.all([import('https://www.gstatic.com/firebasejs/12.3.0/firebase-app.js'),import('https://www.gstatic.com/firebasejs/12.3.0/firebase-auth.js')]).then(async([appAPI,a])=>{const app=appAPI.getApps().length?appAPI.getApp():appAPI.initializeApp(firebaseConfig);const auth=a.getAuth(app);if(a.browserLocalPersistence&&typeof a.setPersistence==='function')await a.setPersistence(auth,a.browserLocalPersistence).catch(()=>{});sdk={app,auth,a};return sdk;}).catch(error=>{sdkPromise=null;throw error;});return sdkPromise;
 }
@@ -168,7 +200,7 @@ export function signIn({ redirect = false } = {}) {
   const run = ({ a, auth }) => {
     const provider = new a.GoogleAuthProvider();
     provider.setCustomParameters({ prompt: 'select_account' });
-    if (redirect) {
+    if (redirect || isInAppBrowser()) {
       return auth.currentUser?.isAnonymous
         ? a.linkWithRedirect(auth.currentUser, provider)
         : a.signInWithRedirect(auth, provider);
@@ -179,7 +211,7 @@ export function signIn({ redirect = false } = {}) {
       : a.signInWithPopup(auth, provider);
     return attempt.catch(async error => {
       if (error?.code === 'auth/credential-already-in-use' && auth.currentUser?.isAnonymous) {
-        const guestToken = await auth.currentUser.getIdToken();
+        const guestToken = await getFreshIdToken(auth.currentUser);
         const credential = a.GoogleAuthProvider.credentialFromError(error);
         const result = await a.signInWithCredential(auth, credential);
         try { await callBackend('claimGuestRequests', { guestToken }); } catch { throw new Error('Signed in. Your earlier guest request is still private; the studio can help recover it after the backend is connected.'); }
@@ -188,6 +220,8 @@ export function signIn({ redirect = false } = {}) {
       const blockedByBrowser = error?.code === 'auth/popup-blocked'
         || error?.code === 'auth/operation-not-supported-in-this-environment'
         || error?.code === 'auth/cancelled-popup-request'
+        || error?.code === 'auth/internal-error'
+        || (isAuthNetworkError(error) && isOnline())
         || (error?.code === 'auth/popup-closed-by-user' && Date.now() - startedAt < 1800);
       if (blockedByBrowser) {
         return auth.currentUser?.isAnonymous
@@ -209,7 +243,7 @@ export async function signInWithEmail(email='',password=''){
   if(!password)throw new Error('Please enter your password.');
   const {a,auth}=await backend();
   const guestToken=auth.currentUser?.isAnonymous?await auth.currentUser.getIdToken().catch(()=>null):null;
-  const result=await a.signInWithEmailAndPassword(auth,cleanEmail,String(password));
+  const result=await withAuthNetworkRetry(()=>a.signInWithEmailAndPassword(auth,cleanEmail,String(password)),{retries:1,delayMs:650});
   if(guestToken){try{await callBackend('claimGuestRequests',{guestToken});}catch{}}
   return result;
 }
@@ -225,9 +259,9 @@ export async function signUpWithEmail({name='',email='',password=''}={}){
   const {a,auth}=await backend();
   let result;
   if(auth.currentUser?.isAnonymous&&typeof a.EmailAuthProvider?.credential==='function'){
-    result=await a.linkWithCredential(auth.currentUser,a.EmailAuthProvider.credential(cleanEmail,String(password)));
+    result=await withAuthNetworkRetry(()=>a.linkWithCredential(auth.currentUser,a.EmailAuthProvider.credential(cleanEmail,String(password))),{retries:1,delayMs:650});
   }else{
-    result=await a.createUserWithEmailAndPassword(auth,cleanEmail,String(password));
+    result=await withAuthNetworkRetry(()=>a.createUserWithEmailAndPassword(auth,cleanEmail,String(password)),{retries:1,delayMs:650});
   }
   if(cleanName&&result?.user&&typeof a.updateProfile==='function'){
     await a.updateProfile(result.user,{displayName:cleanName}).catch(()=>{});
@@ -247,7 +281,7 @@ export async function resendVerificationEmail(){
   if(user.emailVerified)return {alreadyVerified:true};
   const settings=verificationActionSettings();
   try{
-    await (settings?a.sendEmailVerification(user,settings):a.sendEmailVerification(user));
+    await withAuthNetworkRetry(()=>(settings?a.sendEmailVerification(user,settings):a.sendEmailVerification(user)),{retries:1,delayMs:650});
   }catch(error){
     if(settings&&/continue-uri|unauthorized/i.test(String(error?.code||''))){
       await a.sendEmailVerification(user);
@@ -262,15 +296,15 @@ export async function refreshAuthUser(){
   await auth.authStateReady();
   const user=auth.currentUser;
   if(!user||user.isAnonymous)throw new Error('Sign in to continue.');
-  await user.reload();
-  await user.getIdToken(true);
+  await withAuthNetworkRetry(()=>user.reload(),{retries:1,delayMs:650});
+  await getFreshIdToken(user,true);
   return {emailVerified:Boolean(auth.currentUser?.emailVerified),user:auth.currentUser};
 }
 export async function resetPassword(email=''){
   const cleanEmail=String(email||'').trim().toLowerCase();
   if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail))throw new Error('Enter your email address above first, then tap Forgot password.');
   const {a,auth}=await backend();
-  await a.sendPasswordResetEmail(auth,cleanEmail);
+  await withAuthNetworkRetry(()=>a.sendPasswordResetEmail(auth,cleanEmail),{retries:1,delayMs:650});
 }
 export async function observeSettings(onData,onError){return observePublic('settings',v=>onData(normalizeSettings(v)),onError);}
 export async function saveSettings(value){const r=await callBackend('saveStoreData',{kind:'settings',value:normalizeSettings(value)});void refreshPublicStore();return r;}
@@ -336,7 +370,7 @@ export async function uploadProductImage(file,provider='freeimage'){
   const {auth,app}=await backend();await auth.authStateReady();
   if(!auth.currentUser||auth.currentUser.isAnonymous)throw new Error('Sign in as an administrator to upload artwork.');
   for(let attempt=0;attempt<2;attempt++){
-    const headers={'Content-Type':file.type,'X-Firebase-Project':firebaseConfig.projectId,Authorization:'Bearer '+await auth.currentUser.getIdToken(attempt===1)};
+    const headers={'Content-Type':file.type,'X-Firebase-Project':firebaseConfig.projectId,Authorization:'Bearer '+await getFreshIdToken(auth.currentUser,attempt===1)};
     if(APP_CHECK_SITE_KEY){const check=await import('https://www.gstatic.com/firebasejs/12.3.0/firebase-app-check.js');let instance;try{instance=check.getAppCheck(app);}catch{instance=check.initializeAppCheck(app,{provider:new check.ReCaptchaEnterpriseProvider(APP_CHECK_SITE_KEY),isTokenAutoRefreshEnabled:true});}headers['X-Firebase-AppCheck']=(await check.getToken(instance)).token;}
     const response=await fetch(`${backendURL()}/api/uploadFreeimageImage`,{method:'POST',headers,body:file,signal:AbortSignal.timeout(120000)});
     const result=await response.json();if(response.status===401&&attempt===0)continue;
@@ -432,7 +466,7 @@ export async function callBackend(name,data={}){
  const {auth,app}=await backend();await auth.authStateReady();if(!auth.currentUser)throw new Error('Sign in to continue.');
  const url=backendURL()+'/api/'+encodeURIComponent(name);
  for(let attempt=0;attempt<2;attempt++){
- const headers={'Content-Type':'application/json','X-Firebase-Project':firebaseConfig.projectId,Authorization:'Bearer '+await auth.currentUser.getIdToken(attempt===1)};
+ const headers={'Content-Type':'application/json','X-Firebase-Project':firebaseConfig.projectId,Authorization:'Bearer '+await getFreshIdToken(auth.currentUser,attempt===1)};
  if(APP_CHECK_SITE_KEY){const check=await import('https://www.gstatic.com/firebasejs/12.3.0/firebase-app-check.js');let instance;try{instance=check.getAppCheck(app);}catch{instance=check.initializeAppCheck(app,{provider:new check.ReCaptchaEnterpriseProvider(APP_CHECK_SITE_KEY),isTokenAutoRefreshEnabled:true});}headers['X-Firebase-AppCheck']=(await check.getToken(instance)).token;}
  let response;try{response=await fetch(url,{method:'POST',headers,body:JSON.stringify(data),signal:AbortSignal.timeout(name==='currentUser'?8000:60000)});}catch{throw new Error('The studio service could not be reached. Refresh your requests before retrying.');}
  const result=await response.json();if(response.status===401&&attempt===0)continue;
@@ -440,8 +474,17 @@ export async function callBackend(name,data={}){
  }
 }
 export function friendlyError(error){
-  const code=error?.code||'';
-  if(code==='permission-denied')return error.message||'Your account does not have access to this action.';
+  const msg=String(error?.message||'');
+  const code=String(error?.code||(msg.match(/\((auth\/[a-z0-9-]+)\)/i)?.[1]||''));
+  if(code==='permission-denied')return msg||'Your account does not have access to this action.';
+  if(code==='auth/network-request-failed'||/auth\/network-request-failed/i.test(msg)){
+    return !isOnline()
+      ?'You appear to be offline. Reconnect to the internet and try again.'
+      :'Could not reach Google sign-in. Check your internet connection, turn off VPN/ad-blocker/Private DNS if active, or open hehe.cafe in Chrome or Safari and retry.';
+  }
+  if(code==='auth/internal-error'||code==='auth/timeout')return 'Sign-in was interrupted or timed out. Please try again, or tap "Popup blocked? Sign in with redirect".';
+  if(code==='auth/web-storage-unsupported')return 'Your browser is blocking cookies or storage needed for sign-in. Open hehe.cafe in Chrome or Safari (not private/restricted mode).';
+  if(code==='auth/unauthorized-domain')return 'Sign-in is not allowed on this address. Please open https://hehe.cafe directly.';
   if(code==='auth/popup-closed-by-user'||code==='auth/popup-blocked')return 'Sign-in popup was closed or blocked by your browser. Tap "Popup blocked? Sign in with redirect" below to continue.';
   if(code==='auth/invalid-email')return 'Please enter a valid email address.';
   if(code==='auth/user-disabled')return 'This account has been disabled. Please contact the studio.';
@@ -450,5 +493,5 @@ export function friendlyError(error){
   if(code==='auth/weak-password')return 'Password must be at least 6 characters long.';
   if(code==='auth/too-many-requests')return 'Too many attempts. Please wait a minute and try again.';
   if(code==='auth/operation-not-allowed')return 'Email & password sign-in needs to be enabled in Firebase Console (Authentication → Sign-in method → Email/Password).';
-  return error?.message||'Something went wrong. Please retry.';
+  return msg||'Something went wrong. Please retry.';
 }
