@@ -1,6 +1,6 @@
-import {validLocation} from './location-utils.js';
+import {validLocation,encodeDigiPin,formatDigiPin} from './location-utils.js';
 
-export const PROFILE_FIELDS=['firstName','lastName','phone','address','apartment','city','state','postalCode'];
+export const PROFILE_FIELDS=['firstName','lastName','phone','address','apartment','city','state','postalCode','digipin'];
 export function checkoutDefaults(profile={},user=null,requests=[]){
   const saved=profile&&typeof profile==='object'?profile:{};
   const mostRecent=(Array.isArray(requests)?requests:[]).find(request=>request?.customer&&typeof request.customer==='object')?.customer||{};
@@ -13,10 +13,14 @@ export function checkoutDefaults(profile={},user=null,requests=[]){
   defaults.lastName=saved.lastName||mostRecent.lastName||name.slice(1).join(' ');
   if(validLocation(saved.location))defaults.location={...saved.location};
   else if(recentPin)defaults.location={...recentPin};
+  if(!defaults.digipin&&validLocation(defaults.location)){
+    defaults.digipin=formatDigiPin(defaults.location.digipin)||encodeDigiPin(defaults.location.latitude,defaults.location.longitude);
+  }
   return defaults;
 }
 export function normalizeProfile(value={}) {
   const profile=Object.fromEntries(PROFILE_FIELDS.map(key=>[key,String(value[key]||'').trim()]));
+  if(profile.digipin)profile.digipin=formatDigiPin(profile.digipin)||profile.digipin.toUpperCase().slice(0,12);
   if(Object.hasOwn(value,'location')){
     const point=value.location;
     profile.location=validLocation(point)?{
@@ -25,6 +29,7 @@ export function normalizeProfile(value={}) {
       source:point.source,
       accuracy:point.accuracy,
       formattedAddress:point.formattedAddress,
+      ...(formatDigiPin(point.digipin)?{digipin:formatDigiPin(point.digipin)}:{}),
       confirmed:true,
     }:point;
   }
@@ -34,6 +39,7 @@ export function validateProfile(value) {
   if (!value.firstName || !value.lastName) return 'Enter your first and last name.';
   if (value.phone && !/^(?:\+91[ -]?)?[6-9]\d{9}$/.test(value.phone.replace(/\s/g,''))) return 'Enter a valid Indian mobile number.';
   if (value.postalCode && !/^[1-9]\d{5}$/.test(value.postalCode)) return 'Enter a valid 6-digit PIN code.';
+  if (value.digipin && !formatDigiPin(value.digipin)) return 'Enter a valid 10-character India Post DIGIPIN (e.g. 39J-49L-L8T4).';
   if (value.location!==undefined && value.location!==null && !validLocation(value.location)) return 'Choose and confirm a valid delivery pin.';
   if (['firstName','lastName','city','state'].some(k=>value[k].length>100) || value.phone.length>16 || value.address.length>300 || value.apartment.length>150) return 'Please shorten these details.';
   return '';

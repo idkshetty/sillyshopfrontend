@@ -1,4 +1,4 @@
-import {validLocation} from './location-utils.js';
+import {validLocation,formatDigiPin} from './location-utils.js';
 import {validImageSource} from './image-data.js';
 import {resolveBackAttachment} from './store-settings.js';
 export const MAX_ITEM_QUANTITY = 1;
@@ -247,6 +247,7 @@ export function validateCustomer(c) {
   if (!c.address?.trim() || !c.city?.trim() || !c.state?.trim()) return 'Complete your delivery address.';
   if (!/^[1-9]\d{5}$/.test(c.postalCode || '')) return 'Enter a valid 6-digit PIN code.';
   if (c.country !== 'India') return 'Delivery is currently available within India.';
+  if (c.digipin && String(c.digipin).trim() && !formatDigiPin(c.digipin)) return 'Enter a valid 10-character India Post DIGIPIN (e.g. 39J-49L-L8T4) or leave it blank.';
   if (!validLocation(c.location)) return 'Choose and confirm your delivery pin on the map.';
   if ([c.firstName,c.lastName,c.city,c.state].some(v => v.length > 100) || c.address.length > 300 || (c.apartment || '').length > 150 || (c.notes || '').length > 1000) return 'Please shorten the details in the form.';
   if (c.consent !== true) return 'Please allow us to use these details for your checkout request.';

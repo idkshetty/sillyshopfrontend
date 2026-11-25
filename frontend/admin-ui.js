@@ -1,4 +1,5 @@
 import { escapeHTML as e, money } from './commerce.js';
+import { customerDigiPin } from './location-utils.js';
 
 export const POLICY_TABS = [
   ['contact', 'Contact page'],
@@ -318,7 +319,7 @@ export function orderCardMarkup(o, {
       </div>
       ${statusHelpText ? `<p class="small muted">${e(statusHelpText)}</p>` : ''}
       <p><strong>${e(c.firstName || '')} ${e(c.lastName || '')}</strong><br>${e(c.email || '')} · ${e(c.phone || '')}</p>
-      <p>${e(c.address || '')}${c.apartment ? `, ${e(c.apartment)}` : ''}<br>${e(c.city || '')}, ${e(c.state || '')} ${e(c.postalCode || '')} · ${e(c.country || 'India')}</p>
+      <p>${e(c.address || '')}${c.apartment ? `, ${e(c.apartment)}` : ''}<br>${e(c.city || '')}, ${e(c.state || '')} ${e(c.postalCode || '')} · ${e(c.country || 'India')}${customerDigiPin(c) ? ` <span class="order-attach-pill">DIGIPIN: ${e(customerDigiPin(c))}</span>` : ''}</p>
       <div class="order-lines">${(o.items || []).map(item => {const artRef=item.refNumber||refByProductId[item.productId];const attachTxt=item.attachmentLabel?` <small class="order-attach-pill">Backing: ${e(item.attachmentLabel)}${Number(item.attachmentPrice)>0?` (+${money(item.attachmentPrice)})`:''}</small>`:'';return `<span>${e(item.quantity)} × ${e(item.title)}${/^[1-9][0-9]{5}$/.test(String(artRef||''))?` <small class="artwork-ref">Ref ${e(artRef)}</small>`:''}${attachTxt} — ${money(item.unitPrice * item.quantity)}</span>`;}).join('')}</div>
       <button type="button" class="text-link" data-action="request-customizations" data-id="${e(o.id)}">View product notes &amp; images</button>
       <div id="request-custom-${e(o.id)}" class="request-customizations"></div>

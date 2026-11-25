@@ -12,14 +12,14 @@ import {MAX_ITEM_QUANTITY,CATEGORIES,categoryOf,money,SHIPPING_CHARGE,shippingPa
 import {isInlineImage,prepareHdUploadFile} from './image-data.js';
 import {DEFAULT_ARTISTS,artistSlug,normalizeArtists,mergeArtistsWithProducts} from './artists.js';
 import * as store from './store.js?v=20261125k';
-import {mapPanel,mountDeliveryMap} from './delivery-location.js';
-import {validLocation,locationLink} from './location-utils.js';
-import {openLabel,openBatchLabels,mountLabelTemplate} from './labels.js';
-import {createThermalPrinterController,getUnprintedOrders} from './thermal-printer.js';
+import {mapPanel,mountDeliveryMap,lookupIndianPincode} from './delivery-location.js?v=20261125l';
+import {validCoordinates,validLocation,locationLink,encodeDigiPin,formatDigiPin} from './location-utils.js?v=20261125l';
+import {openLabel,openBatchLabels,mountLabelTemplate} from './labels.js?v=20261125l';
+import {createThermalPrinterController,getUnprintedOrders} from './thermal-printer.js?v=20261125l';
 import {mountOrdersMap} from './orders-map.js';
-import {POLICY_TABS,normalizeAdminTab,countActionableOrders,canPrintOrderLabel,adminSidebarMarkup,policySubnavMarkup,filterOrders,orderFilterCounts,ordersToolbarMarkup,orderCardMarkup,thermalPrinterDockMarkup} from './admin-ui.js?v=20261125g';
+import {POLICY_TABS,normalizeAdminTab,countActionableOrders,canPrintOrderLabel,adminSidebarMarkup,policySubnavMarkup,filterOrders,orderFilterCounts,ordersToolbarMarkup,orderCardMarkup,thermalPrinterDockMarkup} from './admin-ui.js?v=20261125l';
 import {decorateCartButtons,animateCart,animateCartCheckout,playPaymentOutcome,preloadPaymentOutcomeSvg,reviewSection,mountReviews,mountHeroBanner,mountArtistScrollPrompt,sampleArtworkBgFromImage} from './shop-effects.js';
-import {accountMarkup,ordersListMarkup,emailAuthCardMarkup} from './customer-dashboard.js?v=20261125k';
+import {accountMarkup,ordersListMarkup,emailAuthCardMarkup} from './customer-dashboard.js?v=20261125l';
 import {steppedProgress} from './stepped-progress.js';
 import {normalizeProfile,validateProfile,checkoutDefaults} from './profile.js';
 import {logoutMarkup,mountLogout,animateLogout} from './logout.js';
@@ -772,6 +772,59 @@ function renderProduct(){
   sampleAndWashProductImage($('product-main-image'));
 }
 const states=['Andaman and Nicobar Islands','Andhra Pradesh','Arunachal Pradesh','Assam','Bihar','Chandigarh','Chhattisgarh','Dadra and Nagar Haveli and Daman and Diu','Delhi','Goa','Gujarat','Haryana','Himachal Pradesh','Jammu and Kashmir','Jharkhand','Karnataka','Kerala','Ladakh','Lakshadweep','Madhya Pradesh','Maharashtra','Manipur','Meghalaya','Mizoram','Nagaland','Odisha','Puducherry','Punjab','Rajasthan','Sikkim','Tamil Nadu','Telangana','Tripura','Uttar Pradesh','Uttarakhand','West Bengal'];
+const STATE_ALIASES={'nct of delhi':'Delhi','orissa':'Odisha','pondicherry':'Puducherry','uttaranchal':'Uttarakhand','jammu & kashmir':'Jammu and Kashmir','andaman & nicobar islands':'Andaman and Nicobar Islands','dadra & nagar haveli':'Dadra and Nagar Haveli and Daman and Diu','daman & diu':'Dadra and Nagar Haveli and Daman and Diu','dadra and nagar haveli':'Dadra and Nagar Haveli and Daman and Diu','daman and diu':'Dadra and Nagar Haveli and Daman and Diu'};
+function resolveIndiaState(raw){
+  const clean=String(raw||'').trim();if(!clean)return '';
+  const low=clean.toLowerCase();
+  if(STATE_ALIASES[low])return STATE_ALIASES[low];
+  return states.find(s=>s.toLowerCase()===low)||'';
+}
+async function handlePinAutofill(form,rawPin,hintEl){
+  const pin=String(rawPin||'').trim();
+  if(!hintEl)return;
+  if(!/^[1-9]\d{5}$/.test(pin)){
+    hintEl.className='pin-lookup-hint';
+    hintEl.textContent=pin.length===6?'PIN code cannot start with 0.':'';
+    return;
+  }
+  hintEl.className='pin-lookup-hint';
+  hintEl.textContent='Checking PIN code…';
+  const info=await lookupIndianPincode(pin);
+  if(!form?.isConnected||String(form.elements.postalCode?.value||'').trim()!==pin)return;
+  if(!info){hintEl.textContent='';return;}
+  const cityEl=form.elements.city,stateEl=form.elements.state;
+  if(cityEl&&info.city&&(!cityEl.value.trim()||cityEl.dataset.autofilled==='true')){
+    cityEl.value=info.city;cityEl.dataset.autofilled='true';
+    if(form.id==='checkout-form')checkoutTouched.add('city');
+  }
+  const matchedState=resolveIndiaState(info.state);
+  if(stateEl&&matchedState&&(!stateEl.value||stateEl.dataset.autofilled==='true')){
+    stateEl.value=matchedState;stateEl.dataset.autofilled='true';
+    if(form.id==='checkout-form')checkoutTouched.add('state');
+  }
+  if(form.id==='checkout-form')captureCheckout();
+  deliveryMap?.focusArea?.(`${pin} ${info.area} ${info.city}`);
+  hintEl.className='pin-lookup-hint is-ok';
+  hintEl.textContent=`✓ ${[info.area,info.city,matchedState||info.state].filter(Boolean).join(', ')}`;
+}
+function handleDigiPinFieldInput(form,inputEl,hintEl){
+  const raw=String(inputEl?.value||'').trim();
+  if(!hintEl)return;
+  if(!raw){hintEl.className='pin-lookup-hint';hintEl.textContent='Auto-fills when you pin your roof below, or enter your 10-char DIGIPIN.';return;}
+  const formatted=formatDigiPin(raw);
+  if(formatted){
+    if(inputEl.value!==formatted)inputEl.value=formatted;
+    const pinned=deliveryMap?.setDigiPin?.(formatted);
+    hintEl.className='pin-lookup-hint is-ok';
+    hintEl.textContent=pinned?`✓ DIGIPIN ${formatted} pinned on map`:`✓ Valid DIGIPIN (${formatted})`;
+    return;
+  }
+  const stripped=raw.toUpperCase().replace(/[^0-9A-Z]/g,'');
+  hintEl.className=stripped.length>=10?'pin-lookup-hint is-warn':'pin-lookup-hint';
+  hintEl.textContent=stripped.length>=10
+    ?'DIGIPIN uses only 2-9 and C, F, J, K, L, M, P, T (no 0, 1, O, I).'
+    :`${10-stripped.length} more character${10-stripped.length===1?'':'s'} needed (e.g. 39J-49L-L8T4).`;
+}
 function field(name,label,options={}){return `<label class="field ${options.wide?'wide':''}" for="${name}">${label}<input id="${name}" name="${name}" type="${options.type||'text'}" ${options.optional?'':'required'} maxlength="${options.max||100}" ${options.auto?`autocomplete="${options.auto}"`:''} ${options.pattern?`pattern="${options.pattern}"`:''} ${options.mode?`inputmode="${options.mode}"`:''} value="${e(checkoutDraft[name]||'')}" placeholder="${e(options.placeholder||label)}"></label>`;}
 function checkoutProgress(step){
   const labels=['Contact','Delivery','Review','Complete'];
@@ -811,7 +864,7 @@ function checkoutProfileDefaults(profile=accountState.profile){
 function applyCheckoutProfile(profile=accountState.profile){
   const form=$('checkout-form');if(!form||!user||user.isAnonymous)return;
   const defaults=checkoutProfileDefaults(profile);
-  for(const key of ['email','firstName','lastName','phone','address','apartment','city','state','postalCode']){
+  for(const key of ['email','firstName','lastName','phone','address','apartment','city','state','postalCode','digipin']){
     const input=form.elements.namedItem(key);
     if(input&&!checkoutTouched.has(key)&&!String(input.value||'').trim()&&defaults[key])input.value=defaults[key];
   }
@@ -826,7 +879,7 @@ function renderCheckout(){
   if(deferPageRender(render))return;
   if(user&&!user.isAnonymous){
     const defaults=checkoutProfileDefaults();
-    for(const key of ['email','firstName','lastName','phone','address','apartment','city','state','postalCode'])if(checkoutDraft[key]===undefined&&!checkoutTouched.has(key)&&defaults[key])checkoutDraft[key]=defaults[key];
+    for(const key of ['email','firstName','lastName','phone','address','apartment','city','state','postalCode','digipin'])if(checkoutDraft[key]===undefined&&!checkoutTouched.has(key)&&defaults[key])checkoutDraft[key]=defaults[key];
     if(!checkoutDraft.location&&!checkoutTouched.has('location')&&validLocation(defaults.location))checkoutDraft.location={...defaults.location};
   }
   deliveryMap?.destroy();deliveryMap=null;
@@ -849,7 +902,7 @@ function renderCheckout(){
   const meadowGroundSvg='<svg class="checkout-meadow-ground" viewBox="0 0 400 54" preserveAspectRatio="none" aria-hidden="true"><path d="M0 54V28C66 10 132 10 202 22c66 11 132-12 198-6v38Z" fill="#a2ab2a"/><path d="M0 54V36c74-10 144-4 214 4 64 7 126-8 186-2v16Z" fill="#849326"/></svg>';
   const meadowWrapMarkup=`<div class="checkout-meadow-wrap" aria-hidden="true">${meadowGroundSvg}<div class="checkout-meadow-strip"><img class="checkout-meadow-tile is-left" src="assets/checkout/meadow-hills.webp" alt="" decoding="async"><img class="checkout-meadow-tile is-main" src="assets/checkout/meadow-wide.webp" alt="" decoding="async"></div></div>`;
   const mobileSceneMarkup=`<div class="checkout-mobile-scene" aria-hidden="true">${meadowGroundSvg}<div class="checkout-mobile-strip"><img class="checkout-mobile-hills" src="assets/checkout/meadow-hills.webp" alt="" decoding="async"><img class="checkout-mobile-mid" src="assets/checkout/meadow-wide.webp" alt="" decoding="async"><img class="checkout-mobile-cat" src="assets/checkout/scene-cat-flowers.webp" alt="" decoding="async"></div></div>`;
-  $('main').innerHTML=`<div class="checkout-wrap">${cleanupBanner}<div class="page-head checkout-page-head">${breadcrumbs('Checkout','<a href="#home">Artworks</a><span>/</span>')}<h1>Checkout</h1><p>Complete your delivery details below.</p></div><div class="checkout-layout"><form id="checkout-form" class="checkout-form" novalidate>${!user||user.isAnonymous?'<div class="checkout-info"><strong>Keep this request in your account</strong><p>Sign in with Google before saving so you can track status, cancel and save your address.</p><button type="button" class="button outline small" data-action="signin">Continue with Google</button></div>':''}${checkoutProgress(checkoutStep)}<div class="checkout-step-stage"><section class="checkout-step" data-checkout-step="1" aria-labelledby="checkout-contact-heading"><h2 id="checkout-contact-heading" tabindex="-1">1 · Contact details</h2><p class="small muted">Where hehe.cafe can send order updates and delivery tracking.</p><div class="form-grid">${field('email','Email address',{type:'email',auto:'email',wide:true,max:254})}${field('phone','Mobile number',{type:'tel',auto:'tel',wide:true,max:16,placeholder:'+91 98765 43210'})}${field('firstName','First name',{auto:'given-name'})}${field('lastName','Last name',{auto:'family-name'})}</div></section><section class="checkout-step" data-checkout-step="2" aria-labelledby="checkout-delivery-heading"><h2 id="checkout-delivery-heading" tabindex="-1">2 · Delivery address</h2><p class="small muted">Add your full delivery address and confirm your pin on the map.</p><div class="form-grid"><label class="field wide" for="country">Country / region<select id="country" name="country" autocomplete="country-name"><option>India</option></select></label>${field('address','Street address',{auto:'address-line1',wide:true,max:300})}${field('apartment','Apartment, landmark, etc. (optional)',{auto:'address-line2',optional:true,wide:true,max:150})}${field('city','City',{auto:'address-level2'})}<label class="field" for="state">State<select id="state" name="state" autocomplete="address-level1" required><option value="">Select state</option>${states.map(s=>`<option ${checkoutDraft.state===s?'selected':''}>${s}</option>`).join('')}</select></label>${field('postalCode','PIN code',{auto:'postal-code',pattern:'[1-9][0-9]{5}',mode:'numeric',max:6})}</div>${mapPanel(checkoutDraft.location)}</section><section class="checkout-step" data-checkout-step="3" aria-labelledby="checkout-review-heading"><h2 id="checkout-review-heading" tabindex="-1">3 · Review &amp; pay</h2><div id="checkout-review" class="checkout-review"></div><label class="field wide checkout-note-field" for="checkout-notes"><span class="checkout-note-label"><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v11H7l-3 3V5Z"/><path d="M8 9h8M8 12.5h5"/></svg>Note for hehe.cafe (optional)</span><textarea id="checkout-notes" name="notes" maxlength="1000" placeholder="Add delivery instructions, framing requests or a gift note…">${e(noteVal)}</textarea><span id="checkout-notes-count" class="note-char-count">${String(noteVal).length} / 1000</span></label><p class="checkout-step-due"><strong>Total due now: ${money(orderTotal)}</strong> · ${pricing.freeShipping?'Includes free India Post shipping.':`Includes ₹${SHIPPING_CHARGE} × ${itemCount} (${money(pricing.shippingPaise/100)}) India Post shipping.`}</p><label class="checkbox checkout-consent-box"><input name="consent" type="checkbox" required ${consentChecked?'checked':''}><span>I agree to the <a href="#info/terms" class="text-link">Terms of service</a>, <a href="#info/shipping" class="text-link">Shipping policy</a> and <a href="#info/refunds" class="text-link">Cancellation &amp; returns policy</a>, and to the use of my details for this order as described in the <a href="#info/privacy" class="text-link">Privacy policy</a>.</span></label></section></div><div class="checkout-step-actions"><button id="checkout-prev" type="button" class="button outline checkout-back-btn" data-action="checkout-previous" hidden>← Back</button><button id="checkout-next" type="button" class="button checkout-next-btn" data-action="checkout-next">Continue →</button><button id="checkout-submit" type="submit" class="pos-transaction-container" hidden aria-label="Pay ${money(orderTotal)}"><span class="left-side" aria-hidden="true"><span class="card"><span class="card-line"></span><span class="buttons"></span></span><span class="post"><span class="post-line"></span><span class="screen"><span class="dollar">₹</span></span><span class="numbers"></span><span class="numbers-line2"></span></span></span><span class="right-side"><span class="new">Pay ${money(orderTotal)} securely</span><svg viewBox="0 0 451.846 451.847" class="arrow" aria-hidden="true"><path d="M345.441 248.292L151.154 442.573c-12.359 12.365-32.397 12.365-44.75 0-12.354-12.354-12.354-32.391 0-44.744L278.318 225.92 106.409 54.017c-12.354-12.359-12.354-32.394 0-44.748 12.354-12.359 32.391-12.359 44.75 0l194.287 194.284c6.177 6.18 9.262 14.271 9.262 22.366 0 8.099-3.091 16.196-9.267 22.373z"/></svg></span></button></div><p class="checkout-razorpay-cue small muted" id="checkout-razorpay-cue" ${checkoutStep===3?'':'hidden'}>Secured by Razorpay · UPI, Cards, Netbanking &amp; Wallets</p><p id="checkout-availability" class="notice" role="alert" hidden></p><button id="review-checkout-cart" type="button" class="text-link" data-action="review-checkout-cart" hidden>Review updated bag</button><p id="checkout-notice" class="notice" role="alert"></p><a href="#home" class="text-link">← Back to hehe.cafe</a>${mobileSceneMarkup}</form><aside class="checkout-summary summary-collapsed" aria-labelledby="summary-title">${summaryCatImg}<button type="button" class="summary-toggle" data-action="toggle-summary" aria-expanded="false" aria-controls="checkout-summary-content"><span class="summary-toggle-label">View order summary <svg viewBox="0 0 24 24" class="ui-chevron" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></span><strong>${money(orderTotal)}</strong></button><div id="checkout-summary-content"><div class="section-heading" style="margin:0 0 18px"><h2 id="summary-title">Order summary</h2><button class="text-link" data-action="cart">Edit bag</button></div>${entries.map(({product:p,quantity,total,attachment,attachmentPrice})=>`<div class="checkout-item"><div class="checkout-item-image"><img src="${e(imageOf(p))}" alt="${e(p.title)}"><span>${quantity}</span></div><div>${e(p.title)}<small>by ${e(p.artist||'Suprita Chatterjee')}${attachment?` · Backing: ${e(attachment.shortLabel||attachment.label)}${attachmentPrice>0?` (+${money(attachmentPrice)})`:''}`:''}</small></div><span>${money(total)}</span></div>`).join('')}${bagOffersMarkup(entries,pricing,'checkout')}<hr>${discountTotalRowsMarkup(pricing,`Artworks · ${itemCount} ${itemCount===1?'piece':'pieces'}`)}<div class="checkout-info checkout-protected-card"><span class="protected-shield" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 3 4 6.5v5.5c0 5 3.4 8.7 8 10 4.6-1.3 8-5 8-10V6.5L12 3Z"/><path d="m9 12 2 2 4-4"/></svg></span><div><strong>Protected checkout</strong><p>Your artwork is reserved upon payment verification.</p></div></div></div>${meadowWrapMarkup}</aside></div></div>`;
+  $('main').innerHTML=`<div class="checkout-wrap">${cleanupBanner}<div class="page-head checkout-page-head">${breadcrumbs('Checkout','<a href="#home">Artworks</a><span>/</span>')}<h1>Checkout</h1><p>Complete your delivery details below.</p></div><div class="checkout-layout"><form id="checkout-form" class="checkout-form" novalidate>${!user||user.isAnonymous?'<div class="checkout-info"><strong>Keep this request in your account</strong><p>Sign in with Google before saving so you can track status, cancel and save your address.</p><button type="button" class="button outline small" data-action="signin">Continue with Google</button></div>':''}${checkoutProgress(checkoutStep)}<div class="checkout-step-stage"><section class="checkout-step" data-checkout-step="1" aria-labelledby="checkout-contact-heading"><h2 id="checkout-contact-heading" tabindex="-1">1 · Contact details</h2><p class="small muted">Where hehe.cafe can send order updates and delivery tracking.</p><div class="form-grid">${field('email','Email address',{type:'email',auto:'email',wide:true,max:254})}${field('phone','Mobile number',{type:'tel',auto:'tel',wide:true,max:16,placeholder:'+91 98765 43210'})}${field('firstName','First name',{auto:'given-name'})}${field('lastName','Last name',{auto:'family-name'})}</div></section><section class="checkout-step" data-checkout-step="2" aria-labelledby="checkout-delivery-heading"><h2 id="checkout-delivery-heading" tabindex="-1">2 · Delivery address</h2><p class="small muted">Enter your PIN code to auto-fill city &amp; state, type your house &amp; landmark, then verify your DIGIPIN or drop the pin on your roof.</p><div class="form-grid"><label class="field" for="country">Country / region<select id="country" name="country" autocomplete="country-name"><option>India</option></select></label><label class="field" for="postalCode">PIN code<input id="postalCode" name="postalCode" type="text" required maxlength="6" autocomplete="postal-code" pattern="[1-9][0-9]{5}" inputmode="numeric" value="${e(checkoutDraft.postalCode||'')}" placeholder="e.g. 560001"><span id="checkout-pin-hint" class="pin-lookup-hint"></span></label>${field('city','City',{auto:'address-level2'})}<label class="field" for="state">State<select id="state" name="state" autocomplete="address-level1" required><option value="">Select state</option>${states.map(s=>`<option ${checkoutDraft.state===s?'selected':''}>${s}</option>`).join('')}</select></label>${field('address','House / Flat no., Building / Apartment &amp; Street',{auto:'address-line1',wide:true,max:300,placeholder:'e.g. Flat 4B, Sai Krupa Residency, 3rd Cross'})}${field('apartment','Landmark / Floor / Locality (recommended)',{auto:'address-line2',optional:true,wide:true,max:150,placeholder:'e.g. Opp. Apollo Pharmacy, Near Shiv Temple, 2nd Floor'})}<label class="field wide" for="digipin">India Post DIGIPIN (auto-filled from pin, or enter yours)<input id="digipin" name="digipin" type="text" maxlength="12" autocomplete="off" value="${e(checkoutDraft.digipin||'')}" placeholder="e.g. 39J-49L-L8T4"><span id="checkout-digipin-hint" class="pin-lookup-hint">${checkoutDraft.digipin?`✓ DIGIPIN ${e(checkoutDraft.digipin)} linked`:'Auto-fills when you pin your roof below, or type your 10-char DIGIPIN to auto-pin.'}</span></label></div>${mapPanel(checkoutDraft.location)}</section><section class="checkout-step" data-checkout-step="3" aria-labelledby="checkout-review-heading"><h2 id="checkout-review-heading" tabindex="-1">3 · Review &amp; pay</h2><div id="checkout-review" class="checkout-review"></div><label class="field wide checkout-note-field" for="checkout-notes"><span class="checkout-note-label"><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v11H7l-3 3V5Z"/><path d="M8 9h8M8 12.5h5"/></svg>Note for hehe.cafe (optional)</span><textarea id="checkout-notes" name="notes" maxlength="1000" placeholder="Add delivery instructions, framing requests or a gift note…">${e(noteVal)}</textarea><span id="checkout-notes-count" class="note-char-count">${String(noteVal).length} / 1000</span></label><p class="checkout-step-due"><strong>Total due now: ${money(orderTotal)}</strong> · ${pricing.freeShipping?'Includes free India Post shipping.':`Includes ₹${SHIPPING_CHARGE} × ${itemCount} (${money(pricing.shippingPaise/100)}) India Post shipping.`}</p><label class="checkbox checkout-consent-box"><input name="consent" type="checkbox" required ${consentChecked?'checked':''}><span>I agree to the <a href="#info/terms" class="text-link">Terms of service</a>, <a href="#info/shipping" class="text-link">Shipping policy</a> and <a href="#info/refunds" class="text-link">Cancellation &amp; returns policy</a>, and to the use of my details for this order as described in the <a href="#info/privacy" class="text-link">Privacy policy</a>.</span></label></section></div><div class="checkout-step-actions"><button id="checkout-prev" type="button" class="button outline checkout-back-btn" data-action="checkout-previous" hidden>← Back</button><button id="checkout-next" type="button" class="button checkout-next-btn" data-action="checkout-next">Continue →</button><button id="checkout-submit" type="submit" class="pos-transaction-container" hidden aria-label="Pay ${money(orderTotal)}"><span class="left-side" aria-hidden="true"><span class="card"><span class="card-line"></span><span class="buttons"></span></span><span class="post"><span class="post-line"></span><span class="screen"><span class="dollar">₹</span></span><span class="numbers"></span><span class="numbers-line2"></span></span></span><span class="right-side"><span class="new">Pay ${money(orderTotal)} securely</span><svg viewBox="0 0 451.846 451.847" class="arrow" aria-hidden="true"><path d="M345.441 248.292L151.154 442.573c-12.359 12.365-32.397 12.365-44.75 0-12.354-12.354-12.354-32.391 0-44.744L278.318 225.92 106.409 54.017c-12.354-12.359-12.354-32.394 0-44.748 12.354-12.359 32.391-12.359 44.75 0l194.287 194.284c6.177 6.18 9.262 14.271 9.262 22.366 0 8.099-3.091 16.196-9.267 22.373z"/></svg></span></button></div><p class="checkout-razorpay-cue small muted" id="checkout-razorpay-cue" ${checkoutStep===3?'':'hidden'}>Secured by Razorpay · UPI, Cards, Netbanking &amp; Wallets</p><p id="checkout-availability" class="notice" role="alert" hidden></p><button id="review-checkout-cart" type="button" class="text-link" data-action="review-checkout-cart" hidden>Review updated bag</button><p id="checkout-notice" class="notice" role="alert"></p><a href="#home" class="text-link">← Back to hehe.cafe</a>${mobileSceneMarkup}</form><aside class="checkout-summary summary-collapsed" aria-labelledby="summary-title">${summaryCatImg}<button type="button" class="summary-toggle" data-action="toggle-summary" aria-expanded="false" aria-controls="checkout-summary-content"><span class="summary-toggle-label">View order summary <svg viewBox="0 0 24 24" class="ui-chevron" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></span><strong>${money(orderTotal)}</strong></button><div id="checkout-summary-content"><div class="section-heading" style="margin:0 0 18px"><h2 id="summary-title">Order summary</h2><button class="text-link" data-action="cart">Edit bag</button></div>${entries.map(({product:p,quantity,total,attachment,attachmentPrice})=>`<div class="checkout-item"><div class="checkout-item-image"><img src="${e(imageOf(p))}" alt="${e(p.title)}"><span>${quantity}</span></div><div>${e(p.title)}<small>by ${e(p.artist||'Suprita Chatterjee')}${attachment?` · Backing: ${e(attachment.shortLabel||attachment.label)}${attachmentPrice>0?` (+${money(attachmentPrice)})`:''}`:''}</small></div><span>${money(total)}</span></div>`).join('')}${bagOffersMarkup(entries,pricing,'checkout')}<hr>${discountTotalRowsMarkup(pricing,`Artworks · ${itemCount} ${itemCount===1?'piece':'pieces'}`)}<div class="checkout-info checkout-protected-card"><span class="protected-shield" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 3 4 6.5v5.5c0 5 3.4 8.7 8 10 4.6-1.3 8-5 8-10V6.5L12 3Z"/><path d="m9 12 2 2 4-4"/></svg></span><div><strong>Protected checkout</strong><p>Your artwork is reserved upon payment verification.</p></div></div></div>${meadowWrapMarkup}</aside></div></div>`;
   mountCheckoutMap();
   applyCheckoutProfile();
   if(user&&!user.isAnonymous&&(!accountState.loaded||accountState.error||accountState.profileError)&&!accountState.loading)void fetchCustomerAccount();
@@ -896,6 +949,7 @@ function renderCheckoutReview(){
   const name=[value('firstName'),value('lastName')].filter(Boolean).join(' ');
   const address=[value('address'),value('apartment'),value('city'),value('state'),value('postalCode'),value('country')].filter(Boolean).join(', ');
   const pinOk=validLocation(checkoutDraft.location);
+  const digi=formatDigiPin(value('digipin')||checkoutDraft.location?.digipin)||(pinOk?encodeDigiPin(checkoutDraft.location.latitude,checkoutDraft.location.longitude):'');
   const editSvg='<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>';
   review.innerHTML=`
     <div class="checkout-review-row">
@@ -907,13 +961,13 @@ function renderCheckoutReview(){
     <div class="checkout-review-row">
       <span class="review-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M3 6h11v10H3z"/><path d="M14 9h4l3 3v4h-7V9Z"/><circle cx="7.5" cy="18" r="1.8"/><circle cx="17.5" cy="18" r="1.8"/></svg></span>
       <span class="review-label">Deliver to</span>
-      <div class="review-body"><strong>${e(address)}</strong></div>
+      <div class="review-body"><strong>${e(address)}</strong>${digi?`<br><small>DIGIPIN: <code>${e(digi)}</code></small>`:''}</div>
       <button type="button" class="review-edit-btn" data-action="checkout-edit-step" data-step="2" aria-label="Edit delivery address">${editSvg}</button>
     </div>
     <div class="checkout-review-row">
       <span class="review-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 21s-6-5.3-6-10.5a6 6 0 1 1 12 0C18 15.7 12 21 12 21Z"/><circle cx="12" cy="10.5" r="2.2"/></svg></span>
       <span class="review-label">Delivery pin</span>
-      <div class="review-body"><strong class="review-pin-pill ${pinOk?'is-ok':'is-warn'}">${pinOk?'✓ Confirmed':'Needs confirmation'}</strong></div>
+      <div class="review-body"><strong class="review-pin-pill ${pinOk?'is-ok':'is-warn'}">${pinOk?`✓ Confirmed${digi?` · ${e(digi)}`:''}`:'Needs confirmation'}</strong></div>
       <button type="button" class="review-edit-btn" data-action="checkout-edit-step" data-step="2" aria-label="Edit delivery pin">${editSvg}</button>
     </div>`;
 }
@@ -943,8 +997,18 @@ function mountCheckoutMap(){
   deliveryMap=mountDeliveryMap(document.querySelector('.delivery-pin'),{
     initial:checkoutDraft.location,
     getAddress:()=>{captureCheckout();return checkoutDraft;},
-    onChange:point=>{checkoutTouched.add('location');if(point)checkoutDraft.location=point;else delete checkoutDraft.location;const notice=$('checkout-notice');if(validLocation(point)&&notice&&/delivery pin/i.test(notice.textContent||''))notice.textContent='';},
-    onAddress:address=>{for(const key of ['address','city','state','postalCode']){if(!address[key]||!$(key))continue;if(key==='state'&&!states.includes(address[key]))continue;$(key).value=address[key];checkoutTouched.add(key);}captureCheckout();},
+    onChange:point=>{
+      checkoutTouched.add('location');
+      if(point)checkoutDraft.location=point;else delete checkoutDraft.location;
+      const digi=formatDigiPin(point?.digipin)||(validCoordinates(point?.latitude,point?.longitude)?encodeDigiPin(point.latitude,point.longitude):'');
+      if(digi){
+        checkoutDraft.digipin=digi;
+        if($('digipin'))$('digipin').value=digi;
+        if($('checkout-digipin-hint')){$('checkout-digipin-hint').className='pin-lookup-hint is-ok';$('checkout-digipin-hint').textContent=`✓ DIGIPIN ${digi} synced from your map pin`;}
+      }
+      const notice=$('checkout-notice');if(validLocation(point)&&notice&&/delivery pin/i.test(notice.textContent||''))notice.textContent='';
+    },
+    onAddress:address=>{for(const key of ['address','city','state','postalCode']){if(!address[key]||!$(key))continue;const next=key==='state'?(resolveIndiaState(address[key])||address[key]):address[key];if(key==='state'&&!states.includes(next))continue;$(key).value=next;checkoutTouched.add(key);}captureCheckout();},
   });
   updateCheckoutAvailability();
 }
@@ -1118,13 +1182,23 @@ function mountProfileMap(){
   deliveryMap=mountDeliveryMap(pinRoot,{
     initial:profileDraftLocation,
     getAddress:()=>{const current=$('customer-profile-form');return current?Object.fromEntries(new FormData(current)):{};},
-    onChange:point=>{profileDraftLocation=point;},
+    onChange:point=>{
+      profileDraftLocation=point;
+      const current=$('customer-profile-form');
+      const digi=formatDigiPin(point?.digipin)||(validCoordinates(point?.latitude,point?.longitude)?encodeDigiPin(point.latitude,point.longitude):'');
+      if(current&&digi&&current.elements.digipin){
+        current.elements.digipin.value=digi;
+        const hint=$('profile-digipin-hint');
+        if(hint){hint.className='pin-lookup-hint is-ok';hint.textContent=`✓ DIGIPIN ${digi} synced from your map pin`;}
+      }
+    },
     onAddress:address=>{
       const current=$('customer-profile-form');if(!current)return;
       for(const key of ['address','city','state','postalCode']){
         if(!address[key]||!current.elements[key])continue;
-        if(key==='state'&&!states.includes(address[key]))continue;
-        current.elements[key].value=address[key];
+        const next=key==='state'?(resolveIndiaState(address[key])||address[key]):address[key];
+        if(key==='state'&&!states.includes(next))continue;
+        current.elements[key].value=next;
       }
     }
   });
@@ -3404,7 +3478,7 @@ document.addEventListener('submit',async event=>{if(event.target.id==='email-aut
   }
 });
 document.addEventListener('keydown',event=>{if(event.key==='Enter'&&(event.target.id==='cart-promo-input'||event.target.id==='checkout-promo-input')){event.preventDefault();event.target.closest('.promo-code-box')?.querySelector('[data-action="apply-promo"]')?.click();}});
-document.addEventListener('input',event=>{if(event.target.dataset.productNote)setProductNote(event.target.dataset.productNote,event.target.value);if(event.target.id==='checkout-notes'&&$('checkout-notes-count'))$('checkout-notes-count').textContent=`${event.target.value.length} / 1000`;if(event.target.id==='search-input')renderSearch();if(event.target.id==='home-search-input'){filter.search=event.target.value;renderProductResults();decorateCartButtons();syncInBagButtons();}if(event.target.id==='account-order-search'){accountState.orderQuery=event.target.value;refreshAccountOrdersList();}if(event.target.id==='order-note')orderNote=event.target.value;if(event.target.id==='admin-search'){adminSearch=event.target.value;renderAdminTable();}if(event.target.id==='admin-orders-search'){orderSearch=event.target.value;renderOrdersCards();}if(event.target.id==='admin-audit-search'){adminAuditQuery=event.target.value;renderAdminAuditRows();}if(event.target.closest('#product-form'))renderEditorCardPreview();if(event.target.closest('#banner-form')){if(event.target.name==='bannerButtonOffsetX'&&$('banner-cta-x-val'))$('banner-cta-x-val').textContent=`${event.target.value}px`;if(event.target.name==='bannerButtonOffsetY'&&$('banner-cta-y-val'))$('banner-cta-y-val').textContent=`${event.target.value}px`;settingsDirty=true;settingsPreviewController?.update();}if(event.target.closest('#checkout-form')){if(event.target.name)checkoutTouched.add(event.target.name);captureCheckout();if(cart.length&&['email','firstName','lastName','phone','city','state'].includes(event.target.name))scheduleBagSync('checkout');}if(event.target.closest('#email-auth-form[data-auth-mode="signup"]')&&(event.target.name==='password'||event.target.name==='confirmPassword')){const f=event.target.form,pw=String(f.elements.password?.value||''),cf=String(f.elements.confirmPassword?.value||''),hint=$('signup-password-hint');if(hint){hint.className='auth-password-hint';if(!pw&&!cf){hint.textContent='';}else if(pw.length<6){hint.classList.add('is-warn');hint.textContent='At least 6 characters needed.';}else if(!cf){hint.textContent='Re-enter your password below to confirm.';}else if(pw!==cf){hint.classList.add('is-warn');hint.textContent='Passwords do not match yet.';}else{hint.classList.add('is-ok');hint.textContent='✓ Passwords match';}}}});
+document.addEventListener('input',event=>{if(event.target.dataset.productNote)setProductNote(event.target.dataset.productNote,event.target.value);if(event.target.id==='checkout-notes'&&$('checkout-notes-count'))$('checkout-notes-count').textContent=`${event.target.value.length} / 1000`;if(event.target.id==='search-input')renderSearch();if(event.target.id==='home-search-input'){filter.search=event.target.value;renderProductResults();decorateCartButtons();syncInBagButtons();}if(event.target.id==='account-order-search'){accountState.orderQuery=event.target.value;refreshAccountOrdersList();}if(event.target.id==='order-note')orderNote=event.target.value;if(event.target.id==='admin-search'){adminSearch=event.target.value;renderAdminTable();}if(event.target.id==='admin-orders-search'){orderSearch=event.target.value;renderOrdersCards();}if(event.target.id==='admin-audit-search'){adminAuditQuery=event.target.value;renderAdminAuditRows();}if(event.target.closest('#product-form'))renderEditorCardPreview();if(event.target.closest('#banner-form')){if(event.target.name==='bannerButtonOffsetX'&&$('banner-cta-x-val'))$('banner-cta-x-val').textContent=`${event.target.value}px`;if(event.target.name==='bannerButtonOffsetY'&&$('banner-cta-y-val'))$('banner-cta-y-val').textContent=`${event.target.value}px`;settingsDirty=true;settingsPreviewController?.update();}if(event.target.closest('#checkout-form,#customer-profile-form')){const f=event.target.form;if(event.target.name==='city'||event.target.name==='state')event.target.dataset.autofilled='false';if(event.target.name==='postalCode'){const hintEl=f.id==='checkout-form'?$('checkout-pin-hint'):$('profile-pin-hint');void handlePinAutofill(f,event.target.value,hintEl);}if(event.target.name==='digipin'){const dHint=f.id==='checkout-form'?$('checkout-digipin-hint'):$('profile-digipin-hint');handleDigiPinFieldInput(f,event.target,dHint);}}if(event.target.closest('#checkout-form')){if(event.target.name)checkoutTouched.add(event.target.name);captureCheckout();if(cart.length&&['email','firstName','lastName','phone','city','state'].includes(event.target.name))scheduleBagSync('checkout');}if(event.target.closest('#email-auth-form[data-auth-mode="signup"]')&&(event.target.name==='password'||event.target.name==='confirmPassword')){const f=event.target.form,pw=String(f.elements.password?.value||''),cf=String(f.elements.confirmPassword?.value||''),hint=$('signup-password-hint');if(hint){hint.className='auth-password-hint';if(!pw&&!cf){hint.textContent='';}else if(pw.length<6){hint.classList.add('is-warn');hint.textContent='At least 6 characters needed.';}else if(!cf){hint.textContent='Re-enter your password below to confirm.';}else if(pw!==cf){hint.classList.add('is-warn');hint.textContent='Passwords do not match yet.';}else{hint.classList.add('is-ok');hint.textContent='✓ Passwords match';}}}});
 document.addEventListener('change',async event=>{const t=event.target;if(t.closest('#product-form'))renderEditorCardPreview();if(t.closest('#banner-form')){settingsDirty=true;settingsPreviewController?.update();}if(t.dataset.referenceFiles){try{addReferences(t.dataset.referenceFiles,t.files);refreshReferencePreviews(t.dataset.referenceFiles);}catch(error){toast(error.message);}t.value='';}
   if(t.id==='sort-filter'){filter.sort=t.value;renderProductResults();decorateCartButtons();syncInBagButtons();}if(t.id==='available-filter'){filter.available=t.checked;renderProductResults();decorateCartButtons();syncInBagButtons();}if(t.id==='category-filter')location.hash=t.value?`collection/${t.value}`:'shop';if(t.id==='admin-category'){adminCategory=t.value;renderAdminTable();}
   if(t.id==='admin-artwork-sort'&&isAdmin){

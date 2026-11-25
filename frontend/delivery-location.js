@@ -1,6 +1,6 @@
 import {MAP_CONFIG} from './map-config.js';
 import {escapeHTML as e} from './commerce.js';
-import {featureAddress,featureLabel,validCoordinates,validLocation} from './location-utils.js';
+import {decodeDigiPin,encodeDigiPin,featureAddress,featureLabel,formatDigiPin,parseLocationQuery,validCoordinates,validLocation} from './location-utils.js';
 import {loadScript} from './browser-library.js';
 
 const PIN_ICON='<svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21s-6.5-5.7-6.5-11a6.5 6.5 0 1 1 13 0c0 5.3-6.5 11-6.5 11Z"/><circle cx="12" cy="10" r="2.4"/></svg>';
@@ -12,9 +12,37 @@ const SEARCH_ICON='<svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><
 const COPY_ICON='<svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>';
 const CHECK_ICON='<svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m5 13 4 4L19 7"/></svg>';
 const RESET_ICON='<svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg>';
+const CENTER_PIN_SVG='<svg viewBox="0 0 36 44" aria-hidden="true"><path d="M18 2C9.7 2 3 8.7 3 17c0 10.6 15 24 15 24s15-13.4 15-24C33 8.7 26.3 2 18 2Z" fill="#de6324" stroke="#ffffff" stroke-width="2.5"/><path d="M18 11.2 12 16v6.5h4.2v-3.8h3.6v3.8H24V16l-6-4.8Z" fill="#ffffff"/></svg>';
+
+const pincodeCache=new Map();
+export async function lookupIndianPincode(rawPin){
+  const pin=String(rawPin||'').trim();
+  if(!/^[1-9]\d{5}$/.test(pin))return null;
+  if(pincodeCache.has(pin))return pincodeCache.get(pin);
+  try{
+    const res=await fetch(`https://api.postalpincode.in/pincode/${pin}`,{signal:AbortSignal.timeout(6000),credentials:'omit'});
+    if(!res.ok)return null;
+    const rows=await res.json();
+    const list=Array.isArray(rows?.[0]?.PostOffice)?rows[0].PostOffice:[];
+    if(!list.length)return null;
+    const primary=list.find(po=>/delivery/i.test(String(po.DeliveryStatus||'')))||list[0];
+    const info={
+      pin,
+      city:String(primary.District||primary.Block||primary.Name||'').trim(),
+      state:String(primary.State||'').trim(),
+      area:String(primary.Name||'').trim(),
+      postOffices:list.map(po=>String(po.Name||'').trim()).filter(Boolean).slice(0,6)
+    };
+    pincodeCache.set(pin,info);
+    return info;
+  }catch{
+    return null;
+  }
+}
 
 export function mapPanel(location) {
   const hasPin = validLocation(location);
+  const digi = hasPin ? (formatDigiPin(location.digipin) || encodeDigiPin(location.latitude, location.longitude)) : '';
   const pillText = hasPin
     ? (location.formattedAddress || `${location.latitude.toFixed(4)}, ${location.longitude.toFixed(4)}`)
     : 'Locate me or choose your delivery spot on the map';
@@ -25,7 +53,8 @@ export function mapPanel(location) {
         <div class="map-compact-info">
           <strong class="map-pin-state-title">${hasPin ? 'Location set ✓' : 'Set delivery pin'}</strong>
           <span id="map-floating-address-text" class="map-compact-addr">${e(pillText)}</span>
-          <p id="map-status" class="map-status" role="status"${hasPin ? ' hidden' : ''}>${hasPin ? '✓ Delivery pin confirmed.' : 'Tap Locate Me or open the map to pin your entrance.'}</p>
+          ${digi ? `<span class="map-digipin-pill" data-map-digipin-badge>DIGIPIN · ${e(digi)}</span>` : '<span class="map-digipin-pill" data-map-digipin-badge hidden></span>'}
+          <p id="map-status" class="map-status" role="status"${hasPin ? ' hidden' : ''}>${hasPin ? '✓ Delivery pin confirmed.' : 'Tap Locate Me or open the map to pin your roof / entrance.'}</p>
         </div>
       </div>
       <button type="button" class="button outline map-pill-secondary" data-map="open">${hasPin ? 'Change' : 'Choose on map'}</button>
@@ -38,7 +67,7 @@ export function mapPanel(location) {
 }
 
 export function mountDeliveryMap(root,{getAddress,onChange,onAddress,initial}) {
-  let map,mapPromise=null,marker,accuracyCircle,satelliteLayer,streetLayer,activeLayer='satellite',pending=initial&&validCoordinates(initial.latitude,initial.longitude)?{...initial}:null,disposed=false,results=[],suggestion=null,version=0,controller,timer,invalidateTimer=0,lastRequest=0;
+  let map,mapPromise=null,accuracyCircle,satelliteLayer,streetLayer,activeLayer='satellite',pending=initial&&validCoordinates(initial.latitude,initial.longitude)?{...initial,digipin:formatDigiPin(initial.digipin)||encodeDigiPin(initial.latitude,initial.longitude)}:null,disposed=false,results=[],suggestion=null,version=0,controller,timer,invalidateTimer=0,lastRequest=0,watchId=null,watchTimer=null,suppressNextMoveEnd=false;
   const cache=new Map();
   document.querySelectorAll('.map-picker-dialog').forEach(node=>node.remove());
   const sheet=document.createElement('dialog');
@@ -52,7 +81,7 @@ export function mountDeliveryMap(root,{getAddress,onChange,onAddress,initial}) {
           <span class="map-sheet-title-pin" aria-hidden="true">${PIN_ICON}</span>
           <div>
             <h2>Set Delivery Location</h2>
-            <p id="map-sheet-status" class="map-status" role="status">Confirm the pin to ensure accurate delivery. Drag to adjust if needed.</p>
+            <p id="map-sheet-status" class="map-status" role="status">Move the satellite map so the orange pin sits right on your roof or gate.</p>
           </div>
         </div>
         <button type="button" class="icon-button map-sheet-close" data-map="close" aria-label="Close map"><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button>
@@ -64,7 +93,7 @@ export function mountDeliveryMap(root,{getAddress,onChange,onAddress,initial}) {
         </div>
         <div class="map-sheet-searchbar">
           <span class="map-search-lens" aria-hidden="true">${SEARCH_ICON}</span>
-          <input type="search" id="map-sheet-search" placeholder="Search for area, street, or pincode" autocomplete="off">
+          <input type="search" id="map-sheet-search" placeholder="Area, landmark, 6-digit PIN, DIGIPIN, or Google Maps link" autocomplete="off">
           <button type="button" class="map-search-clear" data-map="clear-search" aria-label="Clear search"><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button>
           <button type="button" class="button small map-search-submit" data-map="search">Search</button>
         </div>
@@ -72,17 +101,18 @@ export function mountDeliveryMap(root,{getAddress,onChange,onAddress,initial}) {
       <div id="map-results" class="map-results" aria-label="Address matches"></div>
     </div>
     <div class="map-sheet-stage">
-      <div id="delivery-map" aria-label="Delivery location map. Scroll to zoom or pinch with two fingers. Drag the pin or tap the map to mark your entrance."></div>
+      <div id="delivery-map" aria-label="Delivery location map. Pan or zoom until the center pin sits on your roof or gate."></div>
+      <div class="map-center-pin" aria-hidden="true">${CENTER_PIN_SVG}<span class="map-center-pin-dot"></span></div>
       <button type="button" class="map-stage-locate-btn" data-map="device" title="Use my current location" aria-label="Locate Me">${NAV_ICON}</button>
       <div id="mapped-address" class="map-floating-card">
         <div class="map-floating-card-left">
           <span class="map-floating-home-icon" aria-hidden="true">${HOUSE_ICON}</span>
           <div class="map-floating-copy">
             <strong>Delivery pin</strong>
-            <p id="mapped-address-text" class="map-floating-addr">Tap anywhere on the map, search above, or tap Locate Me.</p>
+            <p id="mapped-address-text" class="map-floating-addr">Pan map to your gate, search a landmark, or paste a Google Maps link / DIGIPIN.</p>
             <div class="map-coords-line">
               <span id="pin-coordinates" class="map-coords-note"></span>
-              <button type="button" class="map-copy-btn" data-map="copy-coords" aria-label="Copy coordinates" title="Copy coordinates" hidden>${COPY_ICON}</button>
+              <button type="button" class="map-copy-btn" data-map="copy-coords" aria-label="Copy DIGIPIN and coordinates" title="Copy DIGIPIN and coordinates" hidden>${COPY_ICON}</button>
             </div>
           </div>
         </div>
@@ -97,13 +127,26 @@ export function mountDeliveryMap(root,{getAddress,onChange,onAddress,initial}) {
       </div>
     </div>`;
   document.body.append(sheet);
+  const centerPinEl=sheet.querySelector('.map-center-pin');
 
-  const status=text=>{
+  const status=(text,{warn=false}={})=>{
     if(disposed)return;
     const s1=root.querySelector('#map-status');
     const s2=sheet.querySelector('#map-sheet-status');
-    if(s1)s1.textContent=text;
-    if(s2)s2.textContent=text;
+    if(s1){s1.textContent=text;s1.classList.toggle('is-warn',Boolean(warn));}
+    if(s2){s2.textContent=text;s2.classList.toggle('is-warn',Boolean(warn));}
+  };
+  const stopWatch=()=>{
+    if(watchId!==null&&typeof navigator!=='undefined'&&navigator.geolocation?.clearWatch){
+      try{navigator.geolocation.clearWatch(watchId);}catch{}
+      watchId=null;
+    }
+    if(watchTimer){clearTimeout(watchTimer);watchTimer=null;}
+  };
+  const moveMapSmooth=(lat,lng,zoom=18)=>{
+    if(!map)return;
+    suppressNextMoveEnd=true;
+    map.setView([lat,lng],zoom,{animate:false});
   };
   const syncSummaryCard=()=>{
     const isOk=validLocation(pending);
@@ -151,14 +194,21 @@ export function mountDeliveryMap(root,{getAddress,onChange,onAddress,initial}) {
       mapPromise=(async()=>{
         await loadScript('assets/vendor/leaflet.js');
         if(disposed||map)return;
-        map=window.L.map(sheet.querySelector('#delivery-map'),{scrollWheelZoom:true,touchZoom:true,doubleClickZoom:true,keyboard:true,zoomControl:true,wheelPxPerZoomLevel:60,zoomSnap:0.5}).setView(pending?[pending.latitude,pending.longitude]:[22.5,79],pending?17:5);
-        const imagery=window.L.tileLayer(MAP_CONFIG.satelliteTiles,{attribution:MAP_CONFIG.satelliteAttribution,maxZoom:19,maxNativeZoom:18}).on('tileerror',()=>status('Some satellite tiles could not load. Switch to Street map or retry before confirming.'));
-        const roads=window.L.tileLayer(MAP_CONFIG.roadsTiles,{maxZoom:19,maxNativeZoom:18});
-        const labels=window.L.tileLayer(MAP_CONFIG.labelsTiles,{maxZoom:19,maxNativeZoom:18});
+        map=window.L.map(sheet.querySelector('#delivery-map'),{scrollWheelZoom:true,touchZoom:true,doubleClickZoom:true,keyboard:true,zoomControl:true,wheelPxPerZoomLevel:60,zoomSnap:0.5,maxZoom:20}).setView(pending?[pending.latitude,pending.longitude]:[22.5,79],pending?18:5);
+        const imagery=window.L.tileLayer(MAP_CONFIG.satelliteTiles,{attribution:MAP_CONFIG.satelliteAttribution,maxZoom:20,maxNativeZoom:18}).on('tileerror',()=>status('Some satellite tiles could not load. Switch to Street map or retry before confirming.'));
+        const roads=window.L.tileLayer(MAP_CONFIG.roadsTiles,{maxZoom:20,maxNativeZoom:18});
+        const labels=window.L.tileLayer(MAP_CONFIG.labelsTiles,{maxZoom:20,maxNativeZoom:18});
         satelliteLayer=window.L.layerGroup([imagery,roads,labels]);
-        streetLayer=window.L.tileLayer(MAP_CONFIG.tiles,{attribution:MAP_CONFIG.attribution,maxZoom:19}).on('tileerror',()=>status('Some map tiles could not load. Retry your connection before confirming.'));
+        streetLayer=window.L.tileLayer(MAP_CONFIG.tiles,{attribution:MAP_CONFIG.attribution,maxZoom:20,maxNativeZoom:19}).on('tileerror',()=>status('Some map tiles could not load. Retry your connection before confirming.'));
         satelliteLayer.addTo(map);
-        map.on('click',event=>setPoint(event.latlng.lat,event.latlng.lng,'pin'));
+        map.on('movestart',()=>{if(!suppressNextMoveEnd)stopWatch();centerPinEl?.classList.add('is-panning');});
+        map.on('moveend',()=>{
+          centerPinEl?.classList.remove('is-panning');
+          if(suppressNextMoveEnd){suppressNextMoveEnd=false;return;}
+          const c=map.getCenter();
+          setPoint(c.lat,c.lng,'pin',0);
+        });
+        map.on('click',event=>map.panTo(event.latlng));
         if(pending){placeMarker();updatePointUI();}
       })().finally(()=>{mapPromise=null;});
     }
@@ -189,12 +239,13 @@ export function mountDeliveryMap(root,{getAddress,onChange,onAddress,initial}) {
     }
     await ensureMap();
     if(!disposed&&map){
-      if(pending)map.setView([pending.latitude,pending.longitude],Math.max(map.getZoom()||17,16));
+      if(pending)moveMapSmooth(pending.latitude,pending.longitude,Math.max(map.getZoom()||18,17));
       clearTimeout(invalidateTimer);
       invalidateTimer=setTimeout(()=>{if(!disposed&&map&&sheet.open)map.invalidateSize();},360);
     }
   }
   function closeSheet({immediate=false,fromDrag=false}={}){
+    stopWatch();
     if(!sheet.open)return;
     clearTimeout(sheet._closeTimer);
     const reduced=matchMedia?.('(prefers-reduced-motion: reduce)')?.matches;
@@ -219,23 +270,28 @@ export function mountDeliveryMap(root,{getAddress,onChange,onAddress,initial}) {
     sheet._closeTimer=setTimeout(finish,360);
   }
   function placeMarker(){
-    if(!map||!pending)return;
-    const at=[pending.latitude,pending.longitude];
-    const iconHtml='<span class="delivery-marker-pin" aria-hidden="true"><svg viewBox="0 0 36 44"><path d="M18 2C9.7 2 3 8.7 3 17c0 10.6 15 24 15 24s15-13.4 15-24C33 8.7 26.3 2 18 2Z" fill="#de6324" stroke="#ffffff" stroke-width="2.5"/><path d="M18 11.2 12 16v6.5h4.2v-3.8h3.6v3.8H24V16l-6-4.8Z" fill="#ffffff"/></svg></span>';
-    if(!marker){marker=window.L.marker(at,{draggable:true,title:'Drag to your delivery entrance',icon:window.L.divIcon({className:'delivery-marker',html:iconHtml,iconSize:[36,44],iconAnchor:[18,44]})}).addTo(map);marker.on('dragend',()=>{const next=marker.getLatLng();setPoint(next.lat,next.lng,'pin');});}else marker.setLatLng(at);
+    if(!map)return;
     if(accuracyCircle){accuracyCircle.remove();accuracyCircle=null;}
-    accuracyCircle=window.L.circle(at,{radius:Math.max(Number(pending.accuracy)||0,24),color:'#de6324',fillColor:'#de6324',weight:1.5,fillOpacity:.2}).addTo(map);
+    if(!pending||!Number(pending.accuracy)||Number(pending.accuracy)<=25)return;
+    const at=[pending.latitude,pending.longitude];
+    accuracyCircle=window.L.circle(at,{radius:Math.min(Number(pending.accuracy),2500),color:'#de6324',fillColor:'#de6324',weight:1.5,fillOpacity:.14}).addTo(map);
   }
   function updatePointUI(){
     enabled();
     const coordsEl=sheet.querySelector('#pin-coordinates');
     const copyBtn=sheet.querySelector('[data-map="copy-coords"]');
-    if(coordsEl)coordsEl.textContent=pending?`${pending.latitude.toFixed(4)}, ${pending.longitude.toFixed(4)}${pending.accuracy?` · ±${Math.round(pending.accuracy)}m`:''}`:'';
+    const badgeEl=root.querySelector('[data-map-digipin-badge]');
+    const digi=pending?(formatDigiPin(pending.digipin)||encodeDigiPin(pending.latitude,pending.longitude)):'';
+    if(coordsEl)coordsEl.textContent=pending?`${digi?`DIGIPIN ${digi} · `:''}${pending.latitude.toFixed(4)}, ${pending.longitude.toFixed(4)}${pending.accuracy?` · ±${Math.round(pending.accuracy)}m`:''}`:'';
     if(copyBtn)copyBtn.hidden=!pending;
+    if(badgeEl){
+      badgeEl.hidden=!digi||!validLocation(pending);
+      badgeEl.textContent=digi?`DIGIPIN · ${digi}`:'';
+    }
     const mappedText=sheet.querySelector('#mapped-address-text');
     const applyBtn=sheet.querySelector('[data-map="apply-address"]');
     const locateInline=sheet.querySelector('.map-card-locate-btn');
-    const addrText=suggestion?featureLabel(suggestion):(pending?(pending.formattedAddress||'Pin placed — drag to adjust if needed'):'Tap anywhere on the map, search above, or tap Locate Me.');
+    const addrText=suggestion?featureLabel(suggestion):(pending?(pending.formattedAddress||'Pin placed at map center — pan to adjust if needed'):'Pan map to your gate, search a landmark, or paste a Google Maps link / DIGIPIN.');
     if(mappedText)mappedText.textContent=addrText;
     if(applyBtn)applyBtn.hidden=!suggestion;
     if(locateInline)locateInline.hidden=Boolean(suggestion);
@@ -243,11 +299,14 @@ export function mountDeliveryMap(root,{getAddress,onChange,onAddress,initial}) {
     const summaryText=root.querySelector('#map-floating-address-text');
     if(summaryText)summaryText.textContent=pillLabel;
   }
-  function setPoint(latitude,longitude,source,accuracy=0,feature=null){
+  function setPoint(latitude,longitude,source,accuracy=0,feature=null,{confirmed=false,message='',warn=false}={}){
     if(!validCoordinates(latitude,longitude))return;
     version++;controller?.abort();clearTimeout(timer);
-    pending={latitude:Number(latitude.toFixed(6)),longitude:Number(longitude.toFixed(6)),source,accuracy,formattedAddress:feature?featureLabel(feature):'',confirmed:false};suggestion=feature;
-    onChange({...pending});placeMarker();updatePointUI();status('Pin placed — drag to fine-tune, then tap Confirm delivery location.');
+    const lat=Number(latitude.toFixed(6)),lng=Number(longitude.toFixed(6));
+    const digipin=encodeDigiPin(lat,lng);
+    pending={latitude:lat,longitude:lng,source,accuracy,formattedAddress:feature?featureLabel(feature):'',digipin,confirmed};suggestion=feature;
+    onChange({...pending});placeMarker();updatePointUI();
+    status(message||'Pin placed — pan map to your roof/gate, then tap Confirm delivery location.',{warn});
     if(!feature){const current=version;timer=setTimeout(()=>reverse(current),900);}
   }
   async function request(path,params){
@@ -263,35 +322,135 @@ export function mountDeliveryMap(root,{getAddress,onChange,onAddress,initial}) {
   async function reverse(current){
     const at=pending;if(!at)return;
     try{const found=await request('/reverse',{lat:at.latitude,lon:at.longitude,limit:1,lang:'en'});if(disposed||current!==version)return;suggestion=found[0]||null;if(pending){pending.formattedAddress=suggestion?featureLabel(suggestion):'';if(pending.confirmed)onChange({...pending});}updatePointUI();}
-    catch{if(current===version)status('Nearby address lookup is unavailable. Your pin still works; confirm when ready.');}
+    catch{if(current===version)status('Road lookup unavailable for this lane — your pin and DIGIPIN still work cleanly.');}
+  }
+  async function nominatimSearch(query){
+    const url=new URL('https://nominatim.openstreetmap.org/search');
+    url.searchParams.set('format','json');
+    url.searchParams.set('addressdetails','1');
+    url.searchParams.set('countrycodes','in');
+    url.searchParams.set('limit','5');
+    url.searchParams.set('q',query);
+    if(cache.has(url.href))return cache.get(url.href);
+    const res=await fetch(url,{signal:AbortSignal.timeout(8000),credentials:'omit'});
+    if(!res.ok)return [];
+    const rows=await res.json();
+    const mapped=(Array.isArray(rows)?rows:[]).map(r=>({
+      geometry:{coordinates:[Number(r.lon),Number(r.lat)]},
+      properties:{
+        name:r.name||String(r.display_name||'').split(',')[0]||'',
+        street:r.address?.road||r.address?.suburb||r.address?.neighbourhood||'',
+        city:r.address?.city||r.address?.town||r.address?.village||r.address?.state_district||'',
+        state:r.address?.state||'',
+        postcode:r.address?.postcode||'',
+        country:'India',
+        countrycode:'IN'
+      }
+    })).filter(f=>validCoordinates(f.geometry.coordinates[1],f.geometry.coordinates[0]));
+    cache.set(url.href,mapped);
+    return mapped;
   }
   async function search(){
     await openSheet();
     const typed=sheet.querySelector('#map-sheet-search')?.value?.trim()||'';
     const c=getAddress?.()||{};
     const hasFormAddress=Boolean(c.address||c.city||c.postalCode);
-    if(!typed&&!hasFormAddress){status('Type a street, area, landmark or PIN code above, or tap Locate Me.');return;}
-    const current=++version;clearTimeout(timer);controller?.abort();await ensureMap();if(disposed||current!==version)return;
-    status('Finding your address…');
+    if(!typed&&!hasFormAddress){status('Type an area, landmark, 6-digit PIN, DIGIPIN, or Google Maps link above.');return;}
+    const direct=typed?parseLocationQuery(typed):null;
+    if(direct){
+      const resultsEl=sheet.querySelector('#map-results');
+      if(resultsEl)resultsEl.innerHTML='';
+      moveMapSmooth(direct.latitude,direct.longitude,19);
+      setPoint(
+        direct.latitude,
+        direct.longitude,
+        direct.type==='digipin'?'pin':'search',
+        0,
+        null,
+        {message:direct.type==='digipin'?`DIGIPIN ${direct.digipin} located — tap Confirm delivery location.`:'Exact Maps coordinates loaded — adjust if needed, then Confirm.'}
+      );
+      return;
+    }
+    const current=++version;clearTimeout(timer);controller?.abort();stopWatch();await ensureMap();if(disposed||current!==version)return;
+    status('Finding your area…');
     try{
-      const query=typed
-        ?(/\bindia\b/i.test(typed)?typed:`${typed}, India`)
-        :[c.address,c.city,c.state,c.postalCode,'India'].filter(Boolean).join(', ');
-      results=await request('/api/',{q:query,limit:5,lang:'en',bbox:'68,6,98,38'});
+      let pinInfo=null;
+      const pinMatch=(typed||c.postalCode||'').match(/\b([1-9]\d{5})\b/);
+      if(pinMatch)pinInfo=await lookupIndianPincode(pinMatch[1]);
+      if(disposed||current!==version)return;
+      const baseQuery=typed
+        ?(pinInfo&&/^[1-9]\d{5}$/.test(typed)?`${pinInfo.area}, ${pinInfo.city}, ${pinInfo.state}, ${typed}, India`:(/\bindia\b/i.test(typed)?typed:`${typed}, India`))
+        :[c.address,c.apartment,c.city,c.state,c.postalCode,'India'].filter(Boolean).join(', ');
+      results=await request('/api/',{q:baseQuery,limit:5,lang:'en',bbox:'68,6,98,38'});
       if(disposed||current!==version)return;
       let approximate=false;
-      if(!results.length&&(c.city||c.postalCode)){results=await request('/api/',{q:[c.city,c.postalCode,'India'].filter(Boolean).join(', '),limit:5,lang:'en',bbox:'68,6,98,38'});approximate=true;}
+      if(!results.length){
+        results=await nominatimSearch(baseQuery).catch(()=>[]);
+        if(disposed||current!==version)return;
+      }
+      if(!results.length&&(c.city||c.postalCode||pinInfo)){
+        const fallbackQuery=[pinInfo?.area,c.city||pinInfo?.city,c.state||pinInfo?.state,c.postalCode||pinInfo?.pin,'India'].filter(Boolean).join(', ');
+        results=await request('/api/',{q:fallbackQuery,limit:5,lang:'en',bbox:'68,6,98,38'}).catch(()=>[]);
+        if(!results.length)results=await nominatimSearch(fallbackQuery).catch(()=>[]);
+        approximate=true;
+      }
       if(disposed||current!==version)return;
       const resultsEl=sheet.querySelector('#map-results');
       if(resultsEl)resultsEl.innerHTML=results.map((f,i)=>`<button type="button" data-map-result="${i}">${e(featureLabel(f))}<span>Choose →</span></button>`).join('');
-      if(results.length){const f=results[0];map.setView([f.geometry.coordinates[1],f.geometry.coordinates[0]],approximate?13:16);status(approximate?'Choose a nearby match, then tap or drag the pin to your entrance.':'Choose a match above, or tap anywhere on the map.');}else status('No match found. Try a nearby landmark, tap Locate Me, or tap the map directly.');
-    }catch{if(current===version)status('Address search is unavailable. Tap Locate Me or point directly on the map.');}
+      if(results.length){
+        const f=results[0];
+        moveMapSmooth(f.geometry.coordinates[1],f.geometry.coordinates[0],approximate?14:17);
+        status(approximate?'Area found — switch to Satellite & pan the pin onto your roof/gate.':'Pick a match above, or pan the satellite map to your exact roof/gate.');
+      }else{
+        status('No street match found. Pan the satellite map to your area, or paste a Google Maps link / DIGIPIN above.',{warn:true});
+      }
+    }catch{if(current===version)status('Address search is unavailable. Pan Satellite view to your building or paste a Google Maps link.');}
   }
   async function locate(){
     await openSheet();
-    if(!navigator.geolocation){status('This browser does not support location. Search above or tap the map directly.');return;}
-    const current=++version;status('Waiting for your location permission…');
-    navigator.geolocation.getCurrentPosition(async position=>{if(disposed||current!==version)return;try{await ensureMap();if(disposed||current!==version)return;const {latitude,longitude,accuracy}=position.coords;setPoint(latitude,longitude,'device',Math.min(accuracy,1000000));map.setView([latitude,longitude],17);status('Location found. Drag the pin to adjust, then tap Confirm delivery location.');}catch{status('The map could not load. Please retry to confirm your delivery pin.');}},error=>{if(disposed||current!==version)return;status(error.code===1?'Location permission was not granted. Search above or tap the map.':'Your location could not be found. Search above or point on the map.');},{enableHighAccuracy:true,timeout:15000,maximumAge:0});
+    if(!navigator.geolocation){status('This browser does not support GPS. Pan Satellite view or paste a Google Maps link / DIGIPIN.');return;}
+    stopWatch();
+    const current=++version;
+    status('Getting precise GPS lock…');
+    let bestFix=null;
+    const acceptFix=pos=>{
+      if(disposed||current!==version)return;
+      const {latitude,longitude,accuracy}=pos.coords;
+      const acc=Math.min(Number(accuracy)||0,1000000);
+      if(!bestFix||acc<bestFix.accuracy){
+        bestFix={latitude,longitude,accuracy:acc};
+        const zoom=acc>400?15:acc>100?17:19;
+        moveMapSmooth(latitude,longitude,zoom);
+        if(acc<=25){
+          stopWatch();
+          setPoint(latitude,longitude,'device',acc,null,{message:`Location locked (±${Math.round(acc)}m) — pan slightly if needed, then Confirm.`});
+        }else{
+          setPoint(latitude,longitude,'device',acc,null,{message:`Refining GPS… (±${Math.round(acc)}m) — wait a moment or pan Satellite view to your gate.`});
+        }
+      }
+    };
+    watchId=navigator.geolocation.watchPosition(
+      acceptFix,
+      error=>{
+        stopWatch();
+        if(disposed||current!==version)return;
+        if(bestFix&&bestFix.accuracy>100){
+          status(`Approximate Wi-Fi/tower fix (±${Math.round(bestFix.accuracy)}m) — zoom in & pan the satellite map onto your building.`,{warn:true});
+          return;
+        }
+        if(!bestFix){
+          status(error.code===1?'Location permission denied. Pan Satellite view to your gate or paste a Google Maps link.':'Could not get GPS lock. Pan Satellite view or paste a Google Maps link / DIGIPIN.');
+        }
+      },
+      {enableHighAccuracy:true,timeout:15000,maximumAge:0}
+    );
+    watchTimer=setTimeout(()=>{
+      stopWatch();
+      if(disposed||current!==version)return;
+      if(bestFix&&bestFix.accuracy>100){
+        status(`Approximate Wi-Fi/tower fix (±${Math.round(bestFix.accuracy)}m) — zoom in & pan the satellite map onto your building.`,{warn:true});
+      }
+    },5500);
   }
   async function click(event){
     const target=event.target.closest('[data-map],[data-map-result]');
@@ -303,8 +462,8 @@ export function mountDeliveryMap(root,{getAddress,onChange,onAddress,initial}) {
       if(target.dataset.mapResult!==undefined){
         const f=results[Number(target.dataset.mapResult)];
         if(f){
+          moveMapSmooth(f.geometry.coordinates[1],f.geometry.coordinates[0],18);
           setPoint(f.geometry.coordinates[1],f.geometry.coordinates[0],'search',0,f);
-          map.setView([pending.latitude,pending.longitude],17);
           const resultsEl=sheet.querySelector('#map-results');
           if(resultsEl)resultsEl.innerHTML='';
         }
@@ -317,16 +476,19 @@ export function mountDeliveryMap(root,{getAddress,onChange,onAddress,initial}) {
         if(resultsEl)resultsEl.innerHTML='';
       }
       else if(action==='copy-coords'&&pending){
-        const text=`${pending.latitude.toFixed(6)}, ${pending.longitude.toFixed(6)}`;
+        const digi=formatDigiPin(pending.digipin)||encodeDigiPin(pending.latitude,pending.longitude);
+        const text=`${digi?`DIGIPIN ${digi} (`:''}${pending.latitude.toFixed(6)}, ${pending.longitude.toFixed(6)}${digi?')':''}`;
         await navigator.clipboard?.writeText(text).catch(()=>{});
-        status(`Copied coordinates (${text}).`);
+        status(`Copied ${text}.`);
       }
       else if(action==='layer-satellite')setMapLayer('satellite');
       else if(action==='layer-street')setMapLayer('street');
       else if(action==='search')await search();
       else if(action==='device')await locate();
       else if(action==='confirm'&&pending){
+        stopWatch();
         pending.confirmed=true;
+        pending.digipin=formatDigiPin(pending.digipin)||encodeDigiPin(pending.latitude,pending.longitude);
         if(suggestion){
           const cur=getAddress?.()||{};
           if(!cur.address?.trim()&&!cur.city?.trim()&&!cur.postalCode?.trim())onAddress?.(featureAddress(suggestion));
@@ -337,7 +499,9 @@ export function mountDeliveryMap(root,{getAddress,onChange,onAddress,initial}) {
         closeSheet();
       }
       else if(action==='apply-address'&&suggestion&&pending){
+        stopWatch();
         pending.confirmed=true;
+        pending.digipin=formatDigiPin(pending.digipin)||encodeDigiPin(pending.latitude,pending.longitude);
         onChange({...pending});
         onAddress(featureAddress(suggestion));
         updatePointUI();
@@ -345,10 +509,10 @@ export function mountDeliveryMap(root,{getAddress,onChange,onAddress,initial}) {
         closeSheet();
       }
       else if(action==='clear'){
-        version++;clearTimeout(timer);controller?.abort();
-        pending=null;suggestion=null;marker?.remove();marker=null;accuracyCircle?.remove();accuracyCircle=null;
+        version++;clearTimeout(timer);controller?.abort();stopWatch();
+        pending=null;suggestion=null;accuracyCircle?.remove();accuracyCircle=null;
         onChange(null);updatePointUI();
-        status('Pin cleared. Tap the map or Locate Me to set your delivery pin.');
+        status('Pin cleared. Pan the map to your roof/gate or tap Locate Me.');
       }
     }catch(error){status(error.message);}finally{if(target.isConnected){target.disabled=false;enabled();}}
   }
@@ -399,12 +563,25 @@ export function mountDeliveryMap(root,{getAddress,onChange,onAddress,initial}) {
     needsConfirmation(){return !validLocation(pending);},
     setSavedLocation(point){
       if(pending||!validLocation(point))return false;
-      pending={...point};
+      pending={...point,digipin:formatDigiPin(point.digipin)||encodeDigiPin(point.latitude,point.longitude)};
       onChange({...pending});
-      if(map){map.setView([pending.latitude,pending.longitude],17);placeMarker();}
+      if(map){moveMapSmooth(pending.latitude,pending.longitude,18);placeMarker();}
       updatePointUI();
       status('✓ Saved delivery pin confirmed. Tap Change to adjust it.');
       return true;
+    },
+    setDigiPin(rawCode){
+      const formatted=formatDigiPin(rawCode);
+      const pos=formatted?decodeDigiPin(formatted):null;
+      if(!pos)return false;
+      stopWatch();
+      if(map)moveMapSmooth(pos.latitude,pos.longitude,19);
+      setPoint(pos.latitude,pos.longitude,'pin',0,null,{confirmed:true,message:`✓ DIGIPIN ${formatted} pinned on map.`});
+      return true;
+    },
+    focusArea(query){
+      const input=sheet.querySelector('#map-sheet-search');
+      if(input&&!pending&&query)input.value=String(query).trim();
     },
     invalidate(){
       if(pending){
@@ -417,6 +594,7 @@ export function mountDeliveryMap(root,{getAddress,onChange,onAddress,initial}) {
     destroy(){
       disposed=true;
       version++;
+      stopWatch();
       controller?.abort();
       clearTimeout(timer);
       clearTimeout(invalidateTimer);

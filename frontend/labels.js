@@ -1,6 +1,6 @@
 import {escapeHTML as e} from './commerce.js';
 import {skeletonMarkup} from './skeletons.js';
-import {validLocation,locationLink} from './location-utils.js';
+import {customerDigiPin,validLocation,locationLink} from './location-utils.js';
 import {loadScript} from './browser-library.js';
 import {TEMPLATE_FIELDS,DEFAULT_LABEL_TEMPLATE,normalizeTemplate,labelForRequest} from './label-data.js';
 
@@ -23,7 +23,7 @@ function upgradeTemplateCopy(t={}){
 
 export function labelMarkup(request,t,qr,{variant='standard'}={}) {
   const copy=upgradeTemplateCopy(t);
-  const c=request.customer,hasPin=validLocation(c.location);
+  const c=request.customer,hasPin=validLocation(c.location),digi=customerDigiPin(c);
   const paid=request.paymentStatus==='captured';
   const coordsAttr=hasPin?` data-coords="${c.location.latitude.toFixed(6)}, ${c.location.longitude.toFixed(6)}"`:'';
   return `<article class="address-label${variant==='2in'?' is-2in':''}">
@@ -54,6 +54,7 @@ export function labelMarkup(request,t,qr,{variant='standard'}={}) {
         <div class="label-qr" role="img" aria-label="QR code for delivery location"${coordsAttr}>${qr}</div>
         <div class="label-location-copy">
           <b>${e(copy.qrHeading)}</b>
+          ${digi?`<p class="label-digipin"><b>DIGIPIN:</b> ${e(digi)}</p>`:''}
           ${hasPin&&c.location.formattedAddress?`<p class="label-nearby"><b>Nearby:</b> ${e(c.location.formattedAddress)}</p>`:(!hasPin?'<p class="label-nearby">Google Maps address search</p>':'')}
         </div>
       </div>
@@ -118,6 +119,7 @@ async function download2InchLabelPng(request,template){
   const qr=await buildQRObject(c);
 
   const canvas=document.createElement('canvas');
+  const digi=customerDigiPin(c);
   canvas.width=400;
   canvas.height=600;
   const ctx=canvas.getContext('2d');
@@ -224,6 +226,11 @@ async function download2InchLabelPng(request,template){
   ctx.font='500 12px Arial, sans-serif';
   ctx.fillText('Open delivery pin',186,ry+4);
   ctx.fillText('in Google Maps',186,ry+19);
+  if(digi){
+    ctx.font='700 12px "JetBrains Mono", monospace';
+    ctx.fillText(`DIGIPIN: ${digi}`,186,ry+38);
+    ry+=18;
+  }
   if(itemCount){
     ctx.font='700 12px Arial, sans-serif';
     ctx.fillText(`Items: ${itemCount}`,186,ry+42);
