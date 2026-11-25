@@ -27,6 +27,18 @@ export function toDatetimeLocalValue(ms) {
   return d.toISOString().slice(0, 16);
 }
 
+export function parseDatetimeLocalValue(str = '') {
+  const s = String(str || '').trim();
+  if (!s) return 0;
+  const m = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2}))?/.exec(s);
+  if (m) {
+    const dt = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]), Number(m[4]), Number(m[5]), Number(m[6] || 0), 0);
+    return Number.isFinite(dt.getTime()) ? dt.getTime() : 0;
+  }
+  const parsed = Date.parse(s);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
 export function quickRangeBounds(kind = 'today', nowMs = Date.now()) {
   const dayMs = 86400000;
   const istOffset = 19800000;
@@ -50,6 +62,8 @@ export function pilotControlsMarkup({
   fromLocal = '',
   toLocal = '',
   rangeText = '',
+  rangeError = '',
+  loading = false,
   showHeatmapBtn = false,
   heatmapHref = '#home?heatmap=1'
 } = {}) {
@@ -75,11 +89,12 @@ export function pilotControlsMarkup({
         ? `<a class="pilot-chip is-heatmap-btn" href="${escHtml(heatmapHref)}" target="_blank" rel="noopener">Open Site Heatmap ↗</a>`
         : `<button type="button" class="pilot-chip is-heatmap-btn" data-pilot-action="open-heatmap">Open Live Site Heatmap ↗</button>`) : ''}
     </div>
-    <form class="pilot-custom-range" data-pilot-custom-form>
+    <form class="pilot-custom-range" data-pilot-custom-form novalidate>
       <label class="pilot-range-field"><span>From</span><input type="datetime-local" name="from" value="${escHtml(fromVal)}"></label>
       <label class="pilot-range-field"><span>To</span><input type="datetime-local" name="to" value="${escHtml(toVal)}"></label>
-      <button type="submit" class="pilot-chip ${preset === 'custom' ? 'is-active' : ''}">Apply custom range</button>
+      <button type="submit" data-pilot-apply-btn class="pilot-chip ${preset === 'custom' ? 'is-active' : ''}">${loading ? 'Applying…' : 'Apply custom range'}</button>
     </form>
+    <p class="pilot-range-error" data-pilot-range-msg role="alert" ${rangeError ? '' : 'hidden'}>${escHtml(rangeError)}</p>
   </div>`;
 }
 
@@ -296,7 +311,9 @@ export function mountNetworkAnalyticsPanel(root, { loadTraffic, callBackend, mou
   let storageStatus = null;
   let storageBusy = false;
   let errorMsg = '';
+  let rangeError = '';
   let inFlight = false;
+  let fetchSeq = 0;
   let timer = null;
   let globe = null;
   let disposed = false;
@@ -348,10 +365,30 @@ export function mountNetworkAnalyticsPanel(root, { loadTraffic, callBackend, mou
     renderControls();
   }
 
-  function renderControls() {
+  function renderControls({ loading = false } = {}) {
     const ctrlHost = root.querySelector('#na-controls');
     if (!ctrlHost) return;
-    ctrlHost.innerHTML = pilotControlsMarkup({ preset, device, fromLocal, toLocal, rangeText: data?.window?.rangeText || '', showHeatmapBtn: true });
+    ctrlHost.innerHTML = pilotControlsMarkup({
+      preset,
+      device,
+      fromLocal,
+      toLocal,
+      rangeText: loading ? 'Loading selected range…' : (data?.window?.rangeText || ''),
+      rangeError,
+      loading,
+      showHeatmapBtn: true
+    });
+  }
+
+  function showRangeError(msg = '') {
+    rangeError = msg;
+    const msgEl = root.querySelector('[data-pilot-range-msg]');
+    if (msgEl) {
+      msgEl.textContent = msg;
+      msgEl.hidden = !msg;
+    } else {
+      renderControls();
+    }
   }
 
   function patchSlot(key, selector, nextHtml) {
@@ -412,6 +449,11 @@ export function mountNetworkAnalyticsPanel(root, { loadTraffic, callBackend, mou
 
     const bannerEl = root.querySelector('#na-range-banner strong');
     if (bannerEl && data.window?.rangeText) bannerEl.textContent = data.window.rangeText;
+    const applyBtn = root.querySelector('[data-pilot-apply-btn]');
+    if (applyBtn) {
+      applyBtn.textContent = 'Apply custom range';
+      applyBtn.classList.toggle('is-active', preset === 'custom');
+    }
 
     patchSlot('timeline', '#na-timeline', pilotTimelineSvgMarkup(data.timeline, data.window));
 
@@ -530,27 +572,30 @@ export function mountNetworkAnalyticsPanel(root, { loadTraffic, callBackend, mou
     const quickBtn = t.closest('[data-pilot-action="set-quick"]');
     if (quickBtn) {
       const b = quickRangeBounds(quickBtn.dataset.quick || 'today');
+      rangeError = '';
       preset = 'custom';
       fromMs = b.fromMs;
       toMs = b.toMs;
       fromLocal = b.fromLocal;
       toLocal = b.toLocal;
-      renderControls();
+      renderControls({ loading: true });
       void fetchNow({ manual: true });
       return;
     }
     const presetBtn = t.closest('[data-pilot-action="set-preset"]');
     if (presetBtn) {
+      rangeError = '';
       preset = presetBtn.dataset.preset || 'all';
       if (preset !== 'custom') { fromMs = 0; toMs = 0; }
-      renderControls();
+      renderControls({ loading: true });
       void fetchNow({ manual: true });
       return;
     }
     const devBtn = t.closest('[data-pilot-action="set-device"]');
     if (devBtn) {
+      rangeError = '';
       device = devBtn.dataset.device || 'all';
-      renderControls();
+      renderControls({ loading: true });
       void fetchNow({ manual: true });
       return;
     }
@@ -599,36 +644,55 @@ export function mountNetworkAnalyticsPanel(root, { loadTraffic, callBackend, mou
     }
   };
 
+  const onRangeInput = event => {
+    const inp = event.target;
+    if (!inp?.closest?.('[data-pilot-custom-form]')) return;
+    if (inp.name === 'from') fromLocal = String(inp.value || '');
+    if (inp.name === 'to') toLocal = String(inp.value || '');
+    if (rangeError) showRangeError('');
+  };
+
   const onSubmit = event => {
     const form = event.target?.closest?.('[data-pilot-custom-form]');
     if (!form || !root.contains(form)) return;
     event.preventDefault();
-    const fd = new FormData(form);
-    fromLocal = String(fd.get('from') || '');
-    toLocal = String(fd.get('to') || '');
-    const f = fromLocal ? Date.parse(fromLocal) : 0;
-    const t = toLocal ? Date.parse(toLocal) : 0;
-    if (!Number.isFinite(f) || !Number.isFinite(t) || f <= 0 || t <= f) return;
+    fromLocal = String(form.elements.from?.value || '');
+    toLocal = String(form.elements.to?.value || '');
+    const f = parseDatetimeLocalValue(fromLocal);
+    let t = parseDatetimeLocalValue(toLocal);
+    if (!f || !t) {
+      showRangeError('Select both a valid From and To date/time first.');
+      return;
+    }
+    if (t < f) {
+      showRangeError('End time (To) must be after Start time (From).');
+      return;
+    }
+    if (t === f) t = f + 60000;
+    rangeError = '';
     preset = 'custom';
     fromMs = f;
     toMs = t;
-    renderControls();
+    renderControls({ loading: true });
     void fetchNow({ manual: true });
   };
 
   async function fetchNow({ manual = false } = {}) {
-    if (disposed || inFlight || typeof loadTraffic !== 'function') return;
+    if (disposed || typeof loadTraffic !== 'function') return;
+    if (!manual && inFlight) return;
     if (!manual && Date.now() < backoffUntil) return;
     if (!manual && root.querySelector('[data-pilot-custom-form]')?.contains(document.activeElement)) return;
+    const mySeq = ++fetchSeq;
     inFlight = true;
     try {
       const next = await loadTraffic({ preset, fromMs, toMs, device });
-      if (disposed) return;
+      if (disposed || mySeq !== fetchSeq) return;
       data = next;
       errorMsg = '';
       backoffUntil = 0;
       patchDataSlots();
     } catch (err) {
+      if (disposed || mySeq !== fetchSeq) return;
       if (err?.status === 429 || err?.code === 'resource-exhausted') {
         backoffUntil = Date.now() + 60000;
         errorMsg = 'Live polling paused briefly due to rate limit — retrying automatically in 60s.';
@@ -637,12 +701,18 @@ export function mountNetworkAnalyticsPanel(root, { loadTraffic, callBackend, mou
       }
       if (!data) patchDataSlots();
     } finally {
-      inFlight = false;
+      if (mySeq === fetchSeq) {
+        inFlight = false;
+        const applyBtn = root.querySelector('[data-pilot-apply-btn]');
+        if (applyBtn && applyBtn.textContent === 'Applying…') applyBtn.textContent = 'Apply custom range';
+      }
     }
   }
 
   mountShell();
   root.addEventListener('click', onClick);
+  root.addEventListener('input', onRangeInput);
+  root.addEventListener('change', onRangeInput);
   root.addEventListener('submit', onSubmit);
   patchDataSlots();
   void fetchNow({ manual: true });
@@ -656,6 +726,8 @@ export function mountNetworkAnalyticsPanel(root, { loadTraffic, callBackend, mou
       disposed = true;
       clearInterval(timer);
       root.removeEventListener('click', onClick);
+      root.removeEventListener('input', onRangeInput);
+      root.removeEventListener('change', onRangeInput);
       root.removeEventListener('submit', onSubmit);
       globe?.destroy();
       globe = null;

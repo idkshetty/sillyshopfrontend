@@ -27,9 +27,9 @@ import {DEFAULT_SETTINGS,FALLBACK_BANNER_ARTWORKS,MOBILE_BREAKPOINT_OPTIONS,mobi
 import {PRODUCT_TYPE_PRESETS,isDiyKit} from './commerce.js';
 import {DEFAULT_CONTENT,normalizeContent,contentCategories,applyStoreContent,footerMarkup} from './store-content.js';
 import {homeMarkup,homeFilterPanelMarkup,artistsPageMarkup,artistDetailMarkup,storyMarkup,infoMarkup,productCardMarkup} from './storefront-view.js';
-import {mountPilotTelemetry} from './pilot-telemetry.js?v=20261125d';
-import {mountNetworkAnalyticsPanel} from './pilot-analytics-ui.js?v=20261125d';
-import {mountHeatmapOverlay} from './heatmap-overlay.js?v=20261125d';
+import {mountPilotTelemetry} from './pilot-telemetry.js?v=20261125e';
+import {mountNetworkAnalyticsPanel} from './pilot-analytics-ui.js?v=20261125e';
+import {mountHeatmapOverlay} from './heatmap-overlay.js?v=20261125e';
 import {mountTrafficGlobe,resolveLocationCoords} from './manager/traffic-globe.js';
 import {mountContentEditor} from './content-editor.js';
 import {mountSitePreviewPanel,openSitePreviewModal} from './site-preview.js';

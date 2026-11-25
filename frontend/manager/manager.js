@@ -25,9 +25,10 @@ import {
   pilotFunnelAndBreakdownsMarkup,
   pilotRecentClicksMarkup,
   pilotVisitorsLogMarkup,
+  parseDatetimeLocalValue,
   quickRangeBounds,
   toDatetimeLocalValue
-} from '../pilot-analytics-ui.js?v=20261125d';
+} from '../pilot-analytics-ui.js?v=20261125e';
 
 const $ = id => document.getElementById(id);
 const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -816,11 +817,15 @@ function patchTrafficLiveDOM() {
 
 let managerPollBackoffUntil = 0;
 let managerPollIntervalMs = 0;
+let trafficPollSeq = 0;
 function currentManagerPollMs() {
   return state.tab === 'traffic' ? 5000 : 12000;
 }
 async function pollActiveTabLive({ manual = false } = {}) {
-  if (managerPollInFlight) return;
+  const isAdmin = state.me?.role === 'admin';
+  const tab = state.tab;
+  const allowConcurrentTraffic = manual && tab === 'traffic' && isAdmin;
+  if (managerPollInFlight && !allowConcurrentTraffic) return;
   if (state.me?.status !== 'approved') return;
   if (!manual && Date.now() < managerPollBackoffUntil) return;
   if (!manual && (
@@ -834,13 +839,12 @@ async function pollActiveTabLive({ manual = false } = {}) {
   )) return;
 
   if (!manual && isEditingInsideMain()) return;
-  const isAdmin = state.me.role === 'admin';
-  const tab = state.tab;
+  const myTrafficSeq = (tab === 'traffic' && isAdmin) ? ++trafficPollSeq : 0;
   managerPollInFlight = true;
   try {
     if (tab === 'traffic' && isAdmin) {
       const next = await callManager('managerSiteTraffic', trafficQueryPayload());
-      if (next) {
+      if (next && myTrafficSeq === trafficPollSeq) {
         state.siteTraffic = next;
         state.trafficUpdatedAt = Date.now();
         if (state.tab === 'traffic') patchTrafficLiveDOM();
@@ -3395,6 +3399,11 @@ document.addEventListener('input', event => {
     state.reconModal.scanQuery = event.target.value;
   } else if (event.target.dataset?.reconPrice && state.reconModal) {
     state.reconModal.priceOverrides[event.target.dataset.reconPrice] = Number(event.target.value) || 0;
+  } else if (event.target.closest?.('[data-pilot-custom-form]')) {
+    if (event.target.name === 'from') state.trafficFromLocal = String(event.target.value || '');
+    if (event.target.name === 'to') state.trafficToLocal = String(event.target.value || '');
+    const msgEl = document.querySelector('[data-pilot-range-msg]');
+    if (msgEl) { msgEl.textContent = ''; msgEl.hidden = true; }
   }
 });
 
@@ -3402,33 +3411,44 @@ document.addEventListener('submit', async event => {
   event.preventDefault();
   const form = event.target;
   if (form.matches?.('[data-pilot-custom-form]')) {
-    const fd = new FormData(form);
-    const fromStr = String(fd.get('from') || '');
-    const toStr = String(fd.get('to') || '');
-    const fromMs = fromStr ? Date.parse(fromStr) : 0;
-    const toMs = toStr ? Date.parse(toStr) : 0;
-    if (Number.isFinite(fromMs) && Number.isFinite(toMs) && fromMs > 0 && toMs >= fromMs) {
-      state.trafficPreset = 'custom';
-      state.trafficFromMs = fromMs;
-      state.trafficToMs = toMs;
-      state.trafficFromLocal = fromStr;
-      state.trafficToLocal = toStr;
-      const ctrlHost = $('mgr-traffic-controls');
-      if (ctrlHost) {
-        ctrlHost.innerHTML = pilotControlsMarkup({
-          preset: state.trafficPreset,
-          device: state.trafficDevice,
-          fromLocal: state.trafficFromLocal,
-          toLocal: state.trafficToLocal,
-          rangeText: state.siteTraffic?.window?.rangeText || '',
-          showHeatmapBtn: true,
-          heatmapHref: 'https://hehe.cafe/#home?heatmap=1'
-        });
-      }
-      await pollActiveTabLive({ manual: true });
-    } else {
-      toast('Choose a valid From and To date/time.', { isError: true });
+    const fromStr = String(form.elements.from?.value || '');
+    const toStr = String(form.elements.to?.value || '');
+    const fromMs = parseDatetimeLocalValue(fromStr);
+    let toMs = parseDatetimeLocalValue(toStr);
+    const setErr = msg => {
+      const msgEl = document.querySelector('[data-pilot-range-msg]');
+      if (msgEl) { msgEl.textContent = msg; msgEl.hidden = !msg; }
+      if (msg) toast(msg, { isError: true });
+    };
+    if (!fromMs || !toMs) {
+      setErr('Select both a valid From and To date/time first.');
+      return;
     }
+    if (toMs < fromMs) {
+      setErr('End time (To) must be after Start time (From).');
+      return;
+    }
+    if (toMs === fromMs) toMs = fromMs + 60000;
+    setErr('');
+    state.trafficPreset = 'custom';
+    state.trafficFromMs = fromMs;
+    state.trafficToMs = toMs;
+    state.trafficFromLocal = fromStr;
+    state.trafficToLocal = toStr;
+    const ctrlHost = $('mgr-traffic-controls');
+    if (ctrlHost) {
+      ctrlHost.innerHTML = pilotControlsMarkup({
+        preset: state.trafficPreset,
+        device: state.trafficDevice,
+        fromLocal: state.trafficFromLocal,
+        toLocal: state.trafficToLocal,
+        rangeText: 'Loading selected range…',
+        loading: true,
+        showHeatmapBtn: true,
+        heatmapHref: 'https://hehe.cafe/#home?heatmap=1'
+      });
+    }
+    await pollActiveTabLive({ manual: true });
     return;
   }
   const submitBtn = form.querySelector('button[type="submit"]');
