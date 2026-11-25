@@ -533,15 +533,21 @@ export function mountNetworkAnalyticsPanel(root, { loadTraffic, callBackend, mou
           <button type="button" class="pilot-chip ${itemSort === 'carts' ? 'is-active' : ''}" data-na-demand-sort="carts">Most in bags</button>
         </div>
       </div>
-      ${sortedDemand.length ? `<div class="table-wrap"><table class="admin-products-table">
-        <thead><tr><th>#</th><th>Artwork</th><th>Clicks</th><th>In bags</th><th>Price</th></tr></thead>
-        <tbody>${sortedDemand.slice(0, 20).map((it, idx) => `<tr>
+      ${sortedDemand.length ? `<div class="pilot-table-scroll table-wrap"><table class="admin-products-table">
+        <thead><tr><th>#</th><th>Artwork</th><th>Status</th><th>Clicks</th><th>In bags</th><th>Price</th></tr></thead>
+        <tbody>${sortedDemand.slice(0, 20).map((it, idx) => {
+          const statusPill = it.inStock
+            ? '<span class="pilot-stock-pill is-in-stock">In stock</span>'
+            : (it.visible ? '<span class="pilot-stock-pill is-sold">Sold</span>' : '<span class="pilot-stock-pill is-hidden">Hidden</span>');
+          return `<tr>
           <td>${idx + 1}</td>
           <td><strong>${esc(it.title)}</strong> <small class="muted">${esc(it.artist)}</small></td>
+          <td>${statusPill}</td>
           <td><strong>${it.clicks}</strong></td>
           <td>${it.inCartCount || 0}</td>
           <td>${esc(moneyInr(it.price))}</td>
-        </tr>`).join('')}</tbody>
+        </tr>`;
+        }).join('')}</tbody>
       </table></div>` : '<p class="muted">No product demand recorded yet.</p>'}`);
 
     patchSlot('visitorsLog', '#na-visitors-log', `<h2>All Visitors Log (${(data.visitorsLog || []).length})</h2>

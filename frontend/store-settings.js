@@ -536,103 +536,175 @@ export function settingsForm(s) {
   const ctaPos = s.bannerButtonPosition || 'below-text';
   const ctaStyle = s.bannerButtonStyle || 'light';
   const mobileBp = Number.isInteger(s.mobileBreakpoint) ? s.mobileBreakpoint : 580;
+  const diy = normalizeDiyKit(s.diyKit);
+  const pill = (on, txtOn = 'ON', txtOff = 'OFF') => `<span class="settings-status-pill ${on ? 'is-on' : 'is-off'}">${on ? txtOn : txtOff}</span>`;
   return `<form id="banner-form" class="settings-note banner-editor">
-  <h2>Storefront pages &amp; responsive grid</h2>
-  <label class="visibility-toggle"><input type="checkbox" name="aboutVisible" ${s.aboutVisible?'checked':''}><span>Show "About hehe.cafe" page on storefront</span></label>
-  <label class="visibility-toggle"><input type="checkbox" name="storyVisible" ${s.storyVisible!==false?'checked':''}><span>Show "Welcome to hehe.cafe" story section on homepage</span></label>
-  <div class="form-grid" style="margin-top:10px">
-    <label class="field wide">Mobile 1-per-row max width (phones &amp; closed foldables show 1 artwork per row; opened foldables &amp; tablets above this show 2 per row)
-      <select name="mobileBreakpoint">
-        ${MOBILE_BREAKPOINT_OPTIONS.map(([val, label]) => `<option value="${val}" ${mobileBp === val ? 'selected' : ''}>${e(label)}</option>`).join('')}
-      </select>
-    </label>
+  <div class="admin-mode-switcher" role="navigation" aria-label="Editor workspace switcher">
+    <a class="admin-mode-tab" href="#admin/content">Text, Logos &amp; Pages</a>
+    <span class="admin-mode-tab is-active" aria-current="page">Banners, Features &amp; Layout</span>
   </div>
-  <hr>
-  <h2>Announcement bar</h2>
-  <label class="visibility-toggle"><input type="checkbox" name="announcementVisible" ${s.announcementVisible?'checked':''}><span>Announcement bar visible</span></label>
-  <div class="form-grid"><label class="field wide">Announcement text<input name="announcementText" maxlength="160" required value="${e(s.announcementText)}"></label><label class="field wide">Announcement link<input name="announcementLink" required maxlength="500" value="${e(s.announcementLink)}"></label></div>
-  <hr>
-  <h2>Homepage hero banner</h2>
-  <p class="small muted">Edit the headline, subtitle, artist credit line, action button appearance &amp; position, and fallback artwork image.</p>
-  <label class="visibility-toggle"><input type="checkbox" name="bannerVisible" ${s.bannerVisible?'checked':''}><span>Homepage rotating artwork banner visible</span></label>
-  <div class="form-grid">
-    <label class="field wide">Banner eyebrow (optional small tag)<input name="bannerEyebrow" maxlength="80" placeholder="e.g. Original artworks &amp; prints" value="${e(s.bannerEyebrow||'')}"></label>
-    <label class="field wide">Banner headline (leave blank to hide)<input name="bannerTitle" maxlength="100" value="${e(s.bannerTitle??'')}"></label>
-    <label class="field wide">Banner subtitle / tagline<textarea name="bannerText" maxlength="400">${e(s.bannerText??'')}</textarea></label>
+  <div class="settings-nav-sticky">
+    <div class="settings-sticky-top">
+      <input type="search" class="content-search-input" data-settings-search aria-label="Search settings" placeholder="Find setting (magnet, DIY kit, banner, button, reviews, grid…)">
+      <button class="button small" type="submit">Save settings</button>
+    </div>
+    <div class="settings-cat-row" role="group" aria-label="Filter settings by section">
+      <button type="button" class="pilot-chip is-active" data-settings-cat="all">All (7)</button>
+      <button type="button" class="pilot-chip" data-settings-cat="banner">Hero banner</button>
+      <button type="button" class="pilot-chip" data-settings-cat="attachments">Back attachments ${s.backAttachmentsEnabled ? '· ON' : ''}</button>
+      <button type="button" class="pilot-chip" data-settings-cat="diy">DIY Paint Kit ${s.diyKitEnabled ? '· ON' : ''}</button>
+      <button type="button" class="pilot-chip" data-settings-cat="layout">Homepage layout</button>
+      <button type="button" class="pilot-chip" data-settings-cat="pages">Pages &amp; grid</button>
+      <button type="button" class="pilot-chip" data-settings-cat="announcement">Announcement</button>
+      <button type="button" class="pilot-chip" data-settings-cat="reviews">Reviews</button>
+    </div>
   </div>
-  <label class="visibility-toggle"><input type="checkbox" name="bannerShowArtist" ${s.bannerShowArtist!==false?'checked':''}><span>Show artist credit on homepage banner</span></label>
-  <div class="form-grid">
-    <label class="field">Banner artist text (blank auto-updates per slide)<input name="bannerArtistLabel" maxlength="160" placeholder="Auto: Art by &lt;slide artist&gt;" value="${e(s.bannerArtistLabel||'')}"></label>
-    <label class="field">Artist credit link (blank links to artist page)<input name="bannerArtistLink" maxlength="500" placeholder="e.g. #artists or #artist/suprita-chatterjee" value="${e(s.bannerArtistLink||'')}"></label>
-  </div>
-  <label class="visibility-toggle"><input type="checkbox" name="bannerButtonVisible" ${s.bannerButtonVisible!==false?'checked':''}><span>Show "Explore artworks" action button</span></label>
-  <div class="form-grid">
-    <label class="field">Button text<input name="bannerButton" maxlength="50" placeholder="e.g. Explore artworks" value="${e(s.bannerButton||'')}"></label>
-    <label class="field">Button link<input name="bannerLink" maxlength="500" placeholder="#artworks" value="${e(s.bannerLink||'#artworks')}"></label>
-    <div class="field wide">
-      <span>Button style</span>
-      <input type="hidden" name="bannerButtonStyle" value="${e(ctaStyle)}">
-      <div class="cta-style-chips" role="group" aria-label="Banner button style">
-        ${BANNER_CTA_STYLES.map(([id,label])=>`<button type="button" class="cta-style-chip ${ctaStyle===id?'is-active':''}" data-action="pick-banner-cta-style" data-style="${e(id)}" aria-pressed="${ctaStyle===id}">${e(label)}</button>`).join('')}
+
+  <details class="settings-acc-card" open data-settings-sec="banner" data-settings-keywords="hero banner headline subtitle artist cta button position offset fallback image explore artworks">
+    <summary class="settings-acc-sum">
+      <div><strong>Homepage hero banner</strong><small>Headline, subtitle, artist link, CTA button placement &amp; fallback photo</small></div>
+      ${pill(s.bannerVisible !== false)}
+    </summary>
+    <div class="settings-acc-body">
+      <label class="visibility-toggle"><input type="checkbox" name="bannerVisible" ${s.bannerVisible?'checked':''}><span>Homepage rotating artwork banner visible</span></label>
+      <div class="form-grid">
+        <label class="field wide">Banner eyebrow (optional small tag)<input name="bannerEyebrow" maxlength="80" placeholder="e.g. Original artworks &amp; prints" value="${e(s.bannerEyebrow||'')}"></label>
+        <label class="field wide">Banner headline (leave blank to hide)<input name="bannerTitle" maxlength="100" value="${e(s.bannerTitle??'')}"></label>
+        <label class="field wide">Banner subtitle / tagline<textarea name="bannerText" maxlength="400">${e(s.bannerText??'')}</textarea></label>
+      </div>
+      <label class="visibility-toggle"><input type="checkbox" name="bannerShowArtist" ${s.bannerShowArtist!==false?'checked':''}><span>Show artist credit on homepage banner</span></label>
+      <div class="form-grid">
+        <label class="field">Banner artist text (blank auto-updates per slide)<input name="bannerArtistLabel" maxlength="160" placeholder="Auto: Art by &lt;slide artist&gt;" value="${e(s.bannerArtistLabel||'')}"></label>
+        <label class="field">Artist credit link (blank links to artist page)<input name="bannerArtistLink" maxlength="500" placeholder="e.g. #artists or #artist/suprita-chatterjee" value="${e(s.bannerArtistLink||'')}"></label>
+      </div>
+      <label class="visibility-toggle"><input type="checkbox" name="bannerButtonVisible" ${s.bannerButtonVisible!==false?'checked':''}><span>Show "Explore artworks" action button</span></label>
+      <div class="form-grid">
+        <label class="field">Button text<input name="bannerButton" maxlength="50" placeholder="e.g. Explore artworks" value="${e(s.bannerButton||'')}"></label>
+        <label class="field">Button link<input name="bannerLink" maxlength="500" placeholder="#artworks" value="${e(s.bannerLink||'#artworks')}"></label>
+        <div class="field wide">
+          <span>Button style</span>
+          <input type="hidden" name="bannerButtonStyle" value="${e(ctaStyle)}">
+          <div class="cta-style-chips" role="group" aria-label="Banner button style">
+            ${BANNER_CTA_STYLES.map(([id,label])=>`<button type="button" class="cta-style-chip ${ctaStyle===id?'is-active':''}" data-action="pick-banner-cta-style" data-style="${e(id)}" aria-pressed="${ctaStyle===id}">${e(label)}</button>`).join('')}
+          </div>
+        </div>
+        <div class="field wide">
+          <span>Button position on banner</span>
+          <input type="hidden" name="bannerButtonPosition" value="${e(ctaPos)}">
+          <div class="cta-position-grid" role="group" aria-label="Choose banner button position">
+            ${[['top-left','Top left'],['top-right','Top right'],['below-text','With headline'],['bottom-left','Bottom left'],['bottom-center','Bottom center'],['bottom-right','Bottom right']].map(([id,label])=>`<button type="button" class="cta-pos-btn is-pos-preview-${e(id)} ${ctaPos===id?'is-active':''}" data-action="pick-banner-cta-pos" data-pos="${e(id)}" aria-pressed="${ctaPos===id}"><span>${e(label)}</span></button>`).join('')}
+          </div>
+        </div>
+        <label class="field"><span class="banner-offset-label"><span>Horizontal fine-tune</span><span id="banner-cta-x-val" class="banner-offset-val">${ctaX}px</span></span><input type="range" name="bannerButtonOffsetX" min="-60" max="60" step="2" value="${ctaX}"></label>
+        <label class="field"><span class="banner-offset-label"><span>Vertical fine-tune</span><span id="banner-cta-y-val" class="banner-offset-val">${ctaY}px</span></span><input type="range" name="bannerButtonOffsetY" min="-60" max="60" step="2" value="${ctaY}"></label>
+        <div class="field wide"><button type="button" class="text-link" data-action="reset-banner-cta-pos">Reset button position</button></div>
+        <label class="field wide">Fallback banner image URL<input name="bannerImage" maxlength="100000" data-saved-image="${isInlineImage(s.bannerImage)}" placeholder="${isInlineImage(s.bannerImage)?'Image saved · choose a new file or paste a URL to replace':'https://…'}" value="${isInlineImage(s.bannerImage)?'':e(s.bannerImage)}"></label>
+        <label class="field wide">Or choose a fallback banner image<input name="bannerFile" type="file" accept="image/jpeg,image/png,image/webp"></label>
       </div>
     </div>
-    <div class="field wide">
-      <span>Button position on banner</span>
-      <input type="hidden" name="bannerButtonPosition" value="${e(ctaPos)}">
-      <div class="cta-position-grid" role="group" aria-label="Choose banner button position">
-        ${[['top-left','Top left'],['top-right','Top right'],['below-text','With headline'],['bottom-left','Bottom left'],['bottom-center','Bottom center'],['bottom-right','Bottom right']].map(([id,label])=>`<button type="button" class="cta-pos-btn is-pos-preview-${e(id)} ${ctaPos===id?'is-active':''}" data-action="pick-banner-cta-pos" data-pos="${e(id)}" aria-pressed="${ctaPos===id}"><span>${e(label)}</span></button>`).join('')}
+  </details>
+
+  <details class="settings-acc-card" open data-settings-sec="attachments" data-settings-keywords="back attachment magnet magnetic strip sticky tape desk buddy stand bag checkout customization">
+    <summary class="settings-acc-sum">
+      <div><strong>Back attachment customization</strong><small>Let shoppers choose Magnet, Sticky Tape, or Desk Buddy Stand in Art Bag</small></div>
+      ${pill(s.backAttachmentsEnabled === true)}
+    </summary>
+    <div class="settings-acc-body">
+      <p class="small muted">When turned on, shoppers can pick Magnet, Sticky Tape, or Desk Buddy Stand directly in their bag (base price + selected add-on). Selections appear automatically inside Admin Orders &amp; invoices.</p>
+      <label class="visibility-toggle"><input type="checkbox" name="backAttachmentsEnabled" ${s.backAttachmentsEnabled===true?'checked':''}><span>Enable back attachment options on storefront bag &amp; checkout</span></label>
+      <div class="back-attach-admin-grid">
+        ${normalizeBackAttachments(s.backAttachmentOptions).map(opt => `<div class="back-attach-admin-card" data-attach-row="${e(opt.id)}">
+          <div class="back-attach-admin-head">
+            <img class="back-attach-admin-thumb" src="${e(opt.image)}" alt="${e(opt.label)} preview">
+            <label class="visibility-toggle" style="margin:0;flex:1"><input type="checkbox" name="attach_${e(opt.id)}_enabled" ${opt.enabled!==false?'checked':''}><span>Enable ${e(opt.label)}</span></label>
+          </div>
+          <div class="form-grid" style="margin-top:8px">
+            <label class="field">Display name<input name="attach_${e(opt.id)}_label" maxlength="48" value="${e(opt.label)}"></label>
+            <label class="field">Short chip label<input name="attach_${e(opt.id)}_shortLabel" maxlength="24" value="${e(opt.shortLabel)}"></label>
+            <label class="field">Extra add-on price (₹)<input type="number" name="attach_${e(opt.id)}_price" min="0" max="5000" step="1" value="${e(opt.price)}"></label>
+            <label class="field">Back photo URL (swap anytime)<input name="attach_${e(opt.id)}_image" maxlength="100000" value="${e(opt.image)}"></label>
+            <label class="field wide">Short description<input name="attach_${e(opt.id)}_description" maxlength="160" value="${e(opt.description)}"></label>
+          </div>
+        </div>`).join('')}
       </div>
     </div>
-    <label class="field"><span class="banner-offset-label"><span>Horizontal fine-tune</span><span id="banner-cta-x-val" class="banner-offset-val">${ctaX}px</span></span><input type="range" name="bannerButtonOffsetX" min="-60" max="60" step="2" value="${ctaX}"></label>
-    <label class="field"><span class="banner-offset-label"><span>Vertical fine-tune</span><span id="banner-cta-y-val" class="banner-offset-val">${ctaY}px</span></span><input type="range" name="bannerButtonOffsetY" min="-60" max="60" step="2" value="${ctaY}"></label>
-    <div class="field wide"><button type="button" class="text-link" data-action="reset-banner-cta-pos">Reset button position</button></div>
-    <label class="field wide">Fallback banner image URL<input name="bannerImage" maxlength="100000" data-saved-image="${isInlineImage(s.bannerImage)}" placeholder="${isInlineImage(s.bannerImage)?'Image saved · choose a new file or paste a URL to replace':'https://…'}" value="${isInlineImage(s.bannerImage)?'':e(s.bannerImage)}"></label>
-    <label class="field wide">Or choose a fallback banner image<input name="bannerFile" type="file" accept="image/jpeg,image/png,image/webp"></label>
-  </div>
-  <hr>
-  <input type="hidden" name="homeSectionOrderJson" value="${e(JSON.stringify(s.homeSectionOrder||DEFAULT_HOME_SECTIONS))}">
-  <input type="hidden" name="promoBlocksJson" value="${e(JSON.stringify(s.promoBlocks||[]))}">
-  <div id="home-layout-editor-slot"></div>
-  <hr>
-  <h2>Back attachment customization</h2>
-  <p class="small muted">When turned on, shoppers can pick Magnet, Sticky Tape, or Desk Buddy Stand directly in their bag (base price + selected add-on). Turning it off returns immediately to the standard single-price storefront model.</p>
-  <label class="visibility-toggle"><input type="checkbox" name="backAttachmentsEnabled" ${s.backAttachmentsEnabled===true?'checked':''}><span>Enable back attachment options on storefront bag &amp; checkout</span></label>
-  <div class="back-attach-admin-grid">
-    ${normalizeBackAttachments(s.backAttachmentOptions).map(opt => `<div class="back-attach-admin-card" data-attach-row="${e(opt.id)}">
-      <div class="back-attach-admin-head">
-        <img class="back-attach-admin-thumb" src="${e(opt.image)}" alt="${e(opt.label)} preview">
-        <label class="visibility-toggle" style="margin:0;flex:1"><input type="checkbox" name="attach_${e(opt.id)}_enabled" ${opt.enabled!==false?'checked':''}><span>Enable ${e(opt.label)}</span></label>
+  </details>
+
+  <details class="settings-acc-card" open data-settings-sec="diy" data-settings-keywords="diy paint kit category spotlight homepage banner line art price">
+    <summary class="settings-acc-sum">
+      <div><strong>DIY Paint Kit category &amp; spotlight</strong><small>Show/hide the DIY Kit product category, filter tab &amp; homepage card</small></div>
+      ${pill(s.diyKitEnabled === true)}
+    </summary>
+    <div class="settings-acc-body">
+      <p class="small muted">Control whether DIY Paint Kit artworks, category tab, and homepage spotlight appear on the storefront. Toggle off anytime to hide all DIY Kits without deleting products.</p>
+      <label class="visibility-toggle"><input type="checkbox" name="diyKitEnabled" ${s.diyKitEnabled===true?'checked':''}><span>Enable DIY Paint Kits on storefront (show DIY Kit artworks, category tab &amp; spotlight)</span></label>
+      <div class="back-attach-admin-card" style="margin-top:10px">
+        <div class="back-attach-admin-head">
+          <img class="back-attach-admin-thumb" src="${e(diy.image)}" alt="${e(diy.title)} preview">
+          <label class="visibility-toggle" style="margin:0;flex:1"><input type="checkbox" name="diyKitShowBanner" ${diy.showHomepageBanner!==false?'checked':''}><span>Show DIY Kit spotlight banner on homepage</span></label>
+        </div>
+        <div class="form-grid" style="margin-top:8px">
+          <label class="field">Spotlight title<input name="diyKitTitle" maxlength="64" value="${e(diy.title)}"></label>
+          <label class="field">Card badge text<input name="diyKitBadge" maxlength="28" value="${e(diy.badgeText)}"></label>
+          <label class="field">Starting price hint (₹)<input type="number" name="diyKitPriceHint" min="0" max="50000" step="1" value="${e(diy.priceHint)}"></label>
+          <label class="field">Placeholder / photo URL (swap anytime)<input name="diyKitImage" maxlength="100000" value="${e(diy.image)}"></label>
+          <label class="field wide">Subtitle<input name="diyKitSubtitle" maxlength="220" value="${e(diy.subtitle)}"></label>
+          <label class="field wide">What's included line (shown on spotlight, cards &amp; product page)<input name="diyKitIncludes" maxlength="180" value="${e(diy.includesText)}"></label>
+        </div>
       </div>
-      <div class="form-grid" style="margin-top:8px">
-        <label class="field">Display name<input name="attach_${e(opt.id)}_label" maxlength="48" value="${e(opt.label)}"></label>
-        <label class="field">Short chip label<input name="attach_${e(opt.id)}_shortLabel" maxlength="24" value="${e(opt.shortLabel)}"></label>
-        <label class="field">Extra add-on price (₹)<input type="number" name="attach_${e(opt.id)}_price" min="0" max="5000" step="1" value="${e(opt.price)}"></label>
-        <label class="field">Back photo URL (swap anytime)<input name="attach_${e(opt.id)}_image" maxlength="100000" value="${e(opt.image)}"></label>
-        <label class="field wide">Short description<input name="attach_${e(opt.id)}_description" maxlength="160" value="${e(opt.description)}"></label>
+    </div>
+  </details>
+
+  <details class="settings-acc-card" open data-settings-sec="layout" data-settings-keywords="homepage section order promo blocks reorder custom section">
+    <summary class="settings-acc-sum">
+      <div><strong>Homepage section order &amp; promo blocks</strong><small>Reorder sections and manage custom homepage promotional cards</small></div>
+      <span class="settings-status-pill is-on">${(s.promoBlocks||[]).length} promos</span>
+    </summary>
+    <div class="settings-acc-body">
+      <input type="hidden" name="homeSectionOrderJson" value="${e(JSON.stringify(s.homeSectionOrder||DEFAULT_HOME_SECTIONS))}">
+      <input type="hidden" name="promoBlocksJson" value="${e(JSON.stringify(s.promoBlocks||[]))}">
+      <div id="home-layout-editor-slot"></div>
+    </div>
+  </details>
+
+  <details class="settings-acc-card" open data-settings-sec="pages" data-settings-keywords="about page story section mobile grid breakpoint 1 per row foldable">
+    <summary class="settings-acc-sum">
+      <div><strong>Storefront visibility &amp; mobile grid</strong><small>About page link, story block, and mobile 1-per-row breakpoint</small></div>
+    </summary>
+    <div class="settings-acc-body">
+      <label class="visibility-toggle"><input type="checkbox" name="aboutVisible" ${s.aboutVisible?'checked':''}><span>Show "About hehe.cafe" page on storefront</span></label>
+      <label class="visibility-toggle"><input type="checkbox" name="storyVisible" ${s.storyVisible!==false?'checked':''}><span>Show "Welcome to hehe.cafe" story section on homepage</span></label>
+      <div class="form-grid" style="margin-top:10px">
+        <label class="field wide">Mobile 1-per-row max width (phones &amp; closed foldables show 1 artwork per row; opened foldables &amp; tablets above this show 2 per row)
+          <select name="mobileBreakpoint">
+            ${MOBILE_BREAKPOINT_OPTIONS.map(([val, label]) => `<option value="${val}" ${mobileBp === val ? 'selected' : ''}>${e(label)}</option>`).join('')}
+          </select>
+        </label>
       </div>
-    </div>`).join('')}
-  </div>
-  <hr>
-  <h2>DIY Paint Kit</h2>
-  <p class="small muted">Control whether DIY Paint Kit artworks &amp; the homepage spotlight appear on the public storefront. Toggle off anytime to hide all DIY Kits from shoppers without deleting products.</p>
-  <label class="visibility-toggle"><input type="checkbox" name="diyKitEnabled" ${s.diyKitEnabled===true?'checked':''}><span>Enable DIY Paint Kits on storefront (show DIY Kit artworks, filter &amp; spotlight)</span></label>
-  ${(() => { const diy = normalizeDiyKit(s.diyKit); return `<div class="back-attach-admin-card" style="margin-top:10px">
-    <div class="back-attach-admin-head">
-      <img class="back-attach-admin-thumb" src="${e(diy.image)}" alt="${e(diy.title)} preview">
-      <label class="visibility-toggle" style="margin:0;flex:1"><input type="checkbox" name="diyKitShowBanner" ${diy.showHomepageBanner!==false?'checked':''}><span>Show DIY Kit spotlight banner on homepage</span></label>
     </div>
-    <div class="form-grid" style="margin-top:8px">
-      <label class="field">Spotlight title<input name="diyKitTitle" maxlength="64" value="${e(diy.title)}"></label>
-      <label class="field">Card badge text<input name="diyKitBadge" maxlength="28" value="${e(diy.badgeText)}"></label>
-      <label class="field">Starting price hint (₹)<input type="number" name="diyKitPriceHint" min="0" max="50000" step="1" value="${e(diy.priceHint)}"></label>
-      <label class="field">Placeholder / photo URL (swap anytime)<input name="diyKitImage" maxlength="100000" value="${e(diy.image)}"></label>
-      <label class="field wide">Subtitle<input name="diyKitSubtitle" maxlength="220" value="${e(diy.subtitle)}"></label>
-      <label class="field wide">What's included line (shown on spotlight, cards &amp; product page)<input name="diyKitIncludes" maxlength="180" value="${e(diy.includesText)}"></label>
+  </details>
+
+  <details class="settings-acc-card" open data-settings-sec="announcement" data-settings-keywords="announcement top bar banner text link">
+    <summary class="settings-acc-sum">
+      <div><strong>Announcement bar</strong><small>Top slim notice bar across storefront pages</small></div>
+      ${pill(s.announcementVisible === true)}
+    </summary>
+    <div class="settings-acc-body">
+      <label class="visibility-toggle"><input type="checkbox" name="announcementVisible" ${s.announcementVisible?'checked':''}><span>Announcement bar visible</span></label>
+      <div class="form-grid"><label class="field wide">Announcement text<input name="announcementText" maxlength="160" required value="${e(s.announcementText)}"></label><label class="field wide">Announcement link<input name="announcementLink" required maxlength="500" value="${e(s.announcementLink)}"></label></div>
     </div>
-  </div>`; })()}
-  <hr>
-  <h2>Customer reviews</h2>
-  <label class="visibility-toggle"><input type="checkbox" name="reviewsVisible" ${s.reviewsVisible?'checked':''}><span>Customer reviews visible</span></label>
-  ${reviewCards(s.reviewImages)}
-  <div class="banner-form-actions"><button class="button" type="submit">Save homepage &amp; banners</button><span id="banner-notice" role="status" class="notice"></span></div></form>`;
+  </details>
+
+  <details class="settings-acc-card" open data-settings-sec="reviews" data-settings-keywords="customer reviews collector cards photos screenshots">
+    <summary class="settings-acc-sum">
+      <div><strong>Customer reviews gallery</strong><small>Up to 7 collector screenshots shown on the homepage</small></div>
+      ${pill(s.reviewsVisible === true)}
+    </summary>
+    <div class="settings-acc-body">
+      <label class="visibility-toggle"><input type="checkbox" name="reviewsVisible" ${s.reviewsVisible?'checked':''}><span>Customer reviews visible</span></label>
+      ${reviewCards(s.reviewImages)}
+    </div>
+  </details>
+
+  <div class="banner-form-actions settings-sticky-save"><button class="button" type="submit">Save homepage &amp; settings</button><span id="banner-notice" role="status" class="notice"></span></div></form>`;
 }

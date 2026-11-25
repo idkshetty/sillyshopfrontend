@@ -159,9 +159,10 @@ function requestCard(request,{productImages=new Map(),open=false}={}) {
         <div class="order-items-list">
           ${(request.items||[]).map(item=>{
             const thumb=safeImage(item.image||item.thumbnail||productImages.get(item.productId||item.id),'');
+            const backTxt=item.attachmentLabel?` · Backing: ${e(item.attachmentLabel)}${Number(item.attachmentPrice)>0?` (+${money(item.attachmentPrice)})`:''}`:'';
             return `<div class="order-item-row">
               <div class="order-item-thumb">${thumb?`<img src="${e(thumb)}" alt="${e(item.title)}" loading="lazy" decoding="async">`:`<span>${icons.requests}</span>`}</div>
-              <div class="order-item-copy"><strong>${e(item.title)}</strong><small>${money(item.unitPrice)} × ${item.quantity}</small></div>
+              <div class="order-item-copy"><strong>${e(item.title)}</strong><small>${money(item.unitPrice)} × ${item.quantity}${backTxt}</small></div>
               <strong class="order-item-total">${money(item.unitPrice*item.quantity)}</strong>
             </div>`;
           }).join('')}
@@ -178,7 +179,7 @@ function requestCard(request,{productImages=new Map(),open=false}={}) {
         <div class="request-detail-grid">
           <section>
             <h3>Your collection</h3>
-            ${(request.items||[]).map(item=>`<div class="customer-line"><span>${e(item.title)}<small>Quantity ${item.quantity}</small></span><strong>${money(item.unitPrice*item.quantity)}</strong></div>`).join('')}
+            ${(request.items||[]).map(item=>`<div class="customer-line"><span>${e(item.title)}<small>Quantity ${item.quantity}${item.attachmentLabel?` · Backing: ${e(item.attachmentLabel)}`:''}</small></span><strong>${money(item.unitPrice*item.quantity)}</strong></div>`).join('')}
           </section>
           <section>
             <h3>Delivery details</h3>

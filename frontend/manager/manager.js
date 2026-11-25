@@ -1087,7 +1087,7 @@ function renderTrafficLowerMarkup() {
           <td><strong>${item.clicks}</strong>${item.todayClicks > 0 ? ` <small class="mgr-muted">(${item.todayClicks} today)</small>` : ''}</td>
           <td>${item.inCartCount > 0 ? `<span class="mgr-cart-count-pill">${item.inCartCount} in ${item.inCartCount === 1 ? 'bag' : 'bags'}</span>` : '<span class="mgr-muted">0</span>'}</td>
           <td>${refPillMarkup(item.refNumber, findArtIdByRef(item.refNumber, item.title))}</td>
-          <td>${item.inStock ? '<span class="mgr-pill is-live_online">In stock</span>' : item.visible ? '<span class="mgr-pill is-sold">Displayed sold</span>' : '<span class="mgr-pill is-curated">Off site</span>'}</td>
+          <td>${item.inStock ? '<span class="mgr-pill is-live_online">In stock</span>' : item.visible ? '<span class="mgr-pill is-sold">Sold out</span>' : '<span class="mgr-pill is-curated">Off site</span>'}</td>
         </tr>`).join('')}</tbody>
       </table></div>` : '<p class="mgr-muted">No product click or bag telemetry recorded yet.</p>'}
     </section>`;

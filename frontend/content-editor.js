@@ -209,7 +209,22 @@ export function mountContentEditor(root,initial,{onPublish,onUpload,products=()=
   };
   const options=previewPageOptions(artists(),products());
   const inlineOn=readInlinePref();
-  root.innerHTML=`<div class="admin-title"><div><p class="eyebrow">Make it yours</p><h1>${pageOnly?e(CONTENT_SCHEMA.pages.fields[pageOnly+'Title'].value):'Storefront editor'}</h1><p>Edit your pages, navigation and copy, and see every change in real time before publishing.</p></div></div><div class="content-toolbar"><span class="content-save-state" role="status"></span><div><button type="button" class="button outline small" data-content-discard>Discard changes</button><button type="submit" form="content-form" class="button small">Publish changes</button></div></div>${loadError?`<p class="notice" role="alert">${e(loadError)}</p>`:''}<p class="content-message" role="status"></p><div class="content-workspace"><form id="content-form" class="content-form"><div class="content-tip">Search or open any section to edit. Image uploads use JPG, PNG or WebP, up to 6 MB.</div><div class="content-search-wrap"><input type="search" class="content-search-input" data-content-search aria-label="Search editable fields" placeholder="Search headings, navigation, links, policies…"></div>${Object.entries(schema).map(([section,group],i)=>`<details class="content-group" name="content-sections" ${i===0?'open':''} data-section="${section}"><summary>${e(group.label)}<span>${Object.keys(group.fields).length}</span></summary><div class="content-fields">${Object.entries(group.fields).map(([key,f])=>fieldMarkup(section,key,f,group.label)).join('')}</div></details>`).join('')}</form><section class="content-preview" aria-label="Storefront draft preview"><div class="content-preview-toolbar"><label>Preview page<select aria-label="Preview page">${options.map(([id,label])=>`<option value="${e(id)}">${e(label)}</option>`).join('')}</select></label><div class="content-devices-group">${inlineToolbarMarkup(inlineOn)}<div class="content-devices" role="group" aria-label="Preview screen size"><button type="button" data-device="desktop" aria-pressed="true">Desktop</button><button type="button" data-device="mobile" aria-pressed="false">Mobile</button></div><a class="content-preview-open-link button outline small" data-preview-live-link href="${e(hashForPreviewPage(page,products()))}">Open live ↗</a></div></div>${inlineHintMarkup(inlineOn)}<div class="content-preview-stage"><div class="content-preview-frame"><iframe title="Live storefront preview" sandbox="allow-same-origin" tabindex="-1"></iframe></div></div></section></div>`;
+  const modeBarHtml = pageOnly ? '' : `<div class="admin-mode-switcher" role="navigation" aria-label="Editor workspace switcher">
+    <span class="admin-mode-tab is-active" aria-current="page">Text, Logos &amp; Pages</span>
+    <a class="admin-mode-tab" href="#admin/settings">Banners, Features &amp; Layout →</a>
+  </div>`;
+  const quickFeatureLinksHtml = pageOnly ? '' : `<div class="content-quick-jumps" aria-label="Quick feature shortcuts">
+    <span class="small muted">Looking for features or layout?</span>
+    <a class="pilot-chip" href="#admin/settings?sec=banner">Hero banner</a>
+    <a class="pilot-chip" href="#admin/settings?sec=attachments">Back attachments</a>
+    <a class="pilot-chip" href="#admin/settings?sec=diy">DIY Paint Kit</a>
+    <a class="pilot-chip" href="#admin/settings?sec=layout">Section order &amp; promos</a>
+    <a class="pilot-chip" href="#admin/settings?sec=reviews">Reviews</a>
+  </div>
+  <div class="content-section-pills" role="navigation" aria-label="Jump to text section">
+    ${Object.entries(schema).map(([section,group])=>`<button type="button" class="pilot-chip" data-content-jump="${section}">${e(group.label)}</button>`).join('')}
+  </div>`;
+  root.innerHTML=`<div class="admin-title"><div><p class="eyebrow">Make it yours</p><h1>${pageOnly?e(CONTENT_SCHEMA.pages.fields[pageOnly+'Title'].value):'Storefront editor'}</h1><p>Edit your pages, navigation and copy, and see every change in real time before publishing.</p></div></div>${modeBarHtml}${quickFeatureLinksHtml}<div class="content-toolbar"><span class="content-save-state" role="status"></span><div><button type="button" class="button outline small" data-content-discard>Discard changes</button><button type="submit" form="content-form" class="button small">Publish changes</button></div></div>${loadError?`<p class="notice" role="alert">${e(loadError)}</p>`:''}<p class="content-message" role="status"></p><div class="content-workspace"><form id="content-form" class="content-form"><div class="content-tip">Search or pick a section pill above. Looking for banners, magnets/stands or DIY Kits? Use the top tabs or search bar.</div><div class="content-search-wrap"><input type="search" class="content-search-input" data-content-search aria-label="Search editable fields" placeholder="Search headings, links, policies, or settings (e.g. DIY kit, magnet, banner)…"></div><div class="content-crosslink-card" data-content-crosslink hidden></div>${Object.entries(schema).map(([section,group],i)=>`<details class="content-group" name="content-sections" ${i===0?'open':''} data-section="${section}"><summary>${e(group.label)}<span>${Object.keys(group.fields).length}</span></summary><div class="content-fields">${Object.entries(group.fields).map(([key,f])=>fieldMarkup(section,key,f,group.label)).join('')}</div></details>`).join('')}</form><section class="content-preview" aria-label="Storefront draft preview"><div class="content-preview-toolbar"><label>Preview page<select aria-label="Preview page">${options.map(([id,label])=>`<option value="${e(id)}">${e(label)}</option>`).join('')}</select></label><div class="content-devices-group">${inlineToolbarMarkup(inlineOn)}<div class="content-devices" role="group" aria-label="Preview screen size"><button type="button" data-device="desktop" aria-pressed="true">Desktop</button><button type="button" data-device="mobile" aria-pressed="false">Mobile</button></div><a class="content-preview-open-link button outline small" data-preview-live-link href="${e(hashForPreviewPage(page,products()))}">Open live ↗</a></div></div>${inlineHintMarkup(inlineOn)}<div class="content-preview-stage"><div class="content-preview-frame"><iframe title="Live storefront preview" sandbox="allow-same-origin" tabindex="-1"></iframe></div></div></section></div>`;
   const form=root.querySelector('form'),notice=root.querySelector('.content-message'),state=root.querySelector('.content-save-state'),frame=root.querySelector('iframe'),stage=root.querySelector('.content-preview-stage'),holder=root.querySelector('.content-preview-frame'),liveLink=root.querySelector('[data-preview-live-link]'),searchField=root.querySelector('[data-content-search]');
   let pendingPreview=false,suppressNavUntil=0,commitTimer=null;
   const inlineControl=key=>form.elements.namedItem(key);
@@ -301,6 +316,24 @@ export function mountContentEditor(root,initial,{onPublish,onUpload,products=()=
   form.querySelectorAll('[data-image-reset]').forEach(button=>button.addEventListener('click',()=>{const [section,key]=button.dataset.imageReset.split('.');draft[section][key]=CONTENT_SCHEMA[section].fields[key].value;restoreFields();capture();preview();}));
   function changed(event){if(event?.target===searchField)return;capture();notice.textContent='';clearTimeout(timer);timer=setTimeout(preview,180);status();}
   function locked(value){busy=value;form.inert=value;root.querySelectorAll('.content-toolbar button').forEach(el=>el.disabled=value);status();}
+  root.querySelectorAll('[data-content-jump]').forEach(btn => btn.addEventListener('click', () => {
+    const sec = btn.dataset.contentJump;
+    const grp = form.querySelector(`.content-group[data-section="${CSS.escape(sec)}"]`);
+    if (grp) {
+      grp.open = true;
+      grp.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+  }));
+  const crosslinkCard = root.querySelector('[data-content-crosslink]');
+  const SETTINGS_HINTS = [
+    [/magnet|tape|stand|back|attach/i, 'attachments', 'Back attachment customization'],
+    [/diy|kit|paint/i, 'diy', 'DIY Paint Kit toggle & spotlight'],
+    [/banner|hero|cta|offset|button position/i, 'banner', 'Homepage hero banner & button position'],
+    [/announcement|top bar/i, 'announcement', 'Announcement bar'],
+    [/review|testimonial/i, 'reviews', 'Customer reviews gallery'],
+    [/mobile|grid|breakpoint|row|about|story/i, 'pages', 'Storefront visibility & mobile grid'],
+    [/layout|promo|reorder|order/i, 'layout', 'Homepage section order & promo blocks']
+  ];
   if(searchField){
     searchField.addEventListener('input',()=>{
       const q=searchField.value.trim().toLowerCase();
@@ -316,6 +349,16 @@ export function mountContentEditor(root,initial,{onPublish,onUpload,products=()=
         group.hidden=Boolean(q&&matches===0);
         if(q&&matches>0)group.open=true;
       });
+      if(crosslinkCard){
+        const hit=q?SETTINGS_HINTS.find(([rx])=>rx.test(q)):null;
+        if(hit){
+          crosslinkCard.hidden=false;
+          crosslinkCard.innerHTML=`<span><strong>${e(hit[2])}</strong> is configured in Banners, Features &amp; Layout.</span><a class="pilot-chip is-active" href="#admin/settings?sec=${hit[1]}">Open ${e(hit[2])} →</a>`;
+        }else{
+          crosslinkCard.hidden=true;
+          crosslinkCard.innerHTML='';
+        }
+      }
     });
   }
   function highlightControl(control){

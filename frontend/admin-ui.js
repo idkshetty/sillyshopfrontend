@@ -289,6 +289,7 @@ export function orderCardMarkup(o, {
     ? (!shippingIncluded && !o.shippingQuote && ['details_received', 'reviewed', 'contacted', 'processing'].includes(o.status))
     : (!o.quote && ['details_received', 'reviewed', 'contacted'].includes(o.status));
 
+  const attachSummary = [...new Set((o.items || []).map(it => String(it?.attachmentLabel || '').trim()).filter(Boolean))].join(', ');
   return `<article class="order-card ${selected ? 'is-label-selected' : ''} ${highlighted ? 'is-highlighted' : ''} ${open ? 'is-open' : ''}" data-order-id="${e(o.id)}">
     <div class="order-card-summary">
       <div class="order-summary-main">
@@ -300,6 +301,7 @@ export function orderCardMarkup(o, {
       </div>
       <div class="order-summary-right">
         <span class="order-summary-meta">${itemCount} ${itemCount === 1 ? 'item' : 'items'} · <strong>${money(o.quote?.amount ? o.quote.amount / 100 : o.estimatedSubtotal)}</strong></span>
+        ${attachSummary ? `<span class="order-attach-pill" title="Selected back attachment">${e(attachSummary)}</span>` : ''}
         <span class="status-pill ${paidCls}">${paidLabel}</span>
         <span class="status-pill order-stage-pill">${e(stageLabel)}</span>
         ${printBadge}

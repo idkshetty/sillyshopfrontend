@@ -1565,18 +1565,26 @@ button,a,.button,.cart-button,.quick-buy-btn,.home-filter-btn,.hero-banner-cta,.
   .heatmap-hud{bottom:10px;width:calc(100vw - 16px);padding:9px 10px}
 }
 
-.bag-attach-box{margin:8px 0 6px;padding:8px 10px;border-radius:10px;background:#faf7f0;border:1px solid #ebe2d3;display:grid;gap:6px}
-.bag-attach-head{display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:11.5px;font-weight:600;color:#524b42}
-.bag-attach-preview-btn{appearance:none;border:0;background:transparent;padding:0;color:#1d5fe6;font:600 11.5px/1.2 'Plus Jakarta Sans',sans-serif;cursor:pointer;text-decoration:underline}
-.bag-attach-chips{display:flex;flex-wrap:wrap;gap:6px}
-.bag-attach-chip{appearance:none;border:1px solid #d9d0c1;background:#fff;color:#181715;border-radius:8px;padding:5px 9px;font:600 12px/1.2 'Plus Jakarta Sans',sans-serif;cursor:pointer;display:inline-flex;align-items:center;gap:5px;transition:border-color .15s,background .15s}
-.bag-attach-chip small{font-weight:500;color:#686056;font-size:11px}
-.bag-attach-chip.is-active{background:#181715;border-color:#181715;color:#fff}
-.bag-attach-chip.is-active small{color:#e5dfd5}
-.bag-attach-preview{display:grid;grid-template-columns:56px minmax(0,1fr);gap:10px;align-items:center;padding:8px;border-radius:8px;background:#fff;border:1px solid #e6dfd2}
-.bag-attach-preview img{width:56px;height:56px;object-fit:cover;border-radius:8px;background:#faf8f5}
-.bag-attach-preview strong{display:block;font-size:12px;margin-bottom:2px}
-.bag-attach-preview p{margin:0;font-size:11.5px;color:#686056;line-height:1.35}
+.cart-row:has(.bag-attach-box){align-items:flex-start}
+.cart-row:has(.bag-attach-box) .cart-thumb-ring{margin-top:2px}
+.bag-attach-box{margin:10px 0 8px;padding:10px 11px;border-radius:14px;background:rgba(255,255,255,.045);border:1px solid rgba(255,255,255,.11);display:grid;gap:8px;min-width:0}
+.bag-attach-head{display:flex;justify-content:space-between;align-items:center;gap:8px;font:600 11px/1.2 'Plus Jakarta Sans',sans-serif;letter-spacing:.06em;text-transform:uppercase;color:rgba(255,255,255,.62)}
+.bag-attach-preview-btn{appearance:none;border:1px solid rgba(245,222,122,.26);background:rgba(245,222,122,.1);padding:3px 9px;border-radius:999px;color:#f5de7a;font:600 11px/1.2 'Plus Jakarta Sans',sans-serif;cursor:pointer;text-decoration:none;text-transform:none;letter-spacing:0;transition:background .15s,border-color .15s}
+.bag-attach-preview-btn:hover,.bag-attach-preview-btn.is-open{background:rgba(245,222,122,.2);border-color:rgba(245,222,122,.5)}
+.bag-attach-chips{display:grid;grid-template-columns:repeat(auto-fit,minmax(78px,1fr));gap:6px;min-width:0}
+.bag-attach-chip{appearance:none;border:1px solid rgba(255,255,255,.13);background:rgba(255,255,255,.04);color:rgba(255,255,255,.88);border-radius:10px;padding:7px 6px;font-family:'Plus Jakarta Sans',sans-serif;cursor:pointer;display:grid;gap:2px;justify-items:center;text-align:center;min-width:0;transition:border-color .15s,background .15s,transform .12s}
+.bag-attach-chip:hover{border-color:rgba(255,255,255,.35);background:rgba(255,255,255,.09)}
+.bag-attach-name{font-size:11.5px;font-weight:600;line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%;display:block}
+.bag-attach-price{font:600 10.5px/1.1 'JetBrains Mono',monospace;color:rgba(255,255,255,.58)}
+.bag-attach-chip.is-active{background:#faf8f4;border-color:#faf8f4;color:#141413;box-shadow:0 3px 12px rgba(0,0,0,.38)}
+.bag-attach-chip.is-active .bag-attach-price{color:#5c554c}
+.bag-attach-preview{display:grid;grid-template-columns:54px minmax(0,1fr);gap:10px;align-items:center;padding:9px 10px;border-radius:11px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12)}
+.bag-attach-preview img{width:54px;height:54px;object-fit:cover;border-radius:9px;background:#faf7f0;border:1px solid rgba(255,255,255,.14)}
+.bag-attach-preview-body{min-width:0}
+.bag-attach-preview-head{display:flex;align-items:center;justify-content:space-between;gap:6px;margin-bottom:3px}
+.bag-attach-preview strong{display:block;font-size:12.5px;font-weight:700;color:#fff!important;margin:0;line-height:1.2}
+.bag-attach-preview-price{font:600 11px/1 'JetBrains Mono',monospace;color:#f5de7a;flex-shrink:0}
+.bag-attach-preview p{margin:0;font-size:11.5px;color:rgba(255,255,255,.74)!important;line-height:1.4}
 .product-attach-hint{display:block;margin-top:4px;font-size:12px;color:#5c554c;font-weight:500}
 .order-attach-pill{display:inline-flex;align-items:center;margin-left:6px;padding:2px 7px;border-radius:999px;background:#fff7ed;border:1px solid #fed7aa;color:#9a3412;font:600 11px/1.2 'JetBrains Mono',monospace}
 .back-attach-admin-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px;margin:12px 0}
@@ -1601,3 +1609,38 @@ button,a,.button,.cart-button,.quick-buy-btn,.home-filter-btn,.hero-banner-cta,.
   .diy-kit-showcase-media img{height:150px}
 }
 .pilot-summary-banner{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px;margin:0 0 10px;padding:9px 12px;border-radius:10px;background:#f8f5ef;border:1px solid #e6dfd2;font-size:12.5px;color:#4a443c}
+.store-cat-tabs{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 18px;padding-bottom:2px}
+.store-cat-tab{appearance:none;border:1px solid #dfd7c8;background:#fff;color:#2b2723;border-radius:999px;padding:7px 14px;font:600 13px/1.2 'Plus Jakarta Sans',sans-serif;cursor:pointer;display:inline-flex;align-items:center;gap:6px;white-space:nowrap;flex-shrink:0;transition:background .15s,border-color .15s,color .15s}
+.store-cat-tab small{font:600 11px/1 'JetBrains Mono',monospace;opacity:.7}
+.store-cat-tab:hover{border-color:#181715;background:#f7f4ee}
+.store-cat-tab.is-active{background:#181715;border-color:#181715;color:#fff}
+.admin-mode-switcher{display:inline-flex;flex-wrap:wrap;gap:4px;padding:4px;border-radius:999px;background:#f2ede3;border:1px solid #e2d9c8;margin:0 0 14px;max-width:100%}
+.admin-mode-tab{padding:7px 14px;border-radius:999px;font:600 12.5px/1.2 'Plus Jakarta Sans',sans-serif;color:#5c554c;text-decoration:none;white-space:nowrap}
+.admin-mode-tab.is-active{background:#181715;color:#fff}
+.content-quick-jumps,.content-section-pills{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin:0 0 12px}
+.content-crosslink-card{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px;padding:10px 12px;border-radius:10px;background:#fff7ed;border:1px solid #fed7aa;font-size:12.5px;color:#7c2d12;margin-bottom:10px}
+.content-crosslink-card[hidden]{display:none!important}
+.settings-nav-sticky{position:sticky;top:64px;z-index:20;display:grid;gap:8px;padding:10px 12px;margin:0 0 14px;border-radius:12px;background:rgba(250,248,245,.96);border:1px solid #e4dccd;backdrop-filter:blur(6px)}
+.settings-sticky-top{display:flex;gap:8px;align-items:center}
+.settings-sticky-top input{flex:1;min-width:0}
+.settings-cat-row{display:flex;flex-wrap:wrap;gap:6px}
+.settings-acc-card{border:1px solid #e6dfd2;border-radius:14px;background:#fff;margin-bottom:12px;overflow:hidden}
+.settings-acc-card[hidden]{display:none!important}
+.settings-acc-sum{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 14px;cursor:pointer;list-style:none;background:#faf8f5;border-bottom:1px solid transparent}
+.settings-acc-card[open] .settings-acc-sum{border-bottom-color:#ebe4d8}
+.settings-acc-sum strong{display:block;font-size:14.5px;color:#181715}
+.settings-acc-sum small{display:block;font-size:12px;color:#6d665c;margin-top:2px}
+.settings-acc-body{padding:14px}
+.settings-status-pill{padding:3px 8px;border-radius:999px;font:700 10.5px/1 'JetBrains Mono',monospace;flex-shrink:0}
+.settings-status-pill.is-on{background:#dcfce7;color:#166534;border:1px solid #bbf7d0}
+.settings-status-pill.is-off{background:#f5f5f4;color:#57534e;border:1px solid #e7e5e4}
+.pilot-stock-pill{display:inline-flex;align-items:center;padding:2px 8px;border-radius:999px;font:700 10.5px/1.2 'JetBrains Mono',monospace;white-space:nowrap}
+.pilot-stock-pill.is-in-stock{background:#ecfdf5;color:#065f46;border:1px solid #a7f3d0}
+.pilot-stock-pill.is-sold{background:#fee2e2;color:#991b1b;border:1px solid #fecaca}
+.pilot-stock-pill.is-hidden{background:#f5f5f4;color:#57534e;border:1px solid #d6d3d1}
+@media(max-width:640px){
+  .store-cat-tabs,.settings-cat-row,.content-quick-jumps,.content-section-pills{flex-wrap:nowrap;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none}
+  .store-cat-tabs::-webkit-scrollbar,.settings-cat-row::-webkit-scrollbar,.content-quick-jumps::-webkit-scrollbar,.content-section-pills::-webkit-scrollbar{display:none}
+  .settings-nav-sticky{top:56px;padding:9px}
+  .settings-sticky-top{flex-direction:column;align-items:stretch}
+}

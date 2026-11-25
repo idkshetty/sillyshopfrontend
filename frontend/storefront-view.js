@@ -99,6 +99,28 @@ export function productCardMarkup(p, content = DEFAULT_CONTENT, { index = 99, se
   </article>`;
 }
 
+export function categoryTabsMarkup(products, filter = {}, settings = null) {
+  const diyAllowed = settings ? settings.diyKitEnabled === true : false;
+  const list = (Array.isArray(products) ? products : []).filter(p => p && p.visible && !p.archived && (diyAllowed || !isDiyKit(p)));
+  const counts = new Map();
+  for (const p of list) {
+    const t = String(p.productType || 'Fridge Magnet').trim() || 'Fridge Magnet';
+    counts.set(t, (counts.get(t) || 0) + 1);
+  }
+  const types = [...counts.keys()];
+  if (diyAllowed && !types.some(t => t.toLowerCase() === 'diy kit')) types.push('DIY Kit');
+  if (types.length < 2 && !diyAllowed) return '';
+  const activeType = String(filter?.productType || '').trim();
+  return `<div class="store-cat-tabs" id="store-cat-tabs" role="tablist" aria-label="Product categories">
+    <button type="button" role="tab" aria-selected="${!activeType}" class="store-cat-tab ${!activeType ? 'is-active' : ''}" data-action="set-filter-type" data-type="">All artworks <small>${list.length}</small></button>
+    ${types.map(t => {
+      const cnt = counts.get(t) || 0;
+      const isAct = activeType.toLowerCase() === t.toLowerCase();
+      return `<button type="button" role="tab" aria-selected="${isAct}" class="store-cat-tab ${isAct ? 'is-active' : ''}" data-action="set-filter-type" data-type="${e(t)}">${e(t)} <small>${cnt}</small></button>`;
+    }).join('')}
+  </div>`;
+}
+
 export function homeFilterPanelMarkup(products, filter = {}, settings = null) {
   const diyAllowed = settings ? settings.diyKitEnabled === true : true;
   const types = [...new Set((Array.isArray(products) ? products : []).filter(p => p && p.visible && !p.archived && (diyAllowed || !isDiyKit(p))).map(p => (p.productType || 'Fridge Magnet').trim()).filter(Boolean))];
@@ -196,6 +218,7 @@ export function homeMarkup(products, storeSettings, content = DEFAULT_CONTENT, {
         </div>
         ${homeFilterPanelMarkup(publicList, filter, storeSettings)}
       </div>
+      ${categoryTabsMarkup(publicList, filter, storeSettings)}
       ${diySpotlightHtml}
       <div id="product-results">
         ${catalogLoading ? skeletonMarkup('products', 'Loading artworks…') : catalogError && !allVisible.length ? `<div class="empty-state" role="alert"><h2>Artworks could not load</h2><p>Check your connection and try again.</p><button class="button outline" data-action="retry">Try again</button></div>` : allVisible.length ? `<div class="product-grid">${allVisible.map((p, idx) => productCardMarkup(p, content, { index: idx, settings: storeSettings })).join('')}</div>` : hasFilter ? `<div class="empty-state"><h2>No matching artworks</h2><p>No pieces match those filters yet.</p><button type="button" class="button outline" data-action="reset-filters">Show all artworks</button></div>` : `<div class="product-grid">${FALLBACK_BANNER_ARTWORKS.map((item, idx) => productCardMarkup(item, content, { index: idx, settings: storeSettings })).join('')}</div>`}

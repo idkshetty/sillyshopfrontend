@@ -17,21 +17,21 @@ import {validLocation,locationLink} from './location-utils.js';
 import {openLabel,openBatchLabels,mountLabelTemplate} from './labels.js';
 import {createThermalPrinterController,getUnprintedOrders} from './thermal-printer.js';
 import {mountOrdersMap} from './orders-map.js';
-import {POLICY_TABS,normalizeAdminTab,countActionableOrders,canPrintOrderLabel,adminSidebarMarkup,policySubnavMarkup,filterOrders,orderFilterCounts,ordersToolbarMarkup,orderCardMarkup,thermalPrinterDockMarkup} from './admin-ui.js';
+import {POLICY_TABS,normalizeAdminTab,countActionableOrders,canPrintOrderLabel,adminSidebarMarkup,policySubnavMarkup,filterOrders,orderFilterCounts,ordersToolbarMarkup,orderCardMarkup,thermalPrinterDockMarkup} from './admin-ui.js?v=20261125g';
 import {decorateCartButtons,animateCart,animateCartCheckout,playPaymentOutcome,preloadPaymentOutcomeSvg,reviewSection,mountReviews,mountHeroBanner,mountArtistScrollPrompt,sampleArtworkBgFromImage} from './shop-effects.js';
-import {accountMarkup,ordersListMarkup,emailAuthCardMarkup} from './customer-dashboard.js';
+import {accountMarkup,ordersListMarkup,emailAuthCardMarkup} from './customer-dashboard.js?v=20261125g';
 import {steppedProgress} from './stepped-progress.js';
 import {normalizeProfile,validateProfile,checkoutDefaults} from './profile.js';
 import {logoutMarkup,mountLogout,animateLogout} from './logout.js';
-import {DEFAULT_SETTINGS,FALLBACK_BANNER_ARTWORKS,MOBILE_BREAKPOINT_OPTIONS,mobileGridBreakpointCss,normalizeSettings,normalizeBackAttachments,resolveBackAttachment,normalizeDiyKit,safeStoreLink,bannerMarkup,settingsForm} from './store-settings.js?v=20261125f';
+import {DEFAULT_SETTINGS,FALLBACK_BANNER_ARTWORKS,MOBILE_BREAKPOINT_OPTIONS,mobileGridBreakpointCss,normalizeSettings,normalizeBackAttachments,resolveBackAttachment,normalizeDiyKit,safeStoreLink,bannerMarkup,settingsForm} from './store-settings.js?v=20261125g';
 import {PRODUCT_TYPE_PRESETS,isDiyKit} from './commerce.js';
 import {DEFAULT_CONTENT,normalizeContent,contentCategories,applyStoreContent,footerMarkup} from './store-content.js';
-import {homeMarkup,homeFilterPanelMarkup,artistsPageMarkup,artistDetailMarkup,storyMarkup,infoMarkup,productCardMarkup} from './storefront-view.js?v=20261125f';
+import {homeMarkup,homeFilterPanelMarkup,categoryTabsMarkup,artistsPageMarkup,artistDetailMarkup,storyMarkup,infoMarkup,productCardMarkup} from './storefront-view.js?v=20261125g';
 import {mountPilotTelemetry} from './pilot-telemetry.js?v=20261125e';
-import {mountNetworkAnalyticsPanel} from './pilot-analytics-ui.js?v=20261125f';
+import {mountNetworkAnalyticsPanel} from './pilot-analytics-ui.js?v=20261125g';
 import {mountHeatmapOverlay} from './heatmap-overlay.js?v=20261125e';
 import {mountTrafficGlobe,resolveLocationCoords} from './manager/traffic-globe.js';
-import {mountContentEditor} from './content-editor.js';
+import {mountContentEditor} from './content-editor.js?v=20261125g';
 import {mountSitePreviewPanel,openSitePreviewModal} from './site-preview.js';
 import {mountArtistStudio} from './artist-studio.js';
 import {randomId,customizationFields,setProductNote,addReferences,removeReference,refreshReferencePreviews,clearCustomization,checkoutCustomizations,clearCustomizations} from './customization.js';
@@ -518,12 +518,13 @@ function renderCart(){
   if(!entries.length){$('cart-content').innerHTML=`<div class="cart-sheet-handle" aria-hidden="true"></div>${cleanupBanner}${emptyBagMarkup({inDialog:true})}`;return;}
   const pricing=bagPricing(entries);
   const bagTotal=pricing.totalPaise/100;
+  const shortAttachPrice = v => { const n = Number(v) || 0; return Number.isInteger(n) ? `₹${n}` : money(n); };
   const rows=entries.map(({product:p,quantity,total,attachment,attachmentPrice})=>{
     const backEnabled = Boolean(storeSettings.backAttachmentsEnabled);
     const backOpts = backEnabled ? normalizeBackAttachments(storeSettings.backAttachmentOptions).filter(o => o.enabled) : [];
     const previewOpen = openAttachPreviewIds.has(p.id);
-    const backHtml = backEnabled && backOpts.length ? `<div class="bag-attach-box"><div class="bag-attach-head"><span>Back attachment</span>${attachment?`<button type="button" class="bag-attach-preview-btn" data-action="toggle-bag-attach-preview" data-id="${e(p.id)}">${previewOpen?'Hide photo':'Preview back'}</button>`:''}</div><div class="bag-attach-chips" role="radiogroup" aria-label="Back attachment for ${e(p.title)}">${backOpts.map(opt=>{const sel=attachment?.id===opt.id;const pTxt=opt.price>0?`+${money(opt.price)}`:'Included';return `<button type="button" role="radio" aria-checked="${sel}" class="bag-attach-chip ${sel?'is-active':''}" data-action="set-bag-attachment" data-id="${e(p.id)}" data-attachment-id="${e(opt.id)}"><span>${e(opt.shortLabel||opt.label)}</span><small>${e(pTxt)}</small></button>`;}).join('')}</div>${previewOpen && attachment?`<div class="bag-attach-preview"><img src="${e(safeImage(attachment.image,'assets/attachments/magnet-placeholder.svg'))}" alt="${e(attachment.label)}"><div><strong>${e(attachment.label)}</strong><p>${e(attachment.description||'Placeholder preview — final back attachment photo coming soon.')}</p></div></div>`:''}</div>` : '';
-    return `<div class="cart-row"><a class="cart-thumb-ring" href="#product/${e(p.id)}" data-action="close-dialog"><img src="${e(imageOf(p))}" alt="${e(p.title)}"></a><div class="cart-row-main"><div class="cart-row-head"><div><h3><a href="#product/${e(p.id)}" data-action="close-dialog">${e(p.title)}</a></h3><p class="cart-artist-meta">by ${e(p.artist||'Suprita Chatterjee')}${attachment?` · Backing: ${e(attachment.shortLabel||attachment.label)}${attachmentPrice>0?` (+${money(attachmentPrice)})`:''}`:''}</p></div><span class="cart-price-pill">${money(total)}</span></div>${backHtml}<div class="cart-row-tools"><span class="cart-qty-pill" aria-label="Quantity ${quantity}">Qty ${quantity}</span><button class="remove-button" data-action="remove" data-id="${e(p.id)}" aria-label="Remove ${e(p.title)}">Remove</button></div></div></div>`;
+    const backHtml = backEnabled && backOpts.length ? `<div class="bag-attach-box"><div class="bag-attach-head"><span class="bag-attach-label">Back attachment</span>${attachment?`<button type="button" class="bag-attach-preview-btn ${previewOpen?'is-open':''}" data-action="toggle-bag-attach-preview" data-id="${e(p.id)}">${previewOpen?'Hide photo ▴':'Preview ▾'}</button>`:''}</div><div class="bag-attach-chips" role="radiogroup" aria-label="Back attachment for ${e(p.title)}">${backOpts.map(opt=>{const sel=attachment?.id===opt.id;const pTxt=opt.price>0?`+${shortAttachPrice(opt.price)}`:'Included';return `<button type="button" role="radio" aria-checked="${sel}" class="bag-attach-chip ${sel?'is-active':''}" data-action="set-bag-attachment" data-id="${e(p.id)}" data-attachment-id="${e(opt.id)}"><span class="bag-attach-name">${e(opt.shortLabel||opt.label)}</span><small class="bag-attach-price">${e(pTxt)}</small></button>`;}).join('')}</div>${previewOpen && attachment?`<div class="bag-attach-preview"><img src="${e(safeImage(attachment.image,'assets/attachments/magnet-placeholder.svg'))}" alt="${e(attachment.label)}"><div class="bag-attach-preview-body"><div class="bag-attach-preview-head"><strong>${e(attachment.label)}</strong><span class="bag-attach-preview-price">${attachment.price>0?`+${shortAttachPrice(attachment.price)}`:'Included'}</span></div><p>${e(attachment.description||'Placeholder preview — final back attachment photo coming soon.')}</p></div></div>`:''}</div>` : '';
+    return `<div class="cart-row"><a class="cart-thumb-ring" href="#product/${e(p.id)}" data-action="close-dialog"><img src="${e(imageOf(p))}" alt="${e(p.title)}"></a><div class="cart-row-main"><div class="cart-row-head"><div><h3><a href="#product/${e(p.id)}" data-action="close-dialog">${e(p.title)}</a></h3><p class="cart-artist-meta">by ${e(p.artist||'Suprita Chatterjee')}${attachment?` · ${e(attachment.shortLabel||attachment.label)}${attachmentPrice>0?` (+${shortAttachPrice(attachmentPrice)})`:''}`:''}</p></div><span class="cart-price-pill">${money(total)}</span></div>${backHtml}<div class="cart-row-tools"><span class="cart-qty-pill" aria-label="Quantity ${quantity}">Qty ${quantity}</span><button class="remove-button" data-action="remove" data-id="${e(p.id)}" aria-label="Remove ${e(p.title)}">Remove</button></div></div></div>`;
   }).join('');
   const ticket=`<div class="cart-ticket-card"><div class="cart-ticket-left"><div class="cart-ticket-row"><span>Artworks subtotal</span><strong>${money(pricing.subtotalPaise/100)}</strong></div>${pricing.bundleDiscountPaise>0?`<div class="cart-ticket-row is-saving"><span>${e(pricing.bundleLabel||'Bundle savings')}</span><strong>−${money(pricing.bundleDiscountPaise/100)}</strong></div>`:''}${pricing.codeDiscountPaise>0?`<div class="cart-ticket-row is-saving"><span>Promo (${e(pricing.appliedCode)})</span><strong>−${money(pricing.codeDiscountPaise/100)}</strong></div>`:''}<div class="cart-ticket-row"><span>India Post shipping (${pricing.totalQty} × ₹${SHIPPING_CHARGE})</span><strong>${pricing.freeShipping?'Free':money(pricing.shippingPaise/100)}</strong></div><div class="cart-ticket-total"><small>Total</small><strong>INR ${e(money(bagTotal).replace(/^₹/,''))}</strong></div></div><div class="cart-ticket-collage" aria-hidden="true">${entries.slice(0,3).map(({product:p})=>`<img src="${e(imageOf(p))}" alt="">`).join('')}</div></div>`;
   $('cart-content').innerHTML=`<div class="cart-checkout-flow cart-dark-sheet"><div class="cart-sheet-handle" aria-hidden="true"></div><div class="cart-checkout-pile"><section class="cart-checkout-card cart-checkout-current">${cleanupBanner}<div class="cart-checkout-items">${rows}</div>${bagOffersMarkup(entries,pricing,'cart')}<label class="cart-note cart-dark-note" for="order-note">Note for hehe.cafe <span class="muted">(optional)</span><textarea id="order-note" maxlength="1000" placeholder="Gift note, framing preference, or delivery instructions…">${e(orderNote)}</textarea></label>${ticket}<p class="small cart-limit-note">Limit ${MAX_ITEM_QUANTITY} per artwork · add as many artworks as you like.</p></section><section class="cart-checkout-card cart-checkout-confirmed" aria-hidden="true"><span class="cart-checkout-ready-icon" aria-hidden="true"><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 13l4 4L19 7"/></svg></span><h2>Opening checkout…</h2><p>Confirm your address to complete your order.</p></section></div><button class="cart-checkout-button cart-pill-checkout" type="button" data-action="cart-checkout"><svg class="cart-checkout-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 4h2l2.1 11.5a2 2 0 0 0 2 1.6h8.7a2 2 0 0 0 2-1.5L22 8H6"/><circle cx="10" cy="20" r="1.2"/><circle cx="18" cy="20" r="1.2"/></svg><span class="cart-checkout-label">Checkout · ${money(bagTotal)}</span><span class="cart-pill-chevrons" aria-hidden="true"><svg class="ui-icon ui-chevrons" viewBox="0 0 28 16" aria-hidden="true"><path d="m4 3 5 5-5 5"/><path d="m12 3 5 5-5 5"/><path d="m20 3 5 5-5 5"/></svg></span><svg class="cart-checkout-check" viewBox="0 0 24 24" aria-hidden="true"><path d="m4 12 5 5L20 6"/></svg></button><button class="text-link full cart-dark-browse" data-action="close-dialog" style="display:block;margin:14px auto 4px">Continue browsing</button></div>`;
@@ -620,7 +621,7 @@ function renderShop(){
   const {page,id}=route();
   const search=page==='search'?decodeURIComponent(id):(filter.search||'');
   const title=page==='search'?`Search: “${search}”`:'All artworks at hehe.cafe';
-  $('main').innerHTML=`<div class="container"><div class="page-head home-intro-row"><div>${breadcrumbs(page==='search'?'Search':'All artworks')}<h1>${e(title)}</h1><p>Original paintings, small-batch studio pieces and tactile art.</p></div>${homeFilterPanelMarkup(products,filter,storeSettings)}</div><hr class="section-rule rule-terracotta" aria-hidden="true"><div id="product-results"></div></div>`;
+  $('main').innerHTML=`<div class="container"><div class="page-head home-intro-row"><div>${breadcrumbs(page==='search'?'Search':'All artworks')}<h1>${e(title)}</h1><p>Original paintings, small-batch studio pieces and tactile art.</p></div>${homeFilterPanelMarkup(products,filter,storeSettings)}</div>${categoryTabsMarkup(visible(),filter,storeSettings)}<hr class="section-rule rule-terracotta" aria-hidden="true"><div id="product-results"></div></div>`;
   renderProductResults();
 }
 function refreshFilterUI(keepOpen=false){
@@ -636,6 +637,12 @@ function refreshFilterUI(keepOpen=false){
       if(panel){panel.hidden=false;}
       if(btn){btn.setAttribute('aria-expanded','true');}
     }
+  }
+  const catHost=$('store-cat-tabs');
+  if(catHost){
+    const tmpCat=document.createElement('div');
+    tmpCat.innerHTML=categoryTabsMarkup(visible(),filter,storeSettings);
+    if(tmpCat.firstElementChild)catHost.replaceWith(tmpCat.firstElementChild);
   }
   renderProductResults();
   decorateCartButtons();syncInBagButtons();
@@ -1795,6 +1802,51 @@ function renderAdminContent(){
         if(ctrl)highlightBannerControl(ctrl);
         setTimeout(()=>{if($('banner-form'))settingsPreviewController?.update();},60);
       });
+      const applySettingsCat=(catKey='all',{focus=false}={})=>{
+        bannerFormEl.querySelectorAll('[data-settings-cat]').forEach(btn=>btn.classList.toggle('is-active',btn.dataset.settingsCat===catKey));
+        bannerFormEl.querySelectorAll('.settings-acc-card').forEach(card=>{
+          const match=catKey==='all'||card.dataset.settingsSec===catKey;
+          card.hidden=!match;
+          if(match&&catKey!=='all'){
+            card.open=true;
+            if(focus)card.scrollIntoView({behavior:'smooth',block:'nearest'});
+          }
+        });
+      };
+      const settingsSearch=bannerFormEl.querySelector('[data-settings-search]');
+      if(settingsSearch){
+        settingsSearch.addEventListener('input',()=>{
+          const q=settingsSearch.value.trim().toLowerCase();
+          if(q)bannerFormEl.querySelectorAll('[data-settings-cat]').forEach(btn=>btn.classList.toggle('is-active',btn.dataset.settingsCat==='all'));
+          bannerFormEl.querySelectorAll('.settings-acc-card').forEach(card=>{
+            const meta=`${card.dataset.settingsKeywords||''} ${card.querySelector('.settings-acc-sum')?.textContent||''}`.toLowerCase();
+            const hit=!q||meta.includes(q);
+            card.hidden=!hit;
+            if(q&&hit)card.open=true;
+          });
+        });
+      }
+      bannerFormEl.querySelectorAll('[data-settings-cat]').forEach(btn=>{
+        btn.addEventListener('click',()=>{
+          if(settingsSearch)settingsSearch.value='';
+          applySettingsCat(btn.dataset.settingsCat||'all',{focus:true});
+        });
+      });
+      bannerFormEl.addEventListener('change',ev=>{
+        const cb=ev.target;
+        if(cb?.type!=='checkbox')return;
+        const card=cb.closest('.settings-acc-card');
+        const pillEl=card?.querySelector('.settings-status-pill');
+        if(pillEl&&['bannerVisible','backAttachmentsEnabled','diyKitEnabled','announcementVisible','reviewsVisible'].includes(cb.name)){
+          pillEl.textContent=cb.checked?'ON':'OFF';
+          pillEl.classList.toggle('is-on',cb.checked);
+          pillEl.classList.toggle('is-off',!cb.checked);
+        }
+      });
+      const reqSec=new URLSearchParams((location.hash.split('?')[1]||'')).get('sec');
+      if(reqSec&&bannerFormEl.querySelector(`.settings-acc-card[data-settings-sec="${CSS.escape(reqSec)}"]`)){
+        applySettingsCat(reqSec,{focus:true});
+      }
     }
   }
 }
@@ -3149,7 +3201,7 @@ document.addEventListener('click',async event=>{
     else if(action==='set-filter-sort'){filter.sort=target.dataset.sort||'';refreshFilterUI(true);}
     else if(action==='toggle-filter-discounted'){filter.discounted=!filter.discounted;refreshFilterUI(true);}
     else if(action==='toggle-filter-available'){filter.available=!filter.available;refreshFilterUI(true);}
-    else if(action==='set-filter-type'){filter.productType=target.dataset.type||'';refreshFilterUI(true);}
+    else if(action==='set-filter-type'){filter.productType=target.dataset.type||'';refreshFilterUI(Boolean(target.closest('.home-filter-panel')));}
     else if(action==='reset-filters'){filter={sort:'',available:false,discounted:false,productType:'',search:''};if($('home-search-input'))$('home-search-input').value='';refreshFilterUI(false);}
     else if(action==='retry'){catalogError='';await startCatalog();}
   }catch(error){const notice=$('save-address-prompt')?.querySelector('.notice')||$('auth-notice')||$('product-notice')||$('artist-notice');if(notice)notice.textContent=store.friendlyError(error);else toast(store.friendlyError(error));target.disabled=false;}
