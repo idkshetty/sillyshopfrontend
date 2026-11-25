@@ -360,8 +360,14 @@ dialog.label-dialog[open]{display:flex;flex-direction:column;padding:0;overflow:
 .content-devices-group{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 .content-preview-open-link{white-space:nowrap}
 
-.settings-workspace,.artist-studio-workspace{display:grid;grid-template-columns:minmax(320px,430px) minmax(0,1fr);gap:24px;align-items:start}
-.settings-workspace .banner-editor,.artist-studio-form{background:#ffffff;border:1.5px solid #e2ddd2;border-radius:18px;padding:20px}
+.content-workspace.settings-workspace,.artist-studio-workspace{display:grid;grid-template-columns:minmax(430px,510px) minmax(0,1fr);gap:24px;align-items:start}
+.artist-studio-workspace{grid-template-columns:minmax(320px,430px) minmax(0,1fr)}
+.artist-studio-form{background:#ffffff;border:1.5px solid #e2ddd2;border-radius:18px;padding:20px}
+.settings-workspace .banner-editor{background:transparent;border:0;border-radius:0;padding:0;margin:0}
+.settings-workspace #settings-live-preview{position:sticky;top:80px;align-self:start;min-width:0}
+@media(max-width:1200px){
+  .content-workspace.settings-workspace{grid-template-columns:minmax(360px,430px) minmax(0,1fr);gap:18px}
+}
 .banner-form-actions{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-top:16px}
 .site-preview-switcher{display:flex;align-items:center;gap:8px;min-width:0;flex:1}
 .site-preview-tabs{display:inline-flex;padding:3px;border-radius:10px;background:#f3eee4;border:1px solid #dbd3c4;gap:3px}
@@ -403,7 +409,11 @@ dialog.label-dialog[open]{display:flex;flex-direction:column;padding:0;overflow:
 .editor-card-preview .product-card{box-shadow:0 6px 18px rgba(24,23,21,.08)}
 
 @media(max-width:1080px){
-  .settings-workspace,.artist-studio-workspace{grid-template-columns:minmax(0,1fr)}
+  .artist-studio-workspace{grid-template-columns:minmax(0,1fr)}
+}
+@media(max-width:980px){
+  .content-workspace.settings-workspace{grid-template-columns:minmax(0,1fr);gap:16px}
+  .settings-workspace #settings-live-preview{position:static}
 }
 
 /* Visual Banner CTA Style & 6-Slot Position Picker */
@@ -1620,17 +1630,30 @@ button,a,.button,.cart-button,.quick-buy-btn,.home-filter-btn,.hero-banner-cta,.
 .content-quick-jumps,.content-section-pills{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin:0 0 12px}
 .content-crosslink-card{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px;padding:10px 12px;border-radius:10px;background:#fff7ed;border:1px solid #fed7aa;font-size:12.5px;color:#7c2d12;margin-bottom:10px}
 .content-crosslink-card[hidden]{display:none!important}
-.settings-nav-sticky{position:sticky;top:64px;z-index:20;display:grid;gap:8px;padding:10px 12px;margin:0 0 14px;border-radius:12px;background:rgba(250,248,245,.96);border:1px solid #e4dccd;backdrop-filter:blur(6px)}
-.settings-sticky-top{display:flex;gap:8px;align-items:center}
-.settings-sticky-top input{flex:1;min-width:0}
+.settings-top-bar{display:grid;gap:10px;padding:12px 14px;margin:0 0 18px;border-radius:16px;background:#ffffff;border:1px solid #e4dccd;box-shadow:0 2px 10px rgba(24,23,21,.04)}
+.settings-top-row{display:flex;flex-wrap:wrap;align-items:center;gap:10px}
+.settings-top-bar .admin-mode-switcher{margin:0;flex-shrink:0}
+.settings-top-search{flex:1 1 240px;min-width:180px}
+.settings-top-save{display:inline-flex;align-items:center;gap:10px;margin-left:auto;flex-shrink:0}
+.settings-top-save .notice{margin:0;font-size:12px}
 .settings-cat-row{display:flex;flex-wrap:wrap;gap:6px}
-.settings-acc-card{border:1px solid #e6dfd2;border-radius:14px;background:#fff;margin-bottom:12px;overflow:hidden}
+.settings-acc-card{border:1px solid #e6dfd2;border-radius:14px;background:#ffffff;margin-bottom:12px;overflow:hidden;transition:border-color .16s ease,box-shadow .16s ease}
+.settings-acc-card:hover{border-color:#cfc5b4}
+.settings-acc-card[open]{border-color:#d4cab8;box-shadow:0 6px 18px -12px rgba(24,23,21,.18)}
 .settings-acc-card[hidden]{display:none!important}
 .settings-acc-sum{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 14px;cursor:pointer;list-style:none;background:#faf8f5;border-bottom:1px solid transparent}
+.settings-acc-sum::-webkit-details-marker{display:none}
 .settings-acc-card[open] .settings-acc-sum{border-bottom-color:#ebe4d8}
 .settings-acc-sum strong{display:block;font-size:14.5px;color:#181715}
 .settings-acc-sum small{display:block;font-size:12px;color:#6d665c;margin-top:2px}
+.settings-acc-right{display:inline-flex;align-items:center;gap:8px;flex-shrink:0}
+.settings-acc-chevron{display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;border-radius:999px;background:#f1ece2;color:#4a443c;font-size:12px;transition:transform .18s ease,background .15s ease,color .15s ease}
+.settings-acc-card[open] .settings-acc-chevron{transform:rotate(180deg);background:#181715;color:#ffffff}
 .settings-acc-body{padding:14px}
+.settings-workspace .back-attach-admin-grid{grid-template-columns:minmax(0,1fr);gap:10px}
+.settings-workspace .review-editor-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.settings-workspace .form-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.settings-sticky-save{padding:12px 14px;border-radius:14px;background:#ffffff;border:1px solid #e6dfd2;margin-top:4px}
 .settings-status-pill{padding:3px 8px;border-radius:999px;font:700 10.5px/1 'JetBrains Mono',monospace;flex-shrink:0}
 .settings-status-pill.is-on{background:#dcfce7;color:#166534;border:1px solid #bbf7d0}
 .settings-status-pill.is-off{background:#f5f5f4;color:#57534e;border:1px solid #e7e5e4}
@@ -1641,6 +1664,11 @@ button,a,.button,.cart-button,.quick-buy-btn,.home-filter-btn,.hero-banner-cta,.
 @media(max-width:640px){
   .store-cat-tabs,.settings-cat-row,.content-quick-jumps,.content-section-pills{flex-wrap:nowrap;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none}
   .store-cat-tabs::-webkit-scrollbar,.settings-cat-row::-webkit-scrollbar,.content-quick-jumps::-webkit-scrollbar,.content-section-pills::-webkit-scrollbar{display:none}
-  .settings-nav-sticky{top:56px;padding:9px}
-  .settings-sticky-top{flex-direction:column;align-items:stretch}
+  .settings-top-bar{padding:10px}
+  .settings-top-row{flex-direction:column;align-items:stretch}
+  .settings-top-search{flex:1 1 auto;width:100%}
+  .settings-top-save{width:100%;justify-content:space-between;margin-left:0}
+}
+@media(max-width:540px){
+  .settings-workspace .form-grid,.settings-workspace .review-editor-grid{grid-template-columns:minmax(0,1fr)}
 }

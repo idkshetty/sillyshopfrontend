@@ -23,7 +23,7 @@ import {accountMarkup,ordersListMarkup,emailAuthCardMarkup} from './customer-das
 import {steppedProgress} from './stepped-progress.js';
 import {normalizeProfile,validateProfile,checkoutDefaults} from './profile.js';
 import {logoutMarkup,mountLogout,animateLogout} from './logout.js';
-import {DEFAULT_SETTINGS,FALLBACK_BANNER_ARTWORKS,MOBILE_BREAKPOINT_OPTIONS,mobileGridBreakpointCss,normalizeSettings,normalizeBackAttachments,resolveBackAttachment,normalizeDiyKit,safeStoreLink,bannerMarkup,settingsForm} from './store-settings.js?v=20261125g';
+import {DEFAULT_SETTINGS,FALLBACK_BANNER_ARTWORKS,MOBILE_BREAKPOINT_OPTIONS,mobileGridBreakpointCss,normalizeSettings,normalizeBackAttachments,resolveBackAttachment,normalizeDiyKit,safeStoreLink,bannerMarkup,settingsToolbarMarkup,settingsForm} from './store-settings.js?v=20261125h';
 import {PRODUCT_TYPE_PRESETS,isDiyKit} from './commerce.js';
 import {DEFAULT_CONTENT,normalizeContent,contentCategories,applyStoreContent,footerMarkup} from './store-content.js';
 import {homeMarkup,homeFilterPanelMarkup,categoryTabsMarkup,artistsPageMarkup,artistDetailMarkup,storyMarkup,infoMarkup,productCardMarkup} from './storefront-view.js?v=20261125g';
@@ -1354,7 +1354,14 @@ function draftSettingsFromForm(){
 }
 async function submitBanners(event){
   event.preventDefault();if(!isAdmin)return;
-  const form=event.target,data=new FormData(form),button=form.querySelector('[type="submit"]'),notice=$('banner-notice');
+  const form=event.target,data=new FormData(form),button=form.querySelector('[type="submit"]'),topBtn=document.querySelector('[data-settings-save-top]'),notice=$('banner-notice'),noticeTop=$('banner-notice-top');
+  const setNotice=(msg,ok=false)=>{
+    [notice,noticeTop].forEach(el=>{if(!el)return;el.classList.toggle('is-success',ok);el.textContent=msg;});
+  };
+  const setSavingDisabled=disabled=>{
+    if(button)button.disabled=disabled;
+    if(topBtn)topBtn.disabled=disabled;
+  };
   const value=Object.fromEntries(data);delete value.bannerFile;
   if(!value.bannerImage&&form.elements.bannerImage.dataset.savedImage==='true')value.bannerImage=storeSettings.bannerImage;
   value.announcementVisible=data.get('announcementVisible')==='on';value.bannerVisible=data.get('bannerVisible')==='on';
@@ -1395,6 +1402,8 @@ async function submitBanners(event){
     delete value[`attach_${opt.id}_description`];
     return next;
   });
+  value.announcementText=String(value.announcementText||'').trim()||storeSettings.announcementText||DEFAULT_SETTINGS.announcementText;
+  value.announcementLink=String(value.announcementLink||'').trim()||storeSettings.announcementLink||DEFAULT_SETTINGS.announcementLink;
   value.bannerEyebrow=String(value.bannerEyebrow||'').trim();
   value.bannerArtistLabel=String(value.bannerArtistLabel||'').trim();
   value.bannerArtistLink=String(value.bannerArtistLink||'').trim();
@@ -1415,12 +1424,12 @@ async function submitBanners(event){
   }
   delete value.homeSectionOrderJson;
   delete value.promoBlocksJson;
-  try{value.reviewImages=collectReviews(form);}catch(error){notice.textContent=error.message;return;}
-  if(value.reviewsVisible&&!value.reviewImages.length){notice.textContent='Add at least one review image or hide this section.';return;}
-  if(safeStoreLink(value.announcementLink)!==value.announcementLink){notice.textContent='Use a store link such as #shop or a valid HTTPS URL for the announcement link.';return;}
-  if(value.bannerLink&&safeStoreLink(value.bannerLink)!==value.bannerLink){notice.textContent='Use a store link such as #artworks or a valid HTTPS URL for the banner button link.';return;}
-  if(value.bannerArtistLink&&safeStoreLink(value.bannerArtistLink)!==value.bannerArtistLink){notice.textContent='Use a store link such as #artists or a valid HTTPS URL for the artist credit link.';return;}
-  button.disabled=true;notice.classList.remove('is-success');notice.textContent='Saving banners…';
+  try{value.reviewImages=collectReviews(form);}catch(error){setNotice(error.message,false);return;}
+  if(value.reviewsVisible&&!value.reviewImages.length){setNotice('Add at least one review image or hide this section.',false);return;}
+  if(safeStoreLink(value.announcementLink)!==value.announcementLink){setNotice('Use a store link such as #shop or a valid HTTPS URL for the announcement link.',false);return;}
+  if(value.bannerLink&&safeStoreLink(value.bannerLink)!==value.bannerLink){setNotice('Use a store link such as #artworks or a valid HTTPS URL for the banner button link.',false);return;}
+  if(value.bannerArtistLink&&safeStoreLink(value.bannerArtistLink)!==value.bannerArtistLink){setNotice('Use a store link such as #artists or a valid HTTPS URL for the artist credit link.',false);return;}
+  setSavingDisabled(true);setNotice('Saving banners…',false);
   try{
     await withSavingOverlay('Saving store settings…',async()=>{
       const file=data.get('bannerFile');
@@ -1429,11 +1438,11 @@ async function submitBanners(event){
       await store.saveSettings(normalizeSettings(value));storeSettings=normalizeSettings(value);
       applyStoreBanners();
       settingsDirty=false;
-      notice.classList.add('is-success');notice.textContent='Banners saved. Your visibility settings are live in this store.';
+      setNotice('Settings saved cleanly and live on hehe.cafe.',true);
       if($('banner-preview'))$('banner-preview').innerHTML=bannerMarkup({...storeSettings,bannerVisible:true});
       settingsPreviewController?.update();
     });
-  }catch(error){notice.textContent=store.friendlyError(error);}finally{button.disabled=false;}
+  }catch(error){setNotice(store.friendlyError(error),false);}finally{setSavingDisabled(false);}
 }
 async function showProductCustomizations(id){
   if(!user||user.isAnonymous)return;
@@ -1666,7 +1675,7 @@ function renderAdminContent(){
   }else{
     if(!settingsReady){$('admin-content').innerHTML=settingsError?`<p class="notice" role="alert">${e(settingsError)}</p>`:skeletonMarkup('form','Loading store settings…');return;}
     settingsDirty=false;
-    $('admin-content').innerHTML=`<div class="admin-title"><div><h1>Homepage &amp; banners</h1><p>Edit announcement bar, banner copy, action button placement, homepage section order, promo blocks and customer reviews — click text right in the preview or edit fields below.</p></div></div><div class="content-workspace settings-workspace">${settingsForm(storeSettings)}<div id="settings-live-preview"></div></div>`;
+    $('admin-content').innerHTML=`<div class="admin-title"><div><h1>Homepage &amp; banners</h1><p>Edit hero banner, back attachments, DIY Paint Kits, homepage layout, announcement bar, and customer reviews with a live preview.</p></div></div>${settingsToolbarMarkup(storeSettings)}<div class="content-workspace settings-workspace">${settingsForm(storeSettings)}<div id="settings-live-preview"></div></div>`;
     mountReviewEditor($('admin-content'),storeSettings.reviewImages);
     const resolveBannerCtrl=id=>{
       const f=$('banner-form');
@@ -1677,6 +1686,12 @@ function renderAdminContent(){
       }
       if(id.startsWith('settings:'))return f.elements[id.slice(9)]||null;
       return f.elements[id]||null;
+    };
+    const revealBannerCtrl=id=>{
+      const ctrl=resolveBannerCtrl(id);
+      const card=ctrl?.closest?.('.settings-acc-card');
+      if(card){card.hidden=false;card.open=true;}
+      return ctrl;
     };
     const syncBannerInline=(id,text)=>{
       const f=$('banner-form');
@@ -1727,7 +1742,7 @@ function renderAdminContent(){
       title:'Live homepage preview',
       height:580,
       inlineTargets:bannerInlineTargets,
-      onInlineStart:t=>flashControl(resolveBannerCtrl(t.id)),
+      onInlineStart:t=>flashControl(revealBannerCtrl(t.id)),
       onInlineInput:(t,text)=>syncBannerInline(t.id,text),
       onInlineCommit:(t,text)=>syncBannerInline(t.id,text),
       onInlinePick:t=>{
@@ -1740,7 +1755,7 @@ function renderAdminContent(){
           }
           return;
         }
-        flashControl(resolveBannerCtrl(t.id),{focus:true});
+        flashControl(revealBannerCtrl(t.id),{focus:true});
       }
     });
     const layoutSlot=$('home-layout-editor-slot');
@@ -1802,31 +1817,48 @@ function renderAdminContent(){
         if(ctrl)highlightBannerControl(ctrl);
         setTimeout(()=>{if($('banner-form'))settingsPreviewController?.update();},60);
       });
+      const adminRoot=$('admin-content');
       const applySettingsCat=(catKey='all',{focus=false}={})=>{
-        bannerFormEl.querySelectorAll('[data-settings-cat]').forEach(btn=>btn.classList.toggle('is-active',btn.dataset.settingsCat===catKey));
-        bannerFormEl.querySelectorAll('.settings-acc-card').forEach(card=>{
-          const match=catKey==='all'||card.dataset.settingsSec===catKey;
+        adminRoot.querySelectorAll('[data-settings-cat]').forEach(btn=>btn.classList.toggle('is-active',btn.dataset.settingsCat===catKey));
+        const cards=[...bannerFormEl.querySelectorAll('.settings-acc-card')];
+        if(catKey==='all'){
+          let anyOpen=false;
+          cards.forEach(card=>{
+            card.hidden=false;
+            card.setAttribute('name','settings-sections');
+            if(card.open){if(anyOpen)card.open=false;else anyOpen=true;}
+          });
+          if(!anyOpen&&cards[0])cards[0].open=true;
+          return;
+        }
+        cards.forEach(card=>{
+          const match=card.dataset.settingsSec===catKey;
           card.hidden=!match;
-          if(match&&catKey!=='all'){
+          if(match){
             card.open=true;
             if(focus)card.scrollIntoView({behavior:'smooth',block:'nearest'});
           }
         });
       };
-      const settingsSearch=bannerFormEl.querySelector('[data-settings-search]');
+      const settingsSearch=adminRoot.querySelector('[data-settings-search]');
       if(settingsSearch){
         settingsSearch.addEventListener('input',()=>{
           const q=settingsSearch.value.trim().toLowerCase();
-          if(q)bannerFormEl.querySelectorAll('[data-settings-cat]').forEach(btn=>btn.classList.toggle('is-active',btn.dataset.settingsCat==='all'));
+          adminRoot.querySelectorAll('[data-settings-cat]').forEach(btn=>btn.classList.toggle('is-active',btn.dataset.settingsCat==='all'));
+          if(!q){
+            applySettingsCat('all');
+            return;
+          }
           bannerFormEl.querySelectorAll('.settings-acc-card').forEach(card=>{
+            card.removeAttribute('name');
             const meta=`${card.dataset.settingsKeywords||''} ${card.querySelector('.settings-acc-sum')?.textContent||''}`.toLowerCase();
-            const hit=!q||meta.includes(q);
+            const hit=meta.includes(q);
             card.hidden=!hit;
-            if(q&&hit)card.open=true;
+            if(hit)card.open=true;
           });
         });
       }
-      bannerFormEl.querySelectorAll('[data-settings-cat]').forEach(btn=>{
+      adminRoot.querySelectorAll('[data-settings-cat]').forEach(btn=>{
         btn.addEventListener('click',()=>{
           if(settingsSearch)settingsSearch.value='';
           applySettingsCat(btn.dataset.settingsCat||'all',{focus:true});
@@ -1841,6 +1873,13 @@ function renderAdminContent(){
           pillEl.textContent=cb.checked?'ON':'OFF';
           pillEl.classList.toggle('is-on',cb.checked);
           pillEl.classList.toggle('is-off',!cb.checked);
+        }
+        if(cb.name==='backAttachmentsEnabled'){
+          const chip=adminRoot.querySelector('[data-settings-cat="attachments"]');
+          if(chip)chip.textContent=`Back attachments${cb.checked?' · ON':''}`;
+        }else if(cb.name==='diyKitEnabled'){
+          const chip=adminRoot.querySelector('[data-settings-cat="diy"]');
+          if(chip)chip.textContent=`DIY Paint Kit${cb.checked?' · ON':''}`;
         }
       });
       const reqSec=new URLSearchParams((location.hash.split('?')[1]||'')).get('sec');

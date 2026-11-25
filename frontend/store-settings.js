@@ -530,23 +530,18 @@ export function bannerMarkup(settings = DEFAULT_SETTINGS, products = []) {
     ${ctaPos !== 'below-text' ? ctaHtml : ''}
   </section>`;
 }
-export function settingsForm(s) {
-  const ctaX = Number(s.bannerButtonOffsetX) || 0;
-  const ctaY = Number(s.bannerButtonOffsetY) || 0;
-  const ctaPos = s.bannerButtonPosition || 'below-text';
-  const ctaStyle = s.bannerButtonStyle || 'light';
-  const mobileBp = Number.isInteger(s.mobileBreakpoint) ? s.mobileBreakpoint : 580;
-  const diy = normalizeDiyKit(s.diyKit);
-  const pill = (on, txtOn = 'ON', txtOff = 'OFF') => `<span class="settings-status-pill ${on ? 'is-on' : 'is-off'}">${on ? txtOn : txtOff}</span>`;
-  return `<form id="banner-form" class="settings-note banner-editor">
-  <div class="admin-mode-switcher" role="navigation" aria-label="Editor workspace switcher">
-    <a class="admin-mode-tab" href="#admin/content">Text, Logos &amp; Pages</a>
-    <span class="admin-mode-tab is-active" aria-current="page">Banners, Features &amp; Layout</span>
-  </div>
-  <div class="settings-nav-sticky">
-    <div class="settings-sticky-top">
-      <input type="search" class="content-search-input" data-settings-search aria-label="Search settings" placeholder="Find setting (magnet, DIY kit, banner, button, reviews, grid…)">
-      <button class="button small" type="submit">Save settings</button>
+export function settingsToolbarMarkup(s) {
+  return `<div class="settings-top-bar">
+    <div class="settings-top-row">
+      <div class="admin-mode-switcher" role="navigation" aria-label="Editor workspace switcher">
+        <a class="admin-mode-tab" href="#admin/content">Text, Logos &amp; Pages</a>
+        <span class="admin-mode-tab is-active" aria-current="page">Banners, Features &amp; Layout</span>
+      </div>
+      <input type="search" class="content-search-input settings-top-search" data-settings-search aria-label="Search settings" placeholder="Find setting (banner, magnet, DIY kit, reviews, grid…)">
+      <div class="settings-top-save">
+        <span id="banner-notice-top" role="status" class="notice"></span>
+        <button class="button small" type="submit" form="banner-form" data-settings-save-top>Save settings</button>
+      </div>
     </div>
     <div class="settings-cat-row" role="group" aria-label="Filter settings by section">
       <button type="button" class="pilot-chip is-active" data-settings-cat="all">All (7)</button>
@@ -558,12 +553,22 @@ export function settingsForm(s) {
       <button type="button" class="pilot-chip" data-settings-cat="announcement">Announcement</button>
       <button type="button" class="pilot-chip" data-settings-cat="reviews">Reviews</button>
     </div>
-  </div>
-
-  <details class="settings-acc-card" open data-settings-sec="banner" data-settings-keywords="hero banner headline subtitle artist cta button position offset fallback image explore artworks">
+  </div>`;
+}
+export function settingsForm(s) {
+  const ctaX = Number(s.bannerButtonOffsetX) || 0;
+  const ctaY = Number(s.bannerButtonOffsetY) || 0;
+  const ctaPos = s.bannerButtonPosition || 'below-text';
+  const ctaStyle = s.bannerButtonStyle || 'light';
+  const mobileBp = Number.isInteger(s.mobileBreakpoint) ? s.mobileBreakpoint : 580;
+  const diy = normalizeDiyKit(s.diyKit);
+  const pill = (on, txtOn = 'ON', txtOff = 'OFF') => `<span class="settings-status-pill ${on ? 'is-on' : 'is-off'}">${on ? txtOn : txtOff}</span>`;
+  const accRight = (badgeHtml = '') => `<span class="settings-acc-right">${badgeHtml}<span class="settings-acc-chevron" aria-hidden="true">▾</span></span>`;
+  return `<form id="banner-form" class="settings-note banner-editor">
+  <details class="settings-acc-card" name="settings-sections" open data-settings-sec="banner" data-settings-keywords="hero banner headline subtitle artist cta button position offset fallback image explore artworks">
     <summary class="settings-acc-sum">
       <div><strong>Homepage hero banner</strong><small>Headline, subtitle, artist link, CTA button placement &amp; fallback photo</small></div>
-      ${pill(s.bannerVisible !== false)}
+      ${accRight(pill(s.bannerVisible !== false))}
     </summary>
     <div class="settings-acc-body">
       <label class="visibility-toggle"><input type="checkbox" name="bannerVisible" ${s.bannerVisible?'checked':''}><span>Homepage rotating artwork banner visible</span></label>
@@ -604,10 +609,10 @@ export function settingsForm(s) {
     </div>
   </details>
 
-  <details class="settings-acc-card" open data-settings-sec="attachments" data-settings-keywords="back attachment magnet magnetic strip sticky tape desk buddy stand bag checkout customization">
+  <details class="settings-acc-card" name="settings-sections" data-settings-sec="attachments" data-settings-keywords="back attachment magnet magnetic strip sticky tape desk buddy stand bag checkout customization">
     <summary class="settings-acc-sum">
       <div><strong>Back attachment customization</strong><small>Let shoppers choose Magnet, Sticky Tape, or Desk Buddy Stand in Art Bag</small></div>
-      ${pill(s.backAttachmentsEnabled === true)}
+      ${accRight(pill(s.backAttachmentsEnabled === true))}
     </summary>
     <div class="settings-acc-body">
       <p class="small muted">When turned on, shoppers can pick Magnet, Sticky Tape, or Desk Buddy Stand directly in their bag (base price + selected add-on). Selections appear automatically inside Admin Orders &amp; invoices.</p>
@@ -630,10 +635,10 @@ export function settingsForm(s) {
     </div>
   </details>
 
-  <details class="settings-acc-card" open data-settings-sec="diy" data-settings-keywords="diy paint kit category spotlight homepage banner line art price">
+  <details class="settings-acc-card" name="settings-sections" data-settings-sec="diy" data-settings-keywords="diy paint kit category spotlight homepage banner line art price">
     <summary class="settings-acc-sum">
       <div><strong>DIY Paint Kit category &amp; spotlight</strong><small>Show/hide the DIY Kit product category, filter tab &amp; homepage card</small></div>
-      ${pill(s.diyKitEnabled === true)}
+      ${accRight(pill(s.diyKitEnabled === true))}
     </summary>
     <div class="settings-acc-body">
       <p class="small muted">Control whether DIY Paint Kit artworks, category tab, and homepage spotlight appear on the storefront. Toggle off anytime to hide all DIY Kits without deleting products.</p>
@@ -655,10 +660,10 @@ export function settingsForm(s) {
     </div>
   </details>
 
-  <details class="settings-acc-card" open data-settings-sec="layout" data-settings-keywords="homepage section order promo blocks reorder custom section">
+  <details class="settings-acc-card" name="settings-sections" data-settings-sec="layout" data-settings-keywords="homepage section order promo blocks reorder custom section">
     <summary class="settings-acc-sum">
       <div><strong>Homepage section order &amp; promo blocks</strong><small>Reorder sections and manage custom homepage promotional cards</small></div>
-      <span class="settings-status-pill is-on">${(s.promoBlocks||[]).length} promos</span>
+      ${accRight(`<span class="settings-status-pill is-on">${(s.promoBlocks||[]).length} promos</span>`)}
     </summary>
     <div class="settings-acc-body">
       <input type="hidden" name="homeSectionOrderJson" value="${e(JSON.stringify(s.homeSectionOrder||DEFAULT_HOME_SECTIONS))}">
@@ -667,9 +672,10 @@ export function settingsForm(s) {
     </div>
   </details>
 
-  <details class="settings-acc-card" open data-settings-sec="pages" data-settings-keywords="about page story section mobile grid breakpoint 1 per row foldable">
+  <details class="settings-acc-card" name="settings-sections" data-settings-sec="pages" data-settings-keywords="about page story section mobile grid breakpoint 1 per row foldable">
     <summary class="settings-acc-sum">
       <div><strong>Storefront visibility &amp; mobile grid</strong><small>About page link, story block, and mobile 1-per-row breakpoint</small></div>
+      ${accRight()}
     </summary>
     <div class="settings-acc-body">
       <label class="visibility-toggle"><input type="checkbox" name="aboutVisible" ${s.aboutVisible?'checked':''}><span>Show "About hehe.cafe" page on storefront</span></label>
@@ -684,21 +690,21 @@ export function settingsForm(s) {
     </div>
   </details>
 
-  <details class="settings-acc-card" open data-settings-sec="announcement" data-settings-keywords="announcement top bar banner text link">
+  <details class="settings-acc-card" name="settings-sections" data-settings-sec="announcement" data-settings-keywords="announcement top bar banner text link">
     <summary class="settings-acc-sum">
       <div><strong>Announcement bar</strong><small>Top slim notice bar across storefront pages</small></div>
-      ${pill(s.announcementVisible === true)}
+      ${accRight(pill(s.announcementVisible === true))}
     </summary>
     <div class="settings-acc-body">
       <label class="visibility-toggle"><input type="checkbox" name="announcementVisible" ${s.announcementVisible?'checked':''}><span>Announcement bar visible</span></label>
-      <div class="form-grid"><label class="field wide">Announcement text<input name="announcementText" maxlength="160" required value="${e(s.announcementText)}"></label><label class="field wide">Announcement link<input name="announcementLink" required maxlength="500" value="${e(s.announcementLink)}"></label></div>
+      <div class="form-grid"><label class="field wide">Announcement text<input name="announcementText" maxlength="160" value="${e(s.announcementText)}"></label><label class="field wide">Announcement link<input name="announcementLink" maxlength="500" value="${e(s.announcementLink)}"></label></div>
     </div>
   </details>
 
-  <details class="settings-acc-card" open data-settings-sec="reviews" data-settings-keywords="customer reviews collector cards photos screenshots">
+  <details class="settings-acc-card" name="settings-sections" data-settings-sec="reviews" data-settings-keywords="customer reviews collector cards photos screenshots">
     <summary class="settings-acc-sum">
       <div><strong>Customer reviews gallery</strong><small>Up to 7 collector screenshots shown on the homepage</small></div>
-      ${pill(s.reviewsVisible === true)}
+      ${accRight(pill(s.reviewsVisible === true))}
     </summary>
     <div class="settings-acc-body">
       <label class="visibility-toggle"><input type="checkbox" name="reviewsVisible" ${s.reviewsVisible?'checked':''}><span>Customer reviews visible</span></label>
