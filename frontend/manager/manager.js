@@ -22,9 +22,12 @@ import {
   pilotControlsMarkup,
   pilotTimelineSvgMarkup,
   pilotEngagementMarkup,
+  pilotFunnelAndBreakdownsMarkup,
+  pilotRecentClicksMarkup,
   pilotVisitorsLogMarkup,
+  quickRangeBounds,
   toDatetimeLocalValue
-} from '../pilot-analytics-ui.js?v=20261125c';
+} from '../pilot-analytics-ui.js?v=20261125d';
 
 const $ = id => document.getElementById(id);
 const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -786,12 +789,24 @@ function patchTrafficSection(key, el, nextHtml) {
 }
 
 function patchTrafficLiveDOM() {
+  const controlsHtml = pilotControlsMarkup({
+    preset: state.trafficPreset,
+    device: state.trafficDevice,
+    fromLocal: state.trafficFromLocal || toDatetimeLocalValue(Date.now() - 3600000),
+    toLocal: state.trafficToLocal || toDatetimeLocalValue(Date.now()),
+    rangeText: state.siteTraffic?.window?.rangeText || '',
+    showHeatmapBtn: true,
+    heatmapHref: 'https://hehe.cafe/#home?heatmap=1'
+  });
+  patchTrafficSection('controls', $('mgr-traffic-controls'), controlsHtml);
   patchTrafficSection('kpis', $('mgr-traffic-kpis'), renderTrafficKpisMarkup());
   patchTrafficSection('timeline', $('mgr-traffic-timeline'), pilotTimelineSvgMarkup(state.siteTraffic?.timeline, state.siteTraffic?.window));
   patchTrafficSection('dist', $('mgr-traffic-dist-list'), renderTrafficDistributionListMarkup());
   patchTrafficSection('browsing', $('mgr-traffic-browsing'), renderTrafficActiveBrowsingMarkup());
   patchTrafficSection('lower', $('mgr-traffic-lower'), renderTrafficLowerMarkup());
   patchTrafficSection('engagement', $('mgr-traffic-engagement'), pilotEngagementMarkup(state.siteTraffic || {}));
+  patchTrafficSection('funnel', $('mgr-traffic-funnel'), pilotFunnelAndBreakdownsMarkup(state.siteTraffic || {}));
+  patchTrafficSection('clicks', $('mgr-traffic-clicks'), `<div class="mgr-card" style="margin-top:14px"><div class="mgr-card-head"><h3>Major &amp; Recent Click Feed (${(state.siteTraffic?.recentClicks || []).length})</h3></div>${pilotRecentClicksMarkup(state.siteTraffic?.recentClicks || [])}</div>`);
   patchTrafficSection('visitorsLog', $('mgr-traffic-visitors-log'), pilotVisitorsLogMarkup(state.siteTraffic?.visitorsLog || []));
   const updEl = $('mgr-traffic-updated-at');
   if (updEl) updEl.textContent = state.trafficUpdatedAt ? `Updated ${fmtClock(state.trafficUpdatedAt)}` : 'Waiting…';
@@ -931,8 +946,19 @@ function renderTrafficKpisMarkup() {
     return `<div class="mgr-panel"><p class="mgr-muted">${state.loadingData ? 'Loading live visitor &amp; click telemetry…' : 'Visitor tracking initializes automatically once shoppers open hehe.cafe.'}</p></div>`;
   }
   const s = t.summary || {};
+  const eng = t.engagement || {};
   const dev = t.deviceSplit || {};
   const devTotal = Math.max(1, (dev.mobile || 0) + (dev.desktop || 0));
+  const isAll = !t.window || t.window.preset === 'all';
+  if (!isAll) {
+    return `<div class="mgr-kpi-grid">
+      <div class="mgr-kpi"><span>Visitors (${esc(t.window?.label || 'Window')})</span><strong>${s.windowVisitors ?? 0}</strong><small>Mob ${Math.round(((dev.mobile || 0) / devTotal) * 100)}% / Desk ${Math.round(((dev.desktop || 0) / devTotal) * 100)}%</small></div>
+      <div class="mgr-kpi"><span>Page views (Window)</span><strong>${s.totalPageViews || 0}</strong><small>${esc(t.window?.rangeText || '')}</small></div>
+      <div class="mgr-kpi"><span>Clicks (${esc(t.window?.label || 'Window')})</span><strong>${s.windowClicks || 0}</strong><small>${s.windowMajorClicks || 0} major · Bag ${eng.bagRatePct || 0}%</small></div>
+      <div class="mgr-kpi"><span>Avg Dwell &amp; Scroll</span><strong>${eng.avgTimeOnSiteSec || 0}s</strong><small>Avg scroll ${eng.avgMaxScrollPct || 0}% · Bounce ${eng.bounceRatePct || 0}%</small></div>
+      <div class="mgr-kpi"><span>Active visitors now</span><strong style="color:var(--accent)">${s.activeNow || 0}</strong><small>All-time: ${s.lifetimeVisitors ?? s.totalVisitors ?? 0}</small></div>
+    </div>`;
+  }
   return `<div class="mgr-kpi-grid">
     <div class="mgr-kpi"><span>Active visitors now</span><strong style="color:var(--accent)">${s.activeNow || 0}</strong><small>Seen in last 5 minutes · Mob ${Math.round(((dev.mobile || 0) / devTotal) * 100)}% / Desk ${Math.round(((dev.desktop || 0) / devTotal) * 100)}%</small></div>
     <div class="mgr-kpi"><span>Visitors today (IST)</span><strong>${s.todayVisitors || 0}</strong><small>${s.todayClicks || 0} item clicks today</small></div>
@@ -969,18 +995,34 @@ function renderTrafficDistributionListMarkup() {
 }
 
 function renderTrafficActiveBrowsingMarkup() {
-  const active = Array.isArray(state.siteTraffic?.activeVisitors) ? state.siteTraffic.activeVisitors : [];
-  if (!active.length) return '';
+  const t = state.siteTraffic;
+  const active = Array.isArray(t?.activeVisitors) ? t.activeVisitors : [];
+  const period = Array.isArray(t?.periodVisitors) ? t.periodVisitors : [];
+  const isAll = !t?.window || t.window.preset === 'all';
+  const list = isAll ? active : (period.length ? period : active);
+  if (!list.length) return '';
+  const fmtHm = ts => ts ? new Date(Number(ts)).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }) : '—';
+  const heading = isAll
+    ? `Currently browsing on hehe.cafe (${active.length})`
+    : `Visitors in selected period (${list.length}${active.length ? ` · ${active.length} live now` : ''})`;
   return `<div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--line)">
-    <p class="mgr-eyebrow" style="margin-bottom:8px">Currently browsing on hehe.cafe (${active.length})</p>
-    <div style="display:flex;flex-wrap:wrap;gap:6px">${active.slice(0, 16).map(v => `<span class="mgr-dest-tag">${esc([v.city, v.region, v.country].filter(Boolean).join(', ') || 'Unknown')} · ${esc(v.device)} · ${esc(v.lastPath || '#home')} · ${esc(fmtAgo(v.lastSeenAt))}</span>`).join('')}</div>
+    <p class="mgr-eyebrow" style="margin-bottom:8px">${esc(heading)}</p>
+    <div style="display:flex;flex-wrap:wrap;gap:6px">${list.slice(0, 16).map(v => {
+      const place = [v.city, v.region, v.country].filter(Boolean).join(', ') || 'Unknown';
+      const inOut = `${fmtHm(v.inTimeAt || v.firstSeenAt)}–${v.isActive ? 'Live' : fmtHm(v.outTimeAt || v.lastSeenAt)}`;
+      return `<span class="mgr-dest-tag">${v.ip ? `${esc(v.ip)} · ` : ''}${esc(place)} · ${esc(v.device)} · ${esc(inOut)} · ${esc(v.lastPath || '#home')}</span>`;
+    }).join('')}</div>
   </div>`;
 }
 
 function renderTrafficLowerMarkup() {
   const t = state.siteTraffic;
   if (!t) return '';
-  const maxTrend = Math.max(1, ...(t.dailyTrend || []).map(d => d.uniqueVisitors || 0));
+  const isAll = !t.window || t.window.preset === 'all';
+  const trendRows = isAll
+    ? (t.dailyTrend || []).slice(-7).map(d => ({ label: d.label, visitors: d.uniqueVisitors || 0, clicks: d.productClicks || 0 }))
+    : (t.timeline || []).slice(-12).map(b => ({ label: b.label, visitors: b.visitors || 0, clicks: b.clicks || 0 }));
+  const maxTrend = Math.max(1, ...trendRows.map(d => d.visitors));
   const maxRef = Math.max(1, ...(t.topReferrers || []).map(r => r.count || 0));
   const sortedDemand = [...(t.itemDemand || [])].sort((x, y) => state.itemDemandSort === 'carts'
     ? ((y.inCartCount - x.inCartCount) || (y.clicks - x.clicks))
@@ -989,21 +1031,21 @@ function renderTrafficLowerMarkup() {
   return `<div class="mgr-split" style="margin-bottom:16px">
       <section class="mgr-panel" style="margin:0">
         <h2>Traffic sources</h2>
-        <p class="mgr-muted" style="margin-bottom:10px">Where visitors came from before landing on hehe.cafe.</p>
+        <p class="mgr-muted" style="margin-bottom:10px">Where visitors came from in <strong>${esc(t.window?.rangeText || 'selected window')}</strong>.</p>
         ${(t.topReferrers || []).length ? `<div class="mgr-geo-list">${t.topReferrers.map(r => `<div class="mgr-geo-row">
           <div class="mgr-geo-row-head"><strong>${esc(r.source)}</strong><strong>${r.count}</strong></div>
           <div class="mgr-bar-track"><div class="mgr-bar-fill" style="width:${Math.max(4, Math.round((r.count / maxRef) * 100))}%;background:#1d5fe6"></div></div>
-        </div>`).join('')}</div>` : '<p class="mgr-muted">No traffic source events yet.</p>'}
+        </div>`).join('')}</div>` : '<p class="mgr-muted">No traffic source events in this window.</p>'}
       </section>
       <section class="mgr-panel" style="margin:0">
-        <h2>7-day visitor &amp; click trend</h2>
-        <div class="mgr-geo-list" style="margin-top:8px">${(t.dailyTrend || []).slice(-7).map(d => `<div class="mgr-geo-row">
+        <h2>${isAll ? '7-day visitor &amp; click trend' : esc(`${t.window?.label || 'Window'} breakdown`)}</h2>
+        <div class="mgr-geo-list" style="margin-top:8px">${trendRows.length ? trendRows.map(d => `<div class="mgr-geo-row">
           <div class="mgr-geo-row-head">
             <span><strong>${esc(d.label)}</strong></span>
-            <span class="mgr-muted">${d.uniqueVisitors} visitors · ${d.productClicks} clicks</span>
+            <span class="mgr-muted">${d.visitors} visitors · ${d.clicks} clicks</span>
           </div>
-          <div class="mgr-bar-track"><div class="mgr-bar-fill" style="width:${d.uniqueVisitors ? Math.max(4, Math.round((d.uniqueVisitors / maxTrend) * 100)) : 0}%"></div></div>
-        </div>`).join('')}</div>
+          <div class="mgr-bar-track"><div class="mgr-bar-fill" style="width:${d.visitors ? Math.max(4, Math.round((d.visitors / maxTrend) * 100)) : 0}%"></div></div>
+        </div>`).join('') : '<p class="mgr-muted">No intervals in this window.</p>'}</div>
       </section>
     </div>
 
@@ -1060,6 +1102,7 @@ function renderTrafficTab() {
       device: state.trafficDevice,
       fromLocal: state.trafficFromLocal || toDatetimeLocalValue(Date.now() - 3600000),
       toLocal: state.trafficToLocal || toDatetimeLocalValue(Date.now()),
+      rangeText: state.siteTraffic?.window?.rangeText || '',
       showHeatmapBtn: true,
       heatmapHref: 'https://hehe.cafe/#home?heatmap=1'
     })}</div>
@@ -1093,6 +1136,8 @@ function renderTrafficTab() {
 
     <div id="mgr-traffic-lower">${renderTrafficLowerMarkup()}</div>
     <div id="mgr-traffic-engagement">${pilotEngagementMarkup(state.siteTraffic || {})}</div>
+    <div id="mgr-traffic-funnel">${pilotFunnelAndBreakdownsMarkup(state.siteTraffic || {})}</div>
+    <div id="mgr-traffic-clicks"><div class="mgr-card" style="margin-top:14px"><div class="mgr-card-head"><h3>Major &amp; Recent Click Feed (${(state.siteTraffic?.recentClicks || []).length})</h3></div>${pilotRecentClicksMarkup(state.siteTraffic?.recentClicks || [])}</div></div>
     <div id="mgr-traffic-visitors-log">${pilotVisitorsLogMarkup(state.siteTraffic?.visitorsLog || [])}</div>`;
 }
 
@@ -2716,7 +2761,14 @@ document.addEventListener('click', async event => {
   const pilotBtn = event.target.closest('[data-pilot-action]');
   if (pilotBtn) {
     const pa = pilotBtn.dataset.pilotAction;
-    if (pa === 'set-preset') {
+    if (pa === 'set-quick') {
+      const b = quickRangeBounds(pilotBtn.dataset.quick || 'today');
+      state.trafficPreset = 'custom';
+      state.trafficFromMs = b.fromMs;
+      state.trafficToMs = b.toMs;
+      state.trafficFromLocal = b.fromLocal;
+      state.trafficToLocal = b.toLocal;
+    } else if (pa === 'set-preset') {
       state.trafficPreset = pilotBtn.dataset.preset || 'all';
       if (state.trafficPreset !== 'custom') { state.trafficFromMs = 0; state.trafficToMs = 0; }
     } else if (pa === 'set-device') {
@@ -2729,6 +2781,7 @@ document.addEventListener('click', async event => {
         device: state.trafficDevice,
         fromLocal: state.trafficFromLocal || toDatetimeLocalValue(Date.now() - 3600000),
         toLocal: state.trafficToLocal || toDatetimeLocalValue(Date.now()),
+        rangeText: state.siteTraffic?.window?.rangeText || '',
         showHeatmapBtn: true,
         heatmapHref: 'https://hehe.cafe/#home?heatmap=1'
       });
@@ -3367,6 +3420,7 @@ document.addEventListener('submit', async event => {
           device: state.trafficDevice,
           fromLocal: state.trafficFromLocal,
           toLocal: state.trafficToLocal,
+          rangeText: state.siteTraffic?.window?.rangeText || '',
           showHeatmapBtn: true,
           heatmapHref: 'https://hehe.cafe/#home?heatmap=1'
         });

@@ -47,6 +47,7 @@ export function mountHeatmapOverlay({ isAdmin, getRoute, fetchTraffic }) {
   let showClicks = true;
   let showScroll = true;
   let showSections = true;
+  let hudCollapsed = typeof window !== 'undefined' ? window.innerWidth <= 640 : false;
   let trafficData = null;
   let layerRoot = null;
   let toggleBtn = null;
@@ -173,6 +174,12 @@ export function mountHeatmapOverlay({ isAdmin, getRoute, fetchTraffic }) {
     const pageData = trafficData?.heatmap?.byPage?.[pg] || { totalClicks: 0, scrollDepth: {} };
     hudEl.innerHTML = `<div class="heatmap-hud-row">
       <strong class="heatmap-hud-title">Live Heatmap · #${pg} (${pageData.totalClicks || 0} clicks)</strong>
+      <div class="heatmap-hud-actions">
+        <button type="button" class="heatmap-hud-toggle" data-hm-toggle>${hudCollapsed ? 'Controls ▾' : 'Hide ▴'}</button>
+        <button type="button" class="heatmap-hud-close" data-hm-close>Close ×</button>
+      </div>
+    </div>
+    <div class="heatmap-hud-body" ${hudCollapsed ? 'hidden' : ''}>
       <div class="heatmap-hud-controls">
         ${[['1h', '1h'], ['5h', '5h'], ['24h', '24h'], ['7d', '7d'], ['30d', '30d'], ['all', 'All']].map(([k, l]) => `<button type="button" data-hm-preset="${k}" class="${preset === k ? 'is-on' : ''}">${l}</button>`).join('')}
       </div>
@@ -184,8 +191,8 @@ export function mountHeatmapOverlay({ isAdmin, getRoute, fetchTraffic }) {
         <label><input type="checkbox" data-hm-layer="scroll" ${showScroll ? 'checked' : ''}>Scroll</label>
         <label><input type="checkbox" data-hm-layer="sections" ${showSections ? 'checked' : ''}>Sections</label>
       </div>
-      <button type="button" class="heatmap-hud-close" data-hm-close>Close ×</button>
     </div>`;
+    hudEl.querySelector('[data-hm-toggle]')?.addEventListener('click', () => { hudCollapsed = !hudCollapsed; renderHud(); });
     hudEl.querySelectorAll('[data-hm-preset]').forEach(b => b.addEventListener('click', () => { preset = b.dataset.hmPreset; void refresh(); }));
     hudEl.querySelectorAll('[data-hm-device]').forEach(b => b.addEventListener('click', () => { device = b.dataset.hmDevice; void refresh(); }));
     hudEl.querySelectorAll('[data-hm-layer]').forEach(cb => cb.addEventListener('change', () => {

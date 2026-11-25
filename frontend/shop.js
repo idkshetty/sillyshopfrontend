@@ -27,9 +27,9 @@ import {DEFAULT_SETTINGS,FALLBACK_BANNER_ARTWORKS,MOBILE_BREAKPOINT_OPTIONS,mobi
 import {PRODUCT_TYPE_PRESETS,isDiyKit} from './commerce.js';
 import {DEFAULT_CONTENT,normalizeContent,contentCategories,applyStoreContent,footerMarkup} from './store-content.js';
 import {homeMarkup,homeFilterPanelMarkup,artistsPageMarkup,artistDetailMarkup,storyMarkup,infoMarkup,productCardMarkup} from './storefront-view.js';
-import {mountPilotTelemetry} from './pilot-telemetry.js';
-import {mountNetworkAnalyticsPanel} from './pilot-analytics-ui.js';
-import {mountHeatmapOverlay} from './heatmap-overlay.js';
+import {mountPilotTelemetry} from './pilot-telemetry.js?v=20261125d';
+import {mountNetworkAnalyticsPanel} from './pilot-analytics-ui.js?v=20261125d';
+import {mountHeatmapOverlay} from './heatmap-overlay.js?v=20261125d';
 import {mountTrafficGlobe,resolveLocationCoords} from './manager/traffic-globe.js';
 import {mountContentEditor} from './content-editor.js';
 import {mountSitePreviewPanel,openSitePreviewModal} from './site-preview.js';
@@ -586,12 +586,20 @@ try{siteVisitorId=localStorage.getItem('silly-visitor-v1')||'';if(!/^[a-zA-Z0-9_
 const clickedProductsAt=new Map();
 function sendSiteBeacon(type,extra={}){
   if(route().page==='admin'||!siteVisitorId||liveSiteEditor?.isActive?.()||heatmapOverlay?.isActive?.())return;
+  const rawSearch=(location.search||'')+'&'+(location.hash.includes('?')?location.hash.split('?')[1]:'');
+  const sp=new URLSearchParams(rawSearch.replace(/^\?/,''));
+  const utmSource=String(sp.get('utm_source')||'').trim().slice(0,60);
+  const utmCampaign=String(sp.get('utm_campaign')||'').trim().slice(0,60);
   void store.trackSiteEvent({
     type,
     visitorId:siteVisitorId,
     path:location.hash||'#home',
     referrer:document.referrer||'',
     device:window.innerWidth<=820?'Mobile':'Desktop',
+    viewportW:window.innerWidth||0,
+    viewportH:window.innerHeight||0,
+    ...(utmSource?{utmSource}:{}),
+    ...(utmCampaign?{utmCampaign}:{}),
     ...extra
   });
 }
@@ -842,6 +850,8 @@ function renderCheckout(){
 }
 function setCheckoutStep(step,{focus=true}={}){
   const previousStep=checkoutStep,nextStep=Math.max(1,Math.min(3,step));
+  if(nextStep===2)pilotTelemetry?.noteFunnel?.('checkout_step_2');
+  else if(nextStep===3)pilotTelemetry?.noteFunnel?.('checkout_step_3');
   const form=$('checkout-form');if(!form)return;
   captureCheckout();
   const pages=[...form.querySelectorAll('[data-checkout-step]')],from=pages.find(page=>!page.hidden&&Number(page.dataset.checkoutStep)===previousStep)||pages.find(page=>!page.hidden),to=pages.find(page=>Number(page.dataset.checkoutStep)===nextStep);
@@ -1013,6 +1023,8 @@ async function submitCheckout(event){
     if(['cancel_requested','closed'].includes(saved.status))throw new Error('This checkout has a pending cancellation. Wait for the studio to release it before starting another order.');
     if(saved.paymentStatus==='captured'){
       checkoutDone=true;
+      pilotTelemetry?.noteFunnel?.('order_complete');
+      pilotTelemetry?.flushNow?.();
       scheduleBagSync('ordered',{immediate:true,orderId:saved.id});
       await buttonAnim;
       loader.hide();
@@ -1067,6 +1079,8 @@ async function submitCheckout(event){
     }
     checkoutDone=true;
     loader.hide();
+    pilotTelemetry?.noteFunnel?.('order_complete');
+    pilotTelemetry?.flushNow?.();
     scheduleBagSync('ordered',{immediate:true,orderId:saved.id});
     completedRequest=saved;deliveryMap?.destroy();deliveryMap=null;
     paymentSceneActive=true;
@@ -1497,6 +1511,7 @@ function renderAdminContent(){
   }else if(adminTab==='analytics'){
     networkAnalyticsController=mountNetworkAnalyticsPanel($('admin-content'),{
       loadTraffic:opts=>store.callBackend('managerSiteTraffic',opts),
+      callBackend:(name,data)=>store.callBackend(name,data),
       mountGlobeFn:mountTrafficGlobe,
       resolveCoordsFn:resolveLocationCoords,
       onOpenHeatmap:()=>{location.hash='home?heatmap=1';}
@@ -2526,7 +2541,7 @@ document.addEventListener('click',async event=>{
     if(action==='checkout-next'){if(checkoutStepValid())setCheckoutStep(checkoutStep+1);}
     else if(action==='checkout-previous'){captureCheckout();setCheckoutStep(checkoutStep-1);}
     else if(action==='checkout-edit-step'){captureCheckout();setCheckoutStep(Number(target.dataset.step)||1);}
-    else if(action==='cart'){reconcileCart();renderCart();openDialog('cart-dialog');}
+    else if(action==='cart'){reconcileCart();renderCart();openDialog('cart-dialog');pilotTelemetry?.noteFunnel?.('bag_open');}
     else if(action==='dismiss-cart-notice'){cartCleanupNotes=[];document.querySelectorAll('.cart-cleanup-note').forEach(el=>el.remove());}
     else if(action==='cart-checkout'){
       const flow=target.closest('.cart-checkout-flow');target.disabled=true;
@@ -2632,14 +2647,15 @@ document.addEventListener('click',async event=>{
     else if(action==='menu'){const menu=$('mobile-menu');menu.hidden=!menu.hidden;target.setAttribute('aria-expanded',String(!menu.hidden));}
     else if(action==='collections'){const menu=$('collection-menu');menu.hidden=!menu.hidden;target.setAttribute('aria-expanded',String(!menu.hidden));}
     else if(action==='scroll-policy-sec'){const sec=document.getElementById(target.dataset.target||'');sec?.scrollIntoView({behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth',block:'start'});}
-    else if(action==='add'){if(cart.some(c=>c.id===id)){renderCart();openDialog('cart-dialog');return;}if(addToCart(id,1,false)){await animateCart(target);syncInBagButtons();if(target.isConnected){openDialog('cart-dialog');setTimeout(()=>{if(target.isConnected){target.classList.remove('clicked');target.removeAttribute('aria-label');}},250);}}}
-    else if(action==='quick-buy'){if(cart.some(c=>c.id===id)||addToCart(id,1,false)){$('main').dataset.smoothNav='checkout';await closeDialogs({immediate:true});location.hash='checkout';}}
+    else if(action==='add'){pilotTelemetry?.noteFunnel?.('add_to_bag');if(cart.some(c=>c.id===id)){renderCart();openDialog('cart-dialog');return;}if(addToCart(id,1,false)){await animateCart(target);syncInBagButtons();if(target.isConnected){openDialog('cart-dialog');setTimeout(()=>{if(target.isConnected){target.classList.remove('clicked');target.removeAttribute('aria-label');}},250);}}}
+    else if(action==='quick-buy'){pilotTelemetry?.noteFunnel?.('add_to_bag');if(cart.some(c=>c.id===id)||addToCart(id,1,false)){$('main').dataset.smoothNav='checkout';await closeDialogs({immediate:true});location.hash='checkout';}}
     else if(action==='print-label'){if(isAdmin){const request=requestList.find(o=>o.id===id);if(request){if(!canPrintOrderLabel(request))return toast('Labels are only available for active paid orders.');await openLabel(request,{load:store.loadLabel,save:store.saveLabel,thermalPrinter,onPrinted:ids=>markOrdersPrinted(ids)});}}}
-    else if(action==='add-detail'||action==='buy-now'){if(action==='buy-now'){if(cart.some(c=>c.id===id)||addToCart(id,1,false)){$('main').dataset.smoothNav='checkout';location.hash='checkout';}}else{if(cart.some(c=>c.id===id)){renderCart();openDialog('cart-dialog');return;}if(addToCart(id,1,false)){await animateCart(target);syncInBagButtons();if(target.isConnected){openDialog('cart-dialog');setTimeout(()=>{if(target.isConnected){target.classList.remove('clicked');target.removeAttribute('aria-label');}},250);}}}}
+    else if(action==='add-detail'||action==='buy-now'){pilotTelemetry?.noteFunnel?.('add_to_bag');if(action==='buy-now'){if(cart.some(c=>c.id===id)||addToCart(id,1,false)){$('main').dataset.smoothNav='checkout';location.hash='checkout';}}else{if(cart.some(c=>c.id===id)){renderCart();openDialog('cart-dialog');return;}if(addToCart(id,1,false)){await animateCart(target);syncInBagButtons();if(target.isConnected){openDialog('cart-dialog');setTimeout(()=>{if(target.isConnected){target.classList.remove('clicked');target.removeAttribute('aria-label');}},250);}}}}
     else if(action==='set-bag-attachment'){
       const item=cart.find(c=>c.id===id);
       if(item){
         item.attachmentId=target.dataset.attachmentId||'';
+        pilotTelemetry?.noteFunnel?.('back_attachment');
         persistCart();renderCart();
         if(route().page==='checkout'){captureCheckout();renderCheckout();}
       }
@@ -3469,9 +3485,6 @@ store.observeStockSchedule(nextSched=>{
 },()=>{}).catch(()=>{});
 if(typeof window!=='undefined'){
   sendSiteBeacon('visit');
-  setInterval(()=>{
-    if(document.visibilityState==='visible')sendSiteBeacon('ping');
-  },90000);
 }
 function refreshStoreContent(){
   contentCategories(siteContent).forEach((c,i)=>Object.assign(CATEGORIES[i],c));

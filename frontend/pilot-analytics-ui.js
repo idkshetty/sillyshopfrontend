@@ -27,17 +27,43 @@ export function toDatetimeLocalValue(ms) {
   return d.toISOString().slice(0, 16);
 }
 
+export function quickRangeBounds(kind = 'today', nowMs = Date.now()) {
+  const dayMs = 86400000;
+  const istOffset = 19800000;
+  const istNow = new Date(nowMs + istOffset);
+  const startOfTodayIst = Date.UTC(istNow.getUTCFullYear(), istNow.getUTCMonth(), istNow.getUTCDate()) - istOffset;
+  if (kind === 'yesterday') {
+    const f = startOfTodayIst - dayMs;
+    const t = startOfTodayIst - 60000;
+    return { fromMs: f, toMs: t, fromLocal: toDatetimeLocalValue(f), toLocal: toDatetimeLocalValue(t) };
+  }
+  if (kind === '3h') {
+    const f = nowMs - 3 * 3600000;
+    return { fromMs: f, toMs: nowMs, fromLocal: toDatetimeLocalValue(f), toLocal: toDatetimeLocalValue(nowMs) };
+  }
+  return { fromMs: startOfTodayIst, toMs: nowMs, fromLocal: toDatetimeLocalValue(startOfTodayIst), toLocal: toDatetimeLocalValue(nowMs) };
+}
+
 export function pilotControlsMarkup({
   preset = '24h',
   device = 'all',
   fromLocal = '',
   toLocal = '',
+  rangeText = '',
   showHeatmapBtn = false,
   heatmapHref = '#home?heatmap=1'
 } = {}) {
   const fromVal = fromLocal || toDatetimeLocalValue(Date.now() - 3600000);
   const toVal = toLocal || toDatetimeLocalValue(Date.now());
   return `<div class="pilot-filter-bar">
+    <div class="pilot-range-banner" id="na-range-banner">
+      <span>Showing: <strong>${escHtml(rangeText || (preset === 'all' ? 'All time' : preset))}</strong> · ${escHtml(device === 'all' ? 'All devices' : device)}</span>
+      <span class="pilot-chip-group" role="group" aria-label="Quick date ranges">
+        <button type="button" class="pilot-chip" data-pilot-action="set-quick" data-quick="3h">Last 3h</button>
+        <button type="button" class="pilot-chip" data-pilot-action="set-quick" data-quick="today">Today</button>
+        <button type="button" class="pilot-chip" data-pilot-action="set-quick" data-quick="yesterday">Yesterday</button>
+      </span>
+    </div>
     <div class="pilot-preset-row">
       <div class="pilot-chip-group" role="group" aria-label="Timeframe presets">
         ${TRAFFIC_TIME_PRESETS.map(([key, label]) => `<button type="button" class="pilot-chip ${preset === key ? 'is-active' : ''}" data-pilot-action="set-preset" data-preset="${escHtml(key)}">${escHtml(label)}</button>`).join('')}
@@ -158,30 +184,104 @@ export function pilotEngagementMarkup(traffic = {}) {
   </div>`;
 }
 
-export function pilotVisitorsLogMarkup(visitorsLog = []) {
-  const rows = Array.isArray(visitorsLog) ? visitorsLog : [];
-  if (!rows.length) return '<p class="pilot-muted">No visitors recorded in this selected time window.</p>';
-  const fmtTime = ts => ts ? new Date(Number(ts)).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '—';
-  return `<div class="mgr-table-wrap table-wrap"><table class="mgr-table pilot-log-table">
-    <thead><tr><th>Location</th><th>Device</th><th>Source</th><th>Time spent</th><th>Scroll</th><th>Clicks</th><th>Top section</th><th>Last page</th><th>Last seen</th></tr></thead>
-    <tbody>${rows.map(v => {
-      const loc = [v.city, v.region, v.country].filter(Boolean).join(', ') || 'Unknown';
+export function pilotFunnelAndBreakdownsMarkup(traffic = {}) {
+  const funnel = Array.isArray(traffic.funnel) ? traffic.funnel : [];
+  const bd = traffic.breakdowns || {};
+  const eng = traffic.engagement || {};
+  const renderMiniBars = (title, items) => {
+    const list = Array.isArray(items) ? items : [];
+    const maxC = Math.max(1, ...list.map(i => i.count || 0));
+    return `<div class="pilot-bd-group">
+      <h4>${escHtml(title)}</h4>
+      ${list.length ? list.slice(0, 6).map(it => `<div class="pilot-bar-row">
+        <div class="pilot-bar-head"><span>${escHtml(it.label || 'Unknown')}</span><strong>${it.count || 0}</strong></div>
+        <div class="pilot-bar-track"><div class="pilot-bar-fill is-blue" style="width:${Math.max(4, Math.round(((it.count || 0) / maxC) * 100))}%"></div></div>
+      </div>`).join('') : '<p class="pilot-muted">No samples yet.</p>'}
+    </div>`;
+  };
+  return `<div class="pilot-detail-grid">
+    <section class="pilot-card">
+      <h3>Checkout &amp; Purchase Funnel</h3>
+      <p class="pilot-sub">Where shoppers progress or drop off in the selected window.</p>
+      <div class="pilot-kpis-mini">
+        <div><span>Bounce Rate</span><strong>${eng.bounceRatePct || 0}%</strong></div>
+        <div><span>Return Visitors</span><strong>${eng.returnVisitorPct || 0}%</strong></div>
+        <div><span>Major Clicks</span><strong>${eng.majorClickCount || 0}</strong></div>
+        <div><span>Dead / Rage Clicks</span><strong>${eng.deadClickCount || 0} / ${eng.rageClickCount || 0}</strong></div>
+      </div>
+      <div class="pilot-bars-list">
+        ${funnel.length ? funnel.map(st => `<div class="pilot-bar-row">
+          <div class="pilot-bar-head"><span><strong>${escHtml(st.label)}</strong></span><strong>${st.count || 0} (${st.pct || 0}%)</strong></div>
+          <div class="pilot-bar-track"><div class="pilot-bar-fill" style="width:${Math.max(st.count ? 4 : 0, st.pct || 0)}%"></div></div>
+        </div>`).join('') : '<p class="pilot-muted">No funnel data in this window.</p>'}
+      </div>
+    </section>
+    <section class="pilot-card">
+      <h3>Environment, UTMs &amp; Entry/Exit Pages</h3>
+      <p class="pilot-sub">Browsers, OS, viewports, campaign UTMs, and top landing/exit routes.</p>
+      <div class="pilot-bd-grid">
+        ${renderMiniBars('Browsers', bd.browsers)}
+        ${renderMiniBars('Operating Systems', bd.os)}
+        ${renderMiniBars('Viewports', bd.viewports)}
+        ${renderMiniBars('Top Entry Pages', bd.entryPages)}
+        ${renderMiniBars('Top Exit Pages', bd.exitPages)}
+        ${(bd.utmSources || []).length ? renderMiniBars('UTM Campaigns', bd.utmSources) : ''}
+      </div>
+    </section>
+  </div>`;
+}
+
+export function pilotRecentClicksMarkup(recentClicks = []) {
+  const rows = Array.isArray(recentClicks) ? recentClicks : [];
+  if (!rows.length) return '<p class="pilot-muted">No clicks recorded in this selected time window.</p>';
+  const fmtClock = ts => ts ? new Date(Number(ts)).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '—';
+  return `<div class="pilot-table-scroll table-wrap mgr-table-wrap"><table class="mgr-table pilot-log-table">
+    <thead><tr><th>Time</th><th>IP / City</th><th>Signal</th><th>Target &amp; Action</th><th>Section · Page</th></tr></thead>
+    <tbody>${rows.slice(0, 40).map(c => {
+      const badges = [
+        c.major ? '<span class="pilot-badge-major">MAJOR</span>' : '',
+        c.rageClick ? '<span class="pilot-badge-rage">RAGE</span>' : '',
+        c.deadClick ? '<span class="pilot-badge-dead">DEAD</span>' : ''
+      ].filter(Boolean).join(' ') || '<span class="pilot-muted">click</span>';
       return `<tr>
-        <td><strong>${escHtml(loc)}</strong>${v.colo ? ` <small class="pilot-muted">(${escHtml(v.colo)})</small>` : ''}${v.isActive ? ' <span class="pilot-active-badge">LIVE</span>' : ''}</td>
-        <td>${escHtml(v.device || 'Desktop')}</td>
-        <td>${escHtml(v.referrer || 'Direct')}</td>
-        <td><strong>${escHtml(formatDurationSec(v.totalTimeSec || 0))}</strong></td>
-        <td>${v.maxScrollPct || 0}%</td>
-        <td>${v.clickCount || 0}</td>
-        <td>${escHtml(v.topSection || '—')}</td>
-        <td><code>${escHtml(v.lastPath || '#home')}</code></td>
-        <td class="pilot-muted">${escHtml(fmtTime(v.lastSeenAt))}</td>
+        <td class="pilot-muted">${escHtml(fmtClock(c.at))}</td>
+        <td><code>${escHtml(c.ip || '—')}</code><br><small class="pilot-muted">${escHtml([c.city, c.country].filter(Boolean).join(', ') || c.device)}</small></td>
+        <td>${badges}</td>
+        <td><strong>${escHtml(c.targetLabel || 'Click')}</strong>${c.action ? ` <small class="pilot-muted">[${escHtml(c.action)}]</small>` : ''}</td>
+        <td>${escHtml(c.section || 'other')} · <code>#${escHtml(c.page || 'home')}</code></td>
       </tr>`;
     }).join('')}</tbody>
   </table></div>`;
 }
 
-export function mountNetworkAnalyticsPanel(root, { loadTraffic, mountGlobeFn, resolveCoordsFn, onOpenHeatmap } = {}) {
+export function pilotVisitorsLogMarkup(visitorsLog = []) {
+  const rows = Array.isArray(visitorsLog) ? visitorsLog : [];
+  if (!rows.length) return '<p class="pilot-muted">No visitors recorded in this selected time window.</p>';
+  const fmtTime = ts => ts ? new Date(Number(ts)).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '—';
+  return `<div class="pilot-table-scroll mgr-table-wrap table-wrap"><table class="mgr-table pilot-log-table">
+    <thead><tr><th>IP &amp; Network</th><th>Location</th><th>In Time</th><th>Out Time</th><th>Dwell / Span</th><th>Scroll</th><th>Clicks (Major)</th><th>Tech</th><th>Source / UTM</th><th>Entry → Exit</th></tr></thead>
+    <tbody>${rows.map(v => {
+      const loc = [v.city, v.region, v.country].filter(Boolean).join(', ') || 'Unknown';
+      const tech = `${v.device || 'Desktop'} · ${v.browser || '—'} / ${v.os || '—'}${v.viewport ? ` · ${v.viewport}` : ''}`;
+      const src = v.utmSource ? `${v.referrer || 'Direct'} · ${v.utmSource}` : (v.referrer || 'Direct');
+      const friction = (v.deadClicks || 0) + (v.rageClicks || 0);
+      return `<tr>
+        <td><code>${escHtml(v.ip || '—')}</code>${v.isp ? `<br><small class="pilot-muted">${escHtml(v.isp)}</small>` : ''}</td>
+        <td><strong>${escHtml(loc)}</strong>${v.colo ? ` <small class="pilot-muted">(${escHtml(v.colo)})</small>` : ''}${v.isActive ? ' <span class="pilot-active-badge">LIVE</span>' : (v.exited ? ' <span class="pilot-badge-exited">EXITED</span>' : '')}</td>
+        <td class="pilot-muted">${escHtml(fmtTime(v.inTimeAt || v.firstSeenAt))}</td>
+        <td class="pilot-muted">${escHtml(fmtTime(v.outTimeAt || v.lastSeenAt))}</td>
+        <td><strong>${escHtml(formatDurationSec(v.totalTimeSec || 0))}</strong>${v.spanSec > (v.totalTimeSec || 0) ? `<br><small class="pilot-muted">span ${escHtml(formatDurationSec(v.spanSec))}</small>` : ''}</td>
+        <td>${v.maxScrollPct || 0}%</td>
+        <td><strong>${v.clickCount || 0}</strong>${v.majorClicks ? ` <small>(${v.majorClicks} major)</small>` : ''}${friction ? ` <span class="pilot-badge-dead">${friction} fric</span>` : ''}</td>
+        <td><small>${escHtml(tech)}</small></td>
+        <td>${escHtml(src)}</td>
+        <td><code>${escHtml(v.entryPath || '#home')}</code> → <code>${escHtml(v.exitPath || v.lastPath || '#home')}</code></td>
+      </tr>`;
+    }).join('')}</tbody>
+  </table></div>`;
+}
+
+export function mountNetworkAnalyticsPanel(root, { loadTraffic, callBackend, mountGlobeFn, resolveCoordsFn, onOpenHeatmap } = {}) {
   if (!root) return { destroy() {} };
   let preset = 'all';
   let device = 'all';
@@ -193,6 +293,8 @@ export function mountNetworkAnalyticsPanel(root, { loadTraffic, mountGlobeFn, re
   let itemSort = 'clicks';
   let focusedKey = '';
   let data = null;
+  let storageStatus = null;
+  let storageBusy = false;
   let errorMsg = '';
   let inFlight = false;
   let timer = null;
@@ -236,9 +338,12 @@ export function mountNetworkAnalyticsPanel(root, { loadTraffic, mountGlobeFn, re
         </div>
       </section>
       <div id="na-engagement"></div>
+      <div id="na-funnel"></div>
       <section class="settings-note" id="na-referrers" style="margin-top:16px"></section>
+      <section class="settings-note" id="na-clicks"></section>
       <section class="settings-note" id="na-demand"></section>
       <section class="settings-note" id="na-visitors-log"></section>
+      <section class="settings-note pilot-storage-card" id="na-storage"></section>
     </div>`;
     renderControls();
   }
@@ -246,7 +351,7 @@ export function mountNetworkAnalyticsPanel(root, { loadTraffic, mountGlobeFn, re
   function renderControls() {
     const ctrlHost = root.querySelector('#na-controls');
     if (!ctrlHost) return;
-    ctrlHost.innerHTML = pilotControlsMarkup({ preset, device, fromLocal, toLocal, showHeatmapBtn: true });
+    ctrlHost.innerHTML = pilotControlsMarkup({ preset, device, fromLocal, toLocal, rangeText: data?.window?.rangeText || '', showHeatmapBtn: true });
   }
 
   function patchSlot(key, selector, nextHtml) {
@@ -299,11 +404,14 @@ export function mountNetworkAnalyticsPanel(root, { loadTraffic, mountGlobeFn, re
     patchSlot('kpis', '#na-kpis', `<div class="stats-grid" style="grid-template-columns:repeat(auto-fit,minmax(145px,1fr));margin-bottom:16px">
       <div class="stat"><span>Active visitors now</span><strong>${s.activeNow || 0}</strong></div>
       <div class="stat"><span>Visitors (${esc(data.window?.label || 'Window')})</span><strong>${s.windowVisitors ?? s.totalVisitors ?? 0}</strong></div>
-      <div class="stat"><span>Clicks (${esc(data.window?.label || 'Window')})</span><strong>${s.windowClicks ?? s.totalProductClicks ?? 0}</strong></div>
-      <div class="stat"><span>Today (IST)</span><strong>${s.todayVisitors || 0}</strong></div>
-      <div class="stat"><span>Yesterday</span><strong>${s.yesterdayVisitors || 0}</strong></div>
+      <div class="stat"><span>Page views (Window)</span><strong>${s.totalPageViews || 0}</strong></div>
+      <div class="stat"><span>Clicks (${esc(data.window?.label || 'Window')})</span><strong>${s.windowClicks ?? s.totalProductClicks ?? 0}${s.windowMajorClicks ? ` (${s.windowMajorClicks} major)` : ''}</strong></div>
+      <div class="stat"><span>Today / Yesterday (IST)</span><strong>${s.todayVisitors || 0} / ${s.yesterdayVisitors || 0}</strong></div>
       <div class="stat"><span>All-time visitors</span><strong>${s.lifetimeVisitors ?? s.totalVisitors ?? 0}</strong></div>
     </div>`);
+
+    const bannerEl = root.querySelector('#na-range-banner strong');
+    if (bannerEl && data.window?.rangeText) bannerEl.textContent = data.window.rangeText;
 
     patchSlot('timeline', '#na-timeline', pilotTimelineSvgMarkup(data.timeline, data.window));
 
@@ -317,12 +425,17 @@ export function mountNetworkAnalyticsPanel(root, { loadTraffic, mountGlobeFn, re
     }).join('') : '<p class="muted">No visitor locations recorded in this window.</p>');
 
     patchSlot('engagement', '#na-engagement', pilotEngagementMarkup(data));
+    patchSlot('funnel', '#na-funnel', pilotFunnelAndBreakdownsMarkup(data));
 
     patchSlot('referrers', '#na-referrers', `<h2>Traffic Sources</h2>
       ${(data.topReferrers || []).length ? `<div class="pilot-bars-list" style="margin-top:10px">${data.topReferrers.map(r => `<div class="pilot-bar-row">
         <div class="pilot-bar-head"><span><strong>${esc(r.source)}</strong></span><strong>${r.count}</strong></div>
         <div class="pilot-bar-track"><div class="pilot-bar-fill is-blue" style="width:${Math.max(4, Math.round((r.count / maxRef) * 100))}%"></div></div>
       </div>`).join('')}</div>` : '<p class="muted">No referrer data in this window.</p>'}`);
+
+    patchSlot('clicks', '#na-clicks', `<h2>Major &amp; Recent Click Feed (${(data.recentClicks || []).length})</h2>
+      <p class="small muted" style="margin-bottom:10px">Real-time shopper interactions, major funnel actions, and dead/rage click friction signals.</p>
+      ${pilotRecentClicksMarkup(data.recentClicks)}`);
 
     patchSlot('demand', '#na-demand', `<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:10px">
         <div>
@@ -346,10 +459,53 @@ export function mountNetworkAnalyticsPanel(root, { loadTraffic, mountGlobeFn, re
       </table></div>` : '<p class="muted">No product demand recorded yet.</p>'}`);
 
     patchSlot('visitorsLog', '#na-visitors-log', `<h2>All Visitors Log (${(data.visitorsLog || []).length})</h2>
-      <p class="small muted" style="margin-bottom:10px">Detailed session-by-session breakdown of location, device, referrer, time spent, scroll depth, and clicks.</p>
+      <p class="small muted" style="margin-bottom:10px">Session-by-session IP, location, In/Out time, browser/OS/viewport, scroll depth, clicks, and entry → exit path.</p>
       ${pilotVisitorsLogMarkup(data.visitorsLog)}`);
 
+    renderStorageSlot();
     syncGlobe();
+  }
+
+  function renderStorageSlot() {
+    if (!callBackend) return;
+    if (!storageStatus) {
+      patchSlot('storage', '#na-storage', `<h2>Storage &amp; Data Transfer Status</h2><p class="muted">Checking D1 and RTDB transfer counts…</p>`);
+      return;
+    }
+    const st = storageStatus;
+    const d1Entries = Object.entries(st.d1Counts || {});
+    const rtdbEntries = Object.entries(st.rtdbCounts || {});
+    const stHtml = `<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
+        <div>
+          <h2>Storage &amp; Data Transfer Status</h2>
+          <p class="small muted">Active backend: <strong>${esc(st.storage || (st.d1Bound ? 'd1' : 'firestore'))}</strong>${st.state?.allDone ? ' · Historical transfer complete' : ''}</p>
+        </div>
+        <div class="pilot-chip-group">
+          <button type="button" class="pilot-chip" data-na-storage-refresh ${storageBusy ? 'disabled' : ''}>Check counts</button>
+          <button type="button" class="pilot-chip is-active" data-na-storage-run ${storageBusy || !st.d1Bound ? 'disabled' : ''}>Run transfer now</button>
+        </div>
+      </div>
+      ${st.warning ? `<p class="notice" style="margin:8px 0 0">${esc(st.warning)}</p>` : ''}
+      <div class="pilot-storage-grid">
+        <div><h4>D1 Tables</h4>${d1Entries.length ? d1Entries.map(([k, v]) => `<div><span>${esc(k)}</span><strong>${v}</strong></div>`).join('') : '<p class="pilot-muted">No D1 rows reported yet (D1 binding not active).</p>'}</div>
+        <div><h4>RTDB Telemetry &amp; Bags</h4>${rtdbEntries.length ? rtdbEntries.map(([k, v]) => `<div><span>${esc(k)}</span><strong>${v === null ? '—' : v}</strong></div>`).join('') : '<p class="pilot-muted">RTDB unavailable.</p>'}</div>
+      </div>`;
+    patchSlot('storage', '#na-storage', stHtml);
+  }
+
+  async function refreshStorageStatus({ runTransfer = false } = {}) {
+    if (!callBackend || storageBusy || disposed) return;
+    storageBusy = true;
+    renderStorageSlot();
+    try {
+      storageStatus = await callBackend('migrateToD1', runTransfer ? { mode: 'both', overwrite: false, includeTracking: true, respectState: false } : { mode: 'status' });
+      if (runTransfer) storageStatus = await callBackend('migrateToD1', { mode: 'status' });
+    } catch (err) {
+      storageStatus = { storage: 'unknown', d1Bound: false, d1Counts: {}, rtdbCounts: {}, warning: err?.message || 'Could not inspect transfer status.' };
+    } finally {
+      storageBusy = false;
+      renderStorageSlot();
+    }
   }
 
   function syncGlobe() {
@@ -371,9 +527,22 @@ export function mountNetworkAnalyticsPanel(root, { loadTraffic, mountGlobeFn, re
   const onClick = event => {
     const t = event.target;
     if (!t || !root.contains(t)) return;
+    const quickBtn = t.closest('[data-pilot-action="set-quick"]');
+    if (quickBtn) {
+      const b = quickRangeBounds(quickBtn.dataset.quick || 'today');
+      preset = 'custom';
+      fromMs = b.fromMs;
+      toMs = b.toMs;
+      fromLocal = b.fromLocal;
+      toLocal = b.toLocal;
+      renderControls();
+      void fetchNow({ manual: true });
+      return;
+    }
     const presetBtn = t.closest('[data-pilot-action="set-preset"]');
     if (presetBtn) {
       preset = presetBtn.dataset.preset || 'all';
+      if (preset !== 'custom') { fromMs = 0; toMs = 0; }
       renderControls();
       void fetchNow({ manual: true });
       return;
@@ -383,6 +552,14 @@ export function mountNetworkAnalyticsPanel(root, { loadTraffic, mountGlobeFn, re
       device = devBtn.dataset.device || 'all';
       renderControls();
       void fetchNow({ manual: true });
+      return;
+    }
+    if (t.closest('[data-na-storage-refresh]')) {
+      void refreshStorageStatus({ runTransfer: false });
+      return;
+    }
+    if (t.closest('[data-na-storage-run]')) {
+      void refreshStorageStatus({ runTransfer: true });
       return;
     }
     if (t.closest('[data-pilot-action="open-heatmap"]')) {
@@ -469,6 +646,7 @@ export function mountNetworkAnalyticsPanel(root, { loadTraffic, mountGlobeFn, re
   root.addEventListener('submit', onSubmit);
   patchDataSlots();
   void fetchNow({ manual: true });
+  void refreshStorageStatus({ runTransfer: false });
   timer = setInterval(() => {
     if (!paused && typeof document !== 'undefined' && document.visibilityState === 'visible') void fetchNow();
   }, 8000);

@@ -46,6 +46,28 @@ function extractProductId(el) {
   return m ? m[1] : '';
 }
 
+function classifyPilotClick(el) {
+  if (!el || typeof el.closest !== 'function') return { major: false, action: '', deadClick: false };
+  const interactive = el.closest('[data-action], [data-pilot-major], a[href], button, input, select, textarea, summary, label, [role="button"]');
+  const actAttr = interactive?.dataset?.action || '';
+  const href = interactive?.getAttribute?.('href') || '';
+  const pid = extractProductId(el);
+  let major = false;
+  let action = '';
+  if (actAttr === 'add' || actAttr === 'add-detail') { major = true; action = 'add_to_bag'; }
+  else if (actAttr === 'buy-now' || actAttr === 'quick-buy') { major = true; action = 'buy_now'; }
+  else if (actAttr === 'cart') { major = true; action = 'bag_open'; }
+  else if (actAttr === 'cart-checkout' || actAttr === 'checkout-next' || actAttr === 'checkout-edit-step') { major = true; action = 'checkout_next'; }
+  else if (actAttr === 'set-bag-attachment' || actAttr === 'toggle-bag-attach-preview') { major = true; action = 'back_attachment'; }
+  else if (actAttr === 'search' || actAttr === 'apply-promo') { major = true; action = actAttr === 'search' ? 'search' : 'promo'; }
+  else if (actAttr === 'toggle-filter-menu' || actAttr === 'filter-chip' || actAttr === 'reset-filters') { major = true; action = 'filter'; }
+  else if (interactive?.id === 'checkout-submit' || interactive?.dataset?.pilotMajor) { major = true; action = interactive.dataset?.pilotMajor || 'cta'; }
+  else if (href.startsWith('#product/') || pid) { major = true; action = 'product_view'; }
+  else if (href.startsWith('#artist/')) { major = true; action = 'artist_link'; }
+  else if (interactive?.matches?.('button.button, a.button')) { major = true; action = 'cta'; }
+  return { major, action, deadClick: !interactive };
+}
+
 function currentScrollPct() {
   if (typeof document === 'undefined' || typeof window === 'undefined') return 0;
   const docEl = document.documentElement;
@@ -78,7 +100,7 @@ function detectViewportCenterSection(page) {
 
 export function mountPilotTelemetry({ getRoute, getVisitorId, sendEvent, isSuppressed }) {
   if (typeof window === 'undefined' || typeof document === 'undefined') {
-    return { flushNow() {}, destroy() {} };
+    return { noteProductView() {}, noteFunnel() {}, flushNow() {}, destroy() {} };
   }
 
   let lastActivityAt = Date.now();
@@ -88,7 +110,10 @@ export function mountPilotTelemetry({ getRoute, getVisitorId, sendEvent, isSuppr
   let flushedMaxScroll = 0;
   const pendingDwell = Object.create(null);
   const pendingClicks = [];
+  const pendingFunnel = new Set();
   const recentClickMap = new Map();
+  const rageHistory = [];
+  let debounceFlushTimer = null;
 
   const touchActivity = () => {
     lastActivityAt = Date.now();
@@ -100,6 +125,21 @@ export function mountPilotTelemetry({ getRoute, getVisitorId, sendEvent, isSuppr
     const pct = currentScrollPct();
     if (pct > maxScrollPct) maxScrollPct = pct;
   };
+
+  function detectRageClick(x, y, now) {
+    rageHistory.push({ x, y, at: now });
+    while (rageHistory.length && now - rageHistory[0].at > 1500) rageHistory.shift();
+    if (rageHistory.length < 3) return false;
+    return rageHistory.filter(p => Math.hypot(p.x - x, p.y - y) <= 40).length >= 3;
+  }
+
+  function scheduleChunkFlush(delayMs = 1500) {
+    if (debounceFlushTimer) clearTimeout(debounceFlushTimer);
+    debounceFlushTimer = setTimeout(() => {
+      debounceFlushTimer = null;
+      flushEngagement();
+    }, delayMs);
+  }
 
   const onClick = event => {
     touchActivity();
@@ -118,6 +158,13 @@ export function mountPilotTelemetry({ getRoute, getVisitorId, sendEvent, isSuppr
     const section = detectSectionFromEl(event.target);
     const targetLabel = summarizeClickTarget(event.target);
     const productId = extractProductId(event.target);
+    const { major, action, deadClick } = classifyPilotClick(event.target);
+    const rageClick = detectRageClick(event.clientX || 0, event.clientY || 0, Date.now());
+
+    if (action === 'product_view') pendingFunnel.add('product_view');
+    if (action === 'add_to_bag' || action === 'buy_now') pendingFunnel.add('add_to_bag');
+    if (action === 'bag_open') pendingFunnel.add('bag_open');
+    if (action === 'checkout_next') pendingFunnel.add('checkout_start');
 
     if (productId) {
       const now = Date.now();
@@ -131,6 +178,10 @@ export function mountPilotTelemetry({ getRoute, getVisitorId, sendEvent, isSuppr
       targetLabel,
       xPct,
       yPct,
+      major,
+      ...(action ? { action } : {}),
+      ...(deadClick ? { deadClick: true } : {}),
+      ...(rageClick ? { rageClick: true } : {}),
       path: location.hash || `#${page}`,
       viewportW: window.innerWidth || 0,
       viewportH: window.innerHeight || 0,
@@ -138,25 +189,38 @@ export function mountPilotTelemetry({ getRoute, getVisitorId, sendEvent, isSuppr
       ...(productId ? { productId } : {})
     });
     if (pendingClicks.length > 25) pendingClicks.shift();
-    if (pendingClicks.length >= 8) flushEngagement({ force: true });
+    if (pendingClicks.length >= 20) {
+      if (debounceFlushTimer) { clearTimeout(debounceFlushTimer); debounceFlushTimer = null; }
+      flushEngagement({ force: true });
+    } else if (major || rageClick) {
+      scheduleChunkFlush(1500);
+    }
   };
 
-  function flushEngagement({ force = false } = {}) {
+  function flushEngagement({ force = false, exited = false } = {}) {
     if (isSuppressed?.()) return;
+    if (debounceFlushTimer) { clearTimeout(debounceFlushTimer); debounceFlushTimer = null; }
     const page = getRoute?.()?.page || currentPage || 'home';
     if (page === 'admin') return;
     const hasDwell = Object.keys(pendingDwell).length > 0;
     const hasClicks = pendingClicks.length > 0;
+    const hasFunnel = pendingFunnel.size > 0;
     const scrollGrew = maxScrollPct > flushedMaxScroll;
-    if (!force && !hasClicks && pendingDurationSec < 2 && !scrollGrew && !hasDwell) return;
-    if (!hasClicks && pendingDurationSec === 0 && !scrollGrew && !hasDwell) return;
+    if (!force && !exited && !hasClicks && !hasFunnel && pendingDurationSec < 2 && !scrollGrew && !hasDwell) return;
+    if (!exited && !hasClicks && !hasFunnel && pendingDurationSec === 0 && !scrollGrew && !hasDwell) return;
 
     const clicks = pendingClicks.splice(0, 25);
+    const funnelSteps = [...pendingFunnel];
+    pendingFunnel.clear();
     const payload = {
       page: currentPage || page,
       durationSec: pendingDurationSec,
       maxScrollPct,
       sectionDwell: { ...pendingDwell },
+      viewportW: window.innerWidth || 0,
+      viewportH: window.innerHeight || 0,
+      ...(funnelSteps.length ? { funnelSteps } : {}),
+      ...(exited ? { exited: true } : {}),
       ...(clicks.length ? { clicks } : {})
     };
     pendingDurationSec = 0;
@@ -180,15 +244,16 @@ export function mountPilotTelemetry({ getRoute, getVisitorId, sendEvent, isSuppr
     pendingDurationSec += 1;
     const sec = detectViewportCenterSection(page);
     if (sec) pendingDwell[sec] = (pendingDwell[sec] || 0) + 1;
-    if (pendingDurationSec >= 20) flushEngagement();
+    // Chunked passive flush every 45s — sends zero pings while idle
+    if (pendingDurationSec >= 45) flushEngagement();
   }, 1000);
 
   const onVisibilityChange = () => {
-    if (document.visibilityState === 'hidden') flushEngagement({ force: true });
+    if (document.visibilityState === 'hidden') flushEngagement({ force: true, exited: true });
     else touchActivity();
   };
 
-  const onPageHide = () => flushEngagement({ force: true });
+  const onPageHide = () => flushEngagement({ force: true, exited: true });
   const onHashChange = () => {
     const nextPage = getRoute?.()?.page || 'home';
     if (nextPage !== currentPage) {
@@ -196,6 +261,8 @@ export function mountPilotTelemetry({ getRoute, getVisitorId, sendEvent, isSuppr
       currentPage = nextPage;
       maxScrollPct = currentScrollPct();
       flushedMaxScroll = 0;
+      if (nextPage === 'product') pendingFunnel.add('product_view');
+      if (nextPage === 'checkout') pendingFunnel.add('checkout_start');
     }
   };
 
@@ -208,24 +275,36 @@ export function mountPilotTelemetry({ getRoute, getVisitorId, sendEvent, isSuppr
   window.addEventListener('hashchange', onHashChange);
 
   return {
-    flushNow() { flushEngagement({ force: true }); },
+    flushNow(opts = {}) { flushEngagement({ force: true, ...(opts || {}) }); },
     noteProductView(productId) {
       if (!productId || isSuppressed?.()) return;
       const now = Date.now();
       if (now - (recentClickMap.get(productId) || 0) < 1800) return;
       recentClickMap.set(productId, now);
+      pendingFunnel.add('product_view');
       pendingClicks.push({
         page: getRoute?.()?.page || 'product',
         section: 'product',
         targetLabel: 'View artwork',
+        action: 'product_view',
+        major: true,
         path: location.hash || `#product/${productId}`,
+        viewportW: window.innerWidth || 0,
+        viewportH: window.innerHeight || 0,
         at: now,
         productId
       });
       if (pendingClicks.length > 25) pendingClicks.shift();
-      if (pendingClicks.length >= 8) flushEngagement({ force: true });
+      if (pendingClicks.length >= 20) flushEngagement({ force: true });
+      else scheduleChunkFlush(1500);
+    },
+    noteFunnel(step) {
+      if (!step || isSuppressed?.()) return;
+      pendingFunnel.add(String(step).slice(0, 32));
+      scheduleChunkFlush(1500);
     },
     destroy() {
+      if (debounceFlushTimer) clearTimeout(debounceFlushTimer);
       clearInterval(secondTimer);
       window.removeEventListener('pointerdown', touchActivity);
       window.removeEventListener('keydown', touchActivity);
