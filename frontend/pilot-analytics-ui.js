@@ -320,7 +320,162 @@ export function pilotVisitorsLogMarkup(visitorsLog = []) {
   </table></div>`;
 }
 
-export function mountNetworkAnalyticsPanel(root, { loadTraffic, callBackend, mountGlobeFn, resolveCoordsFn, onOpenHeatmap } = {}) {
+export function pilotCommerceAnalyticsMarkup(traffic = {}) {
+  const commerce = traffic.commerce || {};
+  const k = commerce.kpis || {};
+  const channels = Array.isArray(commerce.attributionChannels) ? commerce.attributionChannels : [];
+  const inr = n => '₹' + (Number(n) || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 });
+  return `<section class="settings-note pilot-commerce-card">
+    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:10px">
+      <div>
+        <h2>Commerce &amp; Attribution (Shopify-Parity KPIs)</h2>
+        <p class="small muted">Real conversion rate, average order value, repeat buyers, and revenue by acquisition channel.</p>
+      </div>
+      <span class="pilot-stock-pill is-in-stock">Lifetime: ${inr(k.lifetimeRevenueInr)} (${k.lifetimeOrders || 0} paid)</span>
+    </div>
+    <div class="stats-grid" style="grid-template-columns:repeat(auto-fit,minmax(145px,1fr));margin-bottom:14px">
+      <div class="stat"><span>Paid Orders</span><strong>${k.ordersCount || 0}</strong><small class="pilot-muted">${k.uniqueBuyers || 0} unique buyers</small></div>
+      <div class="stat"><span>Gross Revenue</span><strong>${inr(k.grossRevenueInr)}</strong><small class="pilot-muted">AOV ${inr(k.aovInr)}</small></div>
+      <div class="stat"><span>Conversion Rate</span><strong>${Number(k.conversionRatePct || 0).toFixed(2)}%</strong><small class="pilot-muted">Orders / sessions</small></div>
+      <div class="stat"><span>Repeat Buyer Rate</span><strong>${Number(k.returningBuyerRatePct || 0).toFixed(1)}%</strong><small class="pilot-muted">${k.returningBuyers || 0} returning · LTV ${inr(k.avgLtvInr)}</small></div>
+      <div class="stat"><span>1st-Time vs Repeat</span><strong>${inr(k.firstTimeRevenueInr)}</strong><small class="pilot-muted">Repeat: ${inr(k.returningRevenueInr)}</small></div>
+    </div>
+    <h3 style="margin:0 0 8px;font-size:.95rem">Channel &amp; UTM Revenue Attribution</h3>
+    ${channels.length ? `<div class="pilot-table-scroll table-wrap"><table class="admin-products-table">
+      <thead><tr><th>Channel / UTM Source</th><th>Sessions</th><th>Paid Orders</th><th>Conv %</th><th>Attributed Revenue</th></tr></thead>
+      <tbody>${channels.map(ch => `<tr>
+        <td><strong>${escHtml(ch.channel || 'Direct')}</strong></td>
+        <td>${ch.sessions || 0}</td>
+        <td>${ch.orders || 0}</td>
+        <td>${Number(ch.conversionRatePct || 0).toFixed(2)}%</td>
+        <td><strong>${inr(ch.revenueInr)}</strong></td>
+      </tr>`).join('')}</tbody>
+    </table></div>` : '<p class="pilot-muted">No attributed channels or paid orders recorded in this window yet.</p>'}
+  </section>`;
+}
+
+export function pilotArtworkPoolMarkup(traffic = {}) {
+  const pool = traffic.commerce?.artworkPool || {};
+  const byCategory = Array.isArray(pool.byCategory) ? pool.byCategory : [];
+  const byArtist = Array.isArray(pool.byArtist) ? pool.byArtist : [];
+  const daysLeft = pool.estDaysToSellOut !== null && pool.estDaysToSellOut !== undefined
+    ? `~${pool.estDaysToSellOut} days`
+    : 'Awaiting pace';
+  const renderRows = (title, rows) => `<div class="pilot-bd-group">
+    <h4>${escHtml(title)}</h4>
+    ${rows.length ? rows.map(r => `<div class="pilot-bar-row">
+      <div class="pilot-bar-head"><span><strong>${escHtml(r.name)}</strong> (${r.available} left / ${r.sold} sold)</span><strong>${Number(r.sellThroughPct || 0).toFixed(0)}%</strong></div>
+      <div class="pilot-bar-track"><div class="pilot-bar-fill" style="width:${Math.max(4, Math.min(100, Math.round(r.sellThroughPct || 0)))}%"></div></div>
+    </div>`).join('') : '<p class="pilot-muted">No artworks grouped yet.</p>'}
+  </div>`;
+  return `<h2>1-of-1 Artwork Pool &amp; Studio Pace</h2>
+    <p class="small muted" style="margin-bottom:10px">Each artwork is unique (qty 1). Tracks overall available gallery pool, 30-day sell-through velocity, and category/artist depletion.</p>
+    <div class="stats-grid" style="grid-template-columns:repeat(auto-fit,minmax(140px,1fr));margin-bottom:14px">
+      <div class="stat"><span>Total Pool Listed</span><strong>${pool.totalArtworks || 0}</strong><small class="pilot-muted">${pool.hiddenAvailableCount || 0} hidden/draft</small></div>
+      <div class="stat"><span>Available Now</span><strong>${pool.availableCount || 0}</strong><small class="pilot-muted">Live on storefront</small></div>
+      <div class="stat"><span>Sold Out (1-of-1)</span><strong>${pool.soldOutCount || 0}</strong><small class="pilot-muted">${Number(pool.sellThroughPct || 0).toFixed(1)}% sell-through</small></div>
+      <div class="stat"><span>Sold Last 30d</span><strong>${pool.soldLast30d || 0}</strong><small class="pilot-muted">${Number(pool.salesPerWeek || 0).toFixed(1)} pieces / week</small></div>
+      <div class="stat"><span>Est. Pool Runway</span><strong>${escHtml(daysLeft)}</strong><small class="pilot-muted">At 30-day sales pace</small></div>
+    </div>
+    <div class="pilot-bd-grid" style="margin-top:8px">
+      ${renderRows('Sell-Through by Category', byCategory)}
+      ${renderRows('Sell-Through by Artist', byArtist)}
+    </div>`;
+}
+
+export function pilotSearchInsightsMarkup(traffic = {}) {
+  const si = traffic.commerce?.searchInsights || {};
+  const topQ = Array.isArray(si.topQueries) ? si.topQueries : [];
+  const zeroQ = Array.isArray(si.zeroResultQueries) ? si.zeroResultQueries : [];
+  return `<section class="pilot-card">
+    <h3>On-Site Search Insights (${si.totalSearches || 0})</h3>
+    <p class="pilot-sub">What visitors search for and missing artwork terms with 0 results.</p>
+    <div class="pilot-bd-grid">
+      <div class="pilot-bd-group">
+        <h4>Top Searches</h4>
+        ${topQ.length ? topQ.slice(0, 8).map(q => `<div class="pilot-bar-row">
+          <div class="pilot-bar-head"><span><strong>"${escHtml(q.query)}"</strong></span><strong>${q.count}× (${q.lastResultCount} hits)</strong></div>
+        </div>`).join('') : '<p class="pilot-muted">No searches recorded yet.</p>'}
+      </div>
+      <div class="pilot-bd-group">
+        <h4>Zero-Result Catalogue Gaps</h4>
+        ${zeroQ.length ? zeroQ.slice(0, 8).map(q => `<div class="pilot-bar-row">
+          <div class="pilot-bar-head"><span><strong>"${escHtml(q.query)}"</strong></span><strong class="pilot-badge-dead">${q.zeroCount} misses</strong></div>
+        </div>`).join('') : '<p class="pilot-muted">No zero-result searches in this window.</p>'}
+      </div>
+    </div>
+  </section>`;
+}
+
+export function pilotAbandonedRecoveryMarkup(traffic = {}) {
+  const items = Array.isArray(traffic.commerce?.abandonedCheckouts) ? traffic.commerce.abandonedCheckouts : [];
+  const inr = n => '₹' + (Number(n) || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 });
+  return `<section class="pilot-card">
+    <h3>Abandoned Checkouts &amp; Stale Bags (${items.length})</h3>
+    <p class="pilot-sub">Unpaid checkouts (&gt;20 min) and active bags (&gt;30 min) ready for gentle studio follow-up.</p>
+    ${items.length ? `<div class="pilot-recovery-list">${items.slice(0, 8).map(it => {
+      const digits = String(it.phone || '').replace(/\D+/g, '');
+      const waPhone = digits.length === 10 ? `91${digits}` : digits;
+      const artList = (it.itemTitles || []).join(', ') || 'your artwork';
+      const msg = `Hi ${it.customerName || 'there'}, this is hehe.cafe! We noticed ${artList} (${inr(it.amountInr)}) in your bag — let us know if you need any help completing your order.`;
+      const waUrl = waPhone.length >= 10 ? `https://wa.me/${waPhone}?text=${encodeURIComponent(msg)}` : '';
+      return `<div class="pilot-recovery-row">
+        <div>
+          <strong>${escHtml(it.customerName || 'Shopper')}</strong>
+          <span class="pilot-stock-pill ${it.kind === 'checkout' ? 'is-sold' : 'is-hidden'}">${it.kind === 'checkout' ? 'Checkout unpaid' : 'In bag'} · ${it.ageMinutes}m ago</span>
+          <div class="pilot-muted small">${escHtml(artList)} · <strong>${inr(it.amountInr)}</strong></div>
+          <div class="pilot-muted small">${escHtml([it.email, it.phone, it.city].filter(Boolean).join(' · ') || 'Anonymous guest bag')}</div>
+        </div>
+        <div class="pilot-chip-group">
+          ${waUrl ? `<a class="pilot-chip is-active" href="${escHtml(waUrl)}" target="_blank" rel="noopener">WhatsApp ↗</a>` : ''}
+          <button type="button" class="pilot-chip" data-copy-recovery="${escHtml(msg)}">Copy note</button>
+        </div>
+      </div>`;
+    }).join('')}</div>` : '<p class="pilot-muted">No abandoned checkouts or stale bags right now.</p>'}
+  </section>`;
+}
+
+export function pilotSystemHealthMarkup(health = null, { loading = false, error = '' } = {}) {
+  if (!health && error) {
+    return `<div class="pilot-health-head">
+      <div><h2>Live System Health</h2><p class="notice">${escHtml(error)}</p></div>
+      <div class="pilot-chip-group">
+        <button type="button" class="pilot-chip" data-na-health-refresh>Retry probe</button>
+        <a class="pilot-chip" href="status.html" target="_blank" rel="noopener">Open status page ↗</a>
+      </div>
+    </div>`;
+  }
+  if (!health) {
+    return `<div class="pilot-health-head">
+      <div><h2>Live System Health</h2><p class="small muted">${loading ? 'Probing database, realtime, auth, payments, and crons…' : 'Status monitor ready.'}</p></div>
+      <a class="pilot-chip" href="status.html" target="_blank" rel="noopener">Open status page ↗</a>
+    </div>`;
+  }
+  const services = Array.isArray(health.services) ? health.services : [];
+  const overallClass = health.status === 'operational' ? 'is-in-stock' : (health.status === 'degraded' ? 'is-hidden' : 'is-sold');
+  const overallLabel = health.status === 'operational' ? 'All Systems Operational' : (health.status === 'degraded' ? 'Degraded' : 'Outage Detected');
+  return `<div class="pilot-health-head">
+      <div>
+        <h2>Live System Health <span class="pilot-stock-pill ${overallClass}">${escHtml(overallLabel)} · ${Number(health.overall90dUptime ?? 100).toFixed(2)}% (90d)</span></h2>
+        <p class="small muted">Runtime: ${escHtml(health.runtime || 'API')} · Checked ${health.checkedAt ? escHtml(new Date(health.checkedAt).toLocaleTimeString('en-IN')) : 'just now'}</p>
+      </div>
+      <div class="pilot-chip-group">
+        <button type="button" class="pilot-chip" data-na-health-refresh ${loading ? 'disabled' : ''}>${loading ? 'Checking…' : 'Run live check ↻'}</button>
+        <a class="pilot-chip is-active" href="status.html" target="_blank" rel="noopener">Public status page ↗</a>
+      </div>
+    </div>
+    <div class="pilot-health-grid">
+      ${services.map(svc => {
+        const cls = svc.status === 'operational' ? 'is-in-stock' : (svc.status === 'degraded' ? 'is-hidden' : 'is-sold');
+        return `<div class="pilot-health-chip">
+          <div class="pilot-health-top"><strong>${escHtml(svc.name)}</strong><span class="pilot-stock-pill ${cls}">${escHtml(svc.status)}</span></div>
+          <small class="pilot-muted">${escHtml(svc.detail || 'OK')} · ${Number(svc.latencyMs || 0)}ms</small>
+        </div>`;
+      }).join('')}
+    </div>`;
+}
+
+export function mountNetworkAnalyticsPanel(root, { loadTraffic, loadHealth, callBackend, mountGlobeFn, resolveCoordsFn, onOpenHeatmap } = {}) {
   if (!root) return { destroy() {} };
   let preset = 'all';
   let device = 'all';
@@ -332,8 +487,13 @@ export function mountNetworkAnalyticsPanel(root, { loadTraffic, callBackend, mou
   let itemSort = 'clicks';
   let focusedKey = '';
   let data = null;
+  let healthData = null;
+  let healthLoading = false;
+  let healthError = '';
   let storageStatus = null;
   let storageBusy = false;
+  let syncMessage = '';
+  let syncError = '';
   let errorMsg = '';
   let rangeError = '';
   let inFlight = false;
@@ -356,15 +516,20 @@ export function mountNetworkAnalyticsPanel(root, { loadTraffic, callBackend, mou
       </div>
       <div class="admin-title-actions">
         <button type="button" class="button outline small" id="na-toggle-live" data-na-toggle-live>${paused ? 'Resume live (8s)' : 'Live · 8s (Pause)'}</button>
+        <button type="button" class="button outline small" data-na-sync-rtdb>Sync D1 → RTDB ↻</button>
         <button type="button" class="button outline small" data-na-refresh>Refresh ↻</button>
       </div>
     </div>
 
     <div id="na-controls"></div>
+    <section class="settings-note pilot-health-card" id="na-health" style="margin-bottom:14px"></section>
     <div id="na-status"></div>
     <div id="na-body" hidden>
+      <div id="na-commerce"></div>
+      <section class="settings-note" id="na-pool" style="margin-bottom:16px"></section>
       <div id="na-kpis"></div>
       <section class="settings-note" id="na-timeline"></section>
+      <div id="na-search-abandoned" class="pilot-detail-grid" style="margin-top:16px"></div>
       <section class="settings-note admin-analytics-globe-card">
         <div class="pilot-globe-head">
           <div>
@@ -453,6 +618,10 @@ export function mountNetworkAnalyticsPanel(root, { loadTraffic, callBackend, mou
       return;
     }
     if (bodyEl) bodyEl.hidden = false;
+
+    patchSlot('commerce', '#na-commerce', pilotCommerceAnalyticsMarkup(data));
+    patchSlot('pool', '#na-pool', pilotArtworkPoolMarkup(data));
+    patchSlot('searchAbandoned', '#na-search-abandoned', `${pilotSearchInsightsMarkup(data)}${pilotAbandonedRecoveryMarkup(data)}`);
 
     const s = data.summary || {};
     const locs = Array.isArray(data.topLocations) ? data.topLocations : [];
@@ -555,7 +724,27 @@ export function mountNetworkAnalyticsPanel(root, { loadTraffic, callBackend, mou
       ${pilotVisitorsLogMarkup(data.visitorsLog)}`);
 
     renderStorageSlot();
+    renderHealthSlot();
     syncGlobe();
+  }
+
+  function renderHealthSlot() {
+    patchSlot('health', '#na-health', pilotSystemHealthMarkup(healthData, { loading: healthLoading, error: healthError }));
+  }
+
+  async function refreshHealthStatus({ forceFresh = false } = {}) {
+    if (typeof loadHealth !== 'function' || healthLoading || disposed) return;
+    healthLoading = true;
+    renderHealthSlot();
+    try {
+      healthData = await loadHealth({ forceFresh });
+      healthError = '';
+    } catch (err) {
+      healthError = err?.message || 'Could not reach /health/deep';
+    } finally {
+      healthLoading = false;
+      renderHealthSlot();
+    }
   }
 
   function renderStorageSlot() {
@@ -574,9 +763,12 @@ export function mountNetworkAnalyticsPanel(root, { loadTraffic, callBackend, mou
         </div>
         <div class="pilot-chip-group">
           <button type="button" class="pilot-chip" data-na-storage-refresh ${storageBusy ? 'disabled' : ''}>Check counts</button>
-          <button type="button" class="pilot-chip is-active" data-na-storage-run ${storageBusy || !st.d1Bound ? 'disabled' : ''}>Run transfer now</button>
+          <button type="button" class="pilot-chip is-active" data-na-sync-rtdb ${storageBusy ? 'disabled' : ''}>${storageBusy ? 'Syncing…' : 'Sync D1 → RTDB now'}</button>
+          <button type="button" class="pilot-chip" data-na-storage-run ${storageBusy || !st.d1Bound ? 'disabled' : ''}>Run transfer now</button>
         </div>
       </div>
+      ${syncMessage ? `<p class="notice is-success" style="margin:8px 0 0">${esc(syncMessage)}</p>` : ''}
+      ${syncError ? `<p class="notice" style="margin:8px 0 0">${esc(syncError)}</p>` : ''}
       ${st.warning ? `<p class="notice" style="margin:8px 0 0">${esc(st.warning)}</p>` : ''}
       <div class="pilot-storage-grid">
         <div><h4>D1 Tables</h4>${d1Entries.length ? d1Entries.map(([k, v]) => `<div><span>${esc(k)}</span><strong>${v}</strong></div>`).join('') : '<p class="pilot-muted">No D1 rows reported yet (D1 binding not active).</p>'}</div>
@@ -596,6 +788,42 @@ export function mountNetworkAnalyticsPanel(root, { loadTraffic, callBackend, mou
       storageStatus = { storage: 'unknown', d1Bound: false, d1Counts: {}, rtdbCounts: {}, warning: err?.message || 'Could not inspect transfer status.' };
     } finally {
       storageBusy = false;
+      renderStorageSlot();
+    }
+  }
+
+  async function runManualSyncToRtdb() {
+    if (!callBackend || storageBusy || disposed) return;
+    storageBusy = true;
+    syncMessage = '';
+    syncError = '';
+    const topBtn = root.querySelector('[data-na-sync-rtdb]');
+    if (topBtn) { topBtn.disabled = true; topBtn.textContent = 'Syncing D1 → RTDB…'; }
+    renderStorageSlot();
+    try {
+      const res = await callBackend('syncD1ToRtdb', {});
+      if (typeof res?.totalChanged === 'number') {
+        if (res.totalChanged === 0) {
+          syncMessage = `Already in sync — 0 differences found between D1 and RTDB (${res.totalSkipped || 0} checked).`;
+        } else {
+          const parts = Object.entries(res.changedCounts || {})
+            .filter(([, n]) => n > 0)
+            .map(([k, n]) => `${n} ${k}`);
+          syncMessage = `Synced ${res.totalChanged} changed value(s) from D1 → RTDB (${parts.join(', ')}) · ${res.totalSkipped || 0} unchanged skipped.`;
+        }
+      } else {
+        const c = res?.counts;
+        syncMessage = c
+          ? `Synced D1 → RTDB: ${c.products || 0} products, ${c.visitors || 0} visitors, ${c.bags || 0} bags, ${c.uptimeDays || 0} uptime days.`
+          : (res?.message || 'Synced D1 → RTDB cleanly.');
+      }
+      storageStatus = await callBackend('migrateToD1', { mode: 'status' }).catch(() => storageStatus);
+    } catch (err) {
+      syncError = err?.message || 'Could not sync D1 to RTDB.';
+    } finally {
+      storageBusy = false;
+      const doneBtn = root.querySelector('[data-na-sync-rtdb]');
+      if (doneBtn) { doneBtn.disabled = false; doneBtn.textContent = 'Sync D1 → RTDB ↻'; }
       renderStorageSlot();
     }
   }
@@ -647,6 +875,25 @@ export function mountNetworkAnalyticsPanel(root, { loadTraffic, callBackend, mou
       device = devBtn.dataset.device || 'all';
       renderControls({ loading: true });
       void fetchNow({ manual: true });
+      return;
+    }
+    if (t.closest('[data-na-health-refresh]')) {
+      void refreshHealthStatus({ forceFresh: true });
+      return;
+    }
+    const copyBtn = t.closest('[data-copy-recovery]');
+    if (copyBtn) {
+      const msg = copyBtn.getAttribute('data-copy-recovery') || '';
+      if (msg && navigator?.clipboard?.writeText) {
+        void navigator.clipboard.writeText(msg).then(() => {
+          copyBtn.textContent = 'Copied ✓';
+          setTimeout(() => { if (copyBtn.isConnected) copyBtn.textContent = 'Copy note'; }, 1800);
+        }).catch(() => {});
+      }
+      return;
+    }
+    if (t.closest('[data-na-sync-rtdb]')) {
+      void runManualSyncToRtdb();
       return;
     }
     if (t.closest('[data-na-storage-refresh]')) {
@@ -738,7 +985,7 @@ export function mountNetworkAnalyticsPanel(root, { loadTraffic, callBackend, mou
     const mySeq = ++fetchSeq;
     inFlight = true;
     try {
-      const next = await loadTraffic({ preset, fromMs, toMs, device });
+      const next = await loadTraffic({ preset, fromMs, toMs, device, includeOrders: manual });
       if (disposed || mySeq !== fetchSeq) return;
       data = next;
       errorMsg = '';
@@ -768,7 +1015,9 @@ export function mountNetworkAnalyticsPanel(root, { loadTraffic, callBackend, mou
   root.addEventListener('change', onRangeInput);
   root.addEventListener('submit', onSubmit);
   patchDataSlots();
+  renderHealthSlot();
   void fetchNow({ manual: true });
+  void refreshHealthStatus({ forceFresh: false });
   void refreshStorageStatus({ runTransfer: false });
   timer = setInterval(() => {
     if (!paused && typeof document !== 'undefined' && document.visibilityState === 'visible') void fetchNow();

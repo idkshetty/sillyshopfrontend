@@ -249,7 +249,9 @@ export const DEFAULT_SETTINGS = {
   backAttachmentsEnabled: false,
   backAttachmentOptions: DEFAULT_BACK_ATTACHMENTS.map(o => ({ ...o })),
   diyKitEnabled: false,
-  diyKit: { ...DEFAULT_DIY_KIT }
+  diyKit: { ...DEFAULT_DIY_KIT },
+  metaPixelId: '',
+  ga4MeasurementId: ''
 };
 
 export const FALLBACK_BANNER_ARTWORKS = [
@@ -464,6 +466,10 @@ export function normalizeSettings(value = {}) {
   result.backAttachmentOptions = normalizeBackAttachments(value.backAttachmentOptions);
   result.diyKitEnabled = value.diyKitEnabled === true;
   result.diyKit = normalizeDiyKit(value.diyKit);
+  const rawPixel = String(value.metaPixelId || '').trim();
+  result.metaPixelId = /^\d{8,20}$/.test(rawPixel) ? rawPixel : '';
+  const rawGa4 = String(value.ga4MeasurementId || '').trim().toUpperCase();
+  result.ga4MeasurementId = /^G-[A-Z0-9]{6,16}$/.test(rawGa4) ? rawGa4 : '';
   return result;
 }
 export function bannerSlidesFor(products = [], settings = DEFAULT_SETTINGS) {
@@ -707,6 +713,12 @@ export function settingsForm(s) {
           <select name="mobileBreakpoint">
             ${MOBILE_BREAKPOINT_OPTIONS.map(([val, label]) => `<option value="${val}" ${mobileBp === val ? 'selected' : ''}>${e(label)}</option>`).join('')}
           </select>
+        </label>
+        <label class="field">Meta Pixel ID (optional, for ads attribution)
+          <input name="metaPixelId" maxlength="20" inputmode="numeric" placeholder="e.g. 123456789012345" value="${e(s.metaPixelId || '')}">
+        </label>
+        <label class="field">Google Analytics 4 ID (optional)
+          <input name="ga4MeasurementId" maxlength="20" placeholder="e.g. G-XXXXXXXXXX" value="${e(s.ga4MeasurementId || '')}">
         </label>
       </div>
     </div>

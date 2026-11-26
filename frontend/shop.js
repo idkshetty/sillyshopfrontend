@@ -23,12 +23,13 @@ import {accountMarkup,ordersListMarkup,emailAuthCardMarkup} from './customer-das
 import {steppedProgress} from './stepped-progress.js';
 import {normalizeProfile,validateProfile,checkoutDefaults} from './profile.js';
 import {logoutMarkup,mountLogout,animateLogout} from './logout.js';
-import {DEFAULT_SETTINGS,FALLBACK_BANNER_ARTWORKS,MOBILE_BREAKPOINT_OPTIONS,mobileGridBreakpointCss,normalizeSettings,normalizeBackAttachments,resolveBackAttachment,normalizeDiyKit,safeStoreLink,bannerMarkup,settingsToolbarMarkup,settingsForm} from './store-settings.js?v=20261125i';
+import {DEFAULT_SETTINGS,FALLBACK_BANNER_ARTWORKS,MOBILE_BREAKPOINT_OPTIONS,mobileGridBreakpointCss,normalizeSettings,normalizeBackAttachments,resolveBackAttachment,normalizeDiyKit,safeStoreLink,bannerMarkup,settingsToolbarMarkup,settingsForm} from './store-settings.js?v=20261126a';
 import {PRODUCT_TYPE_PRESETS,isDiyKit} from './commerce.js';
 import {DEFAULT_CONTENT,normalizeContent,contentCategories,applyStoreContent,footerMarkup} from './store-content.js';
 import {homeMarkup,homeFilterPanelMarkup,categoryTabsMarkup,artistsPageMarkup,artistDetailMarkup,storyMarkup,infoMarkup,productCardMarkup} from './storefront-view.js?v=20261125g';
 import {mountPilotTelemetry} from './pilot-telemetry.js?v=20261125e';
-import {mountNetworkAnalyticsPanel} from './pilot-analytics-ui.js?v=20261125g';
+import {mountNetworkAnalyticsPanel} from './pilot-analytics-ui.js?v=20261126c';
+import {initMarketingPixels,trackPixelEvent} from './marketing-pixels.js?v=20261126a';
 import {mountHeatmapOverlay} from './heatmap-overlay.js?v=20261125e';
 import {mountTrafficGlobe,resolveLocationCoords} from './manager/traffic-globe.js';
 import {mountContentEditor} from './content-editor.js?v=20261125g';
@@ -584,6 +585,48 @@ function startStockClockTicker(){
 }
 let siteVisitorId='';
 try{siteVisitorId=localStorage.getItem('silly-visitor-v1')||'';if(!/^[a-zA-Z0-9_-]{8,64}$/.test(siteVisitorId)){siteVisitorId=randomId();localStorage.setItem('silly-visitor-v1',siteVisitorId);}}catch{siteVisitorId=randomId();}
+const ATTR_STORAGE_KEY='hehe_attr_v1';
+function captureAttribution(){
+  try{
+    const rawSearch=(location.search||'')+'&'+(location.hash.includes('?')?location.hash.split('?')[1]:'');
+    const sp=new URLSearchParams(rawSearch.replace(/^\?/,''));
+    const utmSource=String(sp.get('utm_source')||'').trim().slice(0,80);
+    const utmMedium=String(sp.get('utm_medium')||'').trim().slice(0,60);
+    const utmCampaign=String(sp.get('utm_campaign')||'').trim().slice(0,80);
+    const refHost=(()=>{try{return document.referrer?new URL(document.referrer).hostname.replace(/^www\./,''):'';}catch{return '';}})();
+    const existing=JSON.parse(localStorage.getItem(ATTR_STORAGE_KEY)||'null')||{};
+    const next={
+      visitorId:siteVisitorId,
+      firstSource:existing.firstSource||utmSource||refHost||'Direct',
+      firstCampaign:existing.firstCampaign||utmCampaign||'',
+      source:utmSource||existing.source||refHost||'Direct',
+      medium:utmMedium||existing.medium||(utmSource?'utm':(refHost?'referral':'direct')),
+      campaign:utmCampaign||existing.campaign||'',
+      referrer:refHost||existing.referrer||'Direct',
+      landingPath:existing.landingPath||(location.hash||'#home').slice(0,120)
+    };
+    localStorage.setItem(ATTR_STORAGE_KEY,JSON.stringify(next));
+    return next;
+  }catch{return {visitorId:siteVisitorId};}
+}
+function readAttribution(){
+  try{return JSON.parse(localStorage.getItem(ATTR_STORAGE_KEY)||'null')||captureAttribution();}catch{return {visitorId:siteVisitorId};}
+}
+let searchTrackTimer=null;
+let lastTrackedQuery='';
+let lastTrackedQueryAt=0;
+function noteSearchBeacon(query,resultCount){
+  const q=String(query||'').trim().slice(0,80);
+  if(q.length<2)return;
+  if(searchTrackTimer)clearTimeout(searchTrackTimer);
+  searchTrackTimer=setTimeout(()=>{
+    const now=Date.now();
+    if(q.toLowerCase()===lastTrackedQuery&&(now-lastTrackedQueryAt)<30000)return;
+    lastTrackedQuery=q.toLowerCase();
+    lastTrackedQueryAt=now;
+    sendSiteBeacon('search',{query:q,resultCount:Math.max(0,Number(resultCount)||0),page:route().page||'search'});
+  },750);
+}
 const clickedProductsAt=new Map();
 function sendSiteBeacon(type,extra={}){
   if(route().page==='admin'||!siteVisitorId||liveSiteEditor?.isActive?.()||heatmapOverlay?.isActive?.())return;
@@ -691,6 +734,7 @@ function sampleAndWashProductImage(img){
 function renderProduct(){
   const p=visible().find(p=>p.id===route().id);if(!p){if(catalogError){$('main').innerHTML=`<div class="container">${catalogErrorMarkup()}</div>`;return;}if(!catalogReady){$('main').innerHTML=pageSkeleton('product');return;}return renderNotFound();}
   trackProductClick(p.id);
+  trackPixelEvent('view_item',{itemId:p.id,itemName:p.title,value:Number(p.price)||0});
   const artist=p.artist||'Suprita Chatterjee';
   const slug=artistSlug(artist);
   const productType=p.productType||'Fridge Magnet';
@@ -1086,10 +1130,13 @@ async function submitCheckout(event){
       else checkoutId=pending.id;
     }
     const promoForOrder=bagPricing(lines()).appliedCode;
-    let saved=await store.saveCheckout(checkoutId,customer,cart,checkoutProducts,checkoutCustomizations(cart),true,promoForOrder);
+    const totalInrForPixel=bagPricing(lines()).totalPaise/100;
+    trackPixelEvent('begin_checkout',{value:totalInrForPixel,numItems:cartSnapshot.reduce((n,i)=>n+i.quantity,0)});
+    const attrPayload={...readAttribution(),visitorId:siteVisitorId};
+    let saved=await store.saveCheckout(checkoutId,customer,cart,checkoutProducts,checkoutCustomizations(cart),true,promoForOrder,attrPayload);
     if(saved.status==='cancelled'){
       clearPendingCheckout();checkoutId=randomId();
-      saved=await store.saveCheckout(checkoutId,customer,cart,checkoutProducts,checkoutCustomizations(cart),true,promoForOrder);
+      saved=await store.saveCheckout(checkoutId,customer,cart,checkoutProducts,checkoutCustomizations(cart),true,promoForOrder,attrPayload);
     }
     if(['cancel_requested','closed'].includes(saved.status))throw new Error('This checkout has a pending cancellation. Wait for the studio to release it before starting another order.');
     if(saved.paymentStatus==='captured'){
@@ -1152,6 +1199,7 @@ async function submitCheckout(event){
     loader.hide();
     pilotTelemetry?.noteFunnel?.('order_complete');
     pilotTelemetry?.flushNow?.();
+    trackPixelEvent('purchase',{transactionId:saved.id,value:(Number(saved.quote?.amount||0)/100)||Number(saved.estimatedSubtotal||0),items:animationItems.map(it=>({item_id:it.productId||'',item_name:it.title,quantity:it.quantity||1}))});
     scheduleBagSync('ordered',{immediate:true,orderId:saved.id});
     completedRequest=saved;deliveryMap?.destroy();deliveryMap=null;
     paymentSceneActive=true;
@@ -1382,7 +1430,7 @@ function draftSettingsFromForm(){
   if(!form)return storeSettings;
   const data=new FormData(form);
   const draft={...storeSettings};
-  for(const key of ['announcementText','announcementLink','bannerEyebrow','bannerTitle','bannerText','bannerArtistLabel','bannerArtistLink','bannerButton','bannerLink','bannerButtonStyle','bannerButtonPosition','bannerImage']){
+  for(const key of ['announcementText','announcementLink','bannerEyebrow','bannerTitle','bannerText','bannerArtistLabel','bannerArtistLink','bannerButton','bannerLink','bannerButtonStyle','bannerButtonPosition','bannerImage','metaPixelId','ga4MeasurementId']){
     if(data.has(key))draft[key]=String(data.get(key)||'');
   }
   draft.bannerImage=readSettingsImageValue(form,'bannerImage',storeSettings.bannerImage);
@@ -1632,6 +1680,7 @@ function renderAdminContent(){
   }else if(adminTab==='analytics'){
     networkAnalyticsController=mountNetworkAnalyticsPanel($('admin-content'),{
       loadTraffic:opts=>store.callBackend('managerSiteTraffic',opts),
+      loadHealth:opts=>store.loadSystemHealth(opts),
       callBackend:(name,data)=>store.callBackend(name,data),
       mountGlobeFn:mountTrafficGlobe,
       resolveCoordsFn:resolveLocationCoords,
@@ -2905,10 +2954,10 @@ document.addEventListener('click',async event=>{
     else if(action==='menu'){const menu=$('mobile-menu');menu.hidden=!menu.hidden;target.setAttribute('aria-expanded',String(!menu.hidden));}
     else if(action==='collections'){const menu=$('collection-menu');menu.hidden=!menu.hidden;target.setAttribute('aria-expanded',String(!menu.hidden));}
     else if(action==='scroll-policy-sec'){const sec=document.getElementById(target.dataset.target||'');sec?.scrollIntoView({behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth',block:'start'});}
-    else if(action==='add'){pilotTelemetry?.noteFunnel?.('add_to_bag');if(cart.some(c=>c.id===id)){renderCart();openDialog('cart-dialog');return;}if(addToCart(id,1,false)){await animateCart(target);syncInBagButtons();if(target.isConnected){openDialog('cart-dialog');setTimeout(()=>{if(target.isConnected){target.classList.remove('clicked');target.removeAttribute('aria-label');}},250);}}}
-    else if(action==='quick-buy'){pilotTelemetry?.noteFunnel?.('add_to_bag');if(cart.some(c=>c.id===id)||addToCart(id,1,false)){$('main').dataset.smoothNav='checkout';await closeDialogs({immediate:true});location.hash='checkout';}}
+    else if(action==='add'){pilotTelemetry?.noteFunnel?.('add_to_bag');if(cart.some(c=>c.id===id)){renderCart();openDialog('cart-dialog');return;}if(addToCart(id,1,false)){const prod=products.find(x=>x.id===id);if(prod)trackPixelEvent('add_to_cart',{itemId:prod.id,itemName:prod.title,value:Number(prod.price)||0});await animateCart(target);syncInBagButtons();if(target.isConnected){openDialog('cart-dialog');setTimeout(()=>{if(target.isConnected){target.classList.remove('clicked');target.removeAttribute('aria-label');}},250);}}}
+    else if(action==='quick-buy'){pilotTelemetry?.noteFunnel?.('add_to_bag');if(cart.some(c=>c.id===id)||addToCart(id,1,false)){const prod=products.find(x=>x.id===id);if(prod)trackPixelEvent('add_to_cart',{itemId:prod.id,itemName:prod.title,value:Number(prod.price)||0});$('main').dataset.smoothNav='checkout';await closeDialogs({immediate:true});location.hash='checkout';}}
     else if(action==='print-label'){if(isAdmin){const request=requestList.find(o=>o.id===id);if(request){if(!canPrintOrderLabel(request))return toast('Labels are only available for active paid orders.');await openLabel(request,{load:store.loadLabel,save:store.saveLabel,thermalPrinter,onPrinted:ids=>markOrdersPrinted(ids)});}}}
-    else if(action==='add-detail'||action==='buy-now'){pilotTelemetry?.noteFunnel?.('add_to_bag');if(action==='buy-now'){if(cart.some(c=>c.id===id)||addToCart(id,1,false)){$('main').dataset.smoothNav='checkout';location.hash='checkout';}}else{if(cart.some(c=>c.id===id)){renderCart();openDialog('cart-dialog');return;}if(addToCart(id,1,false)){await animateCart(target);syncInBagButtons();if(target.isConnected){openDialog('cart-dialog');setTimeout(()=>{if(target.isConnected){target.classList.remove('clicked');target.removeAttribute('aria-label');}},250);}}}}
+    else if(action==='add-detail'||action==='buy-now'){pilotTelemetry?.noteFunnel?.('add_to_bag');const prod=products.find(x=>x.id===id);if(action==='buy-now'){if(cart.some(c=>c.id===id)||addToCart(id,1,false)){if(prod)trackPixelEvent('add_to_cart',{itemId:prod.id,itemName:prod.title,value:Number(prod.price)||0});$('main').dataset.smoothNav='checkout';location.hash='checkout';}}else{if(cart.some(c=>c.id===id)){renderCart();openDialog('cart-dialog');return;}if(addToCart(id,1,false)){if(prod)trackPixelEvent('add_to_cart',{itemId:prod.id,itemName:prod.title,value:Number(prod.price)||0});await animateCart(target);syncInBagButtons();if(target.isConnected){openDialog('cart-dialog');setTimeout(()=>{if(target.isConnected){target.classList.remove('clicked');target.removeAttribute('aria-label');}},250);}}}}
     else if(action==='set-bag-attachment'){
       const item=cart.find(c=>c.id===id);
       if(item){
@@ -3478,7 +3527,7 @@ document.addEventListener('submit',async event=>{if(event.target.id==='email-aut
   }
 });
 document.addEventListener('keydown',event=>{if(event.key==='Enter'&&(event.target.id==='cart-promo-input'||event.target.id==='checkout-promo-input')){event.preventDefault();event.target.closest('.promo-code-box')?.querySelector('[data-action="apply-promo"]')?.click();}});
-document.addEventListener('input',event=>{if(event.target.dataset.productNote)setProductNote(event.target.dataset.productNote,event.target.value);if(event.target.id==='checkout-notes'&&$('checkout-notes-count'))$('checkout-notes-count').textContent=`${event.target.value.length} / 1000`;if(event.target.id==='search-input')renderSearch();if(event.target.id==='home-search-input'){filter.search=event.target.value;renderProductResults();decorateCartButtons();syncInBagButtons();}if(event.target.id==='account-order-search'){accountState.orderQuery=event.target.value;refreshAccountOrdersList();}if(event.target.id==='order-note')orderNote=event.target.value;if(event.target.id==='admin-search'){adminSearch=event.target.value;renderAdminTable();}if(event.target.id==='admin-orders-search'){orderSearch=event.target.value;renderOrdersCards();}if(event.target.id==='admin-audit-search'){adminAuditQuery=event.target.value;renderAdminAuditRows();}if(event.target.closest('#product-form'))renderEditorCardPreview();if(event.target.closest('#banner-form')){if(event.target.name==='bannerButtonOffsetX'&&$('banner-cta-x-val'))$('banner-cta-x-val').textContent=`${event.target.value}px`;if(event.target.name==='bannerButtonOffsetY'&&$('banner-cta-y-val'))$('banner-cta-y-val').textContent=`${event.target.value}px`;settingsDirty=true;settingsPreviewController?.update();}if(event.target.closest('#checkout-form,#customer-profile-form')){const f=event.target.form;if(event.target.name==='city'||event.target.name==='state')event.target.dataset.autofilled='false';if(event.target.name==='postalCode'){const hintEl=f.id==='checkout-form'?$('checkout-pin-hint'):$('profile-pin-hint');void handlePinAutofill(f,event.target.value,hintEl);}if(event.target.name==='digipin'){const dHint=f.id==='checkout-form'?$('checkout-digipin-hint'):$('profile-digipin-hint');handleDigiPinFieldInput(f,event.target,dHint);}}if(event.target.closest('#checkout-form')){if(event.target.name)checkoutTouched.add(event.target.name);captureCheckout();if(cart.length&&['email','firstName','lastName','phone','city','state'].includes(event.target.name))scheduleBagSync('checkout');}if(event.target.closest('#email-auth-form[data-auth-mode="signup"]')&&(event.target.name==='password'||event.target.name==='confirmPassword')){const f=event.target.form,pw=String(f.elements.password?.value||''),cf=String(f.elements.confirmPassword?.value||''),hint=$('signup-password-hint');if(hint){hint.className='auth-password-hint';if(!pw&&!cf){hint.textContent='';}else if(pw.length<6){hint.classList.add('is-warn');hint.textContent='At least 6 characters needed.';}else if(!cf){hint.textContent='Re-enter your password below to confirm.';}else if(pw!==cf){hint.classList.add('is-warn');hint.textContent='Passwords do not match yet.';}else{hint.classList.add('is-ok');hint.textContent='✓ Passwords match';}}}});
+document.addEventListener('input',event=>{if(event.target.dataset.productNote)setProductNote(event.target.dataset.productNote,event.target.value);if(event.target.id==='checkout-notes'&&$('checkout-notes-count'))$('checkout-notes-count').textContent=`${event.target.value.length} / 1000`;if(event.target.id==='search-input')renderSearch();if(event.target.id==='home-search-input'){filter.search=event.target.value;renderProductResults();decorateCartButtons();syncInBagButtons();if(event.target.value.trim().length>=2){const matched=filterProducts(visible(),{...filter,category:'',search:event.target.value});noteSearchBeacon(event.target.value,matched.length);}}if(event.target.id==='account-order-search'){accountState.orderQuery=event.target.value;refreshAccountOrdersList();}if(event.target.id==='order-note')orderNote=event.target.value;if(event.target.id==='admin-search'){adminSearch=event.target.value;renderAdminTable();}if(event.target.id==='admin-orders-search'){orderSearch=event.target.value;renderOrdersCards();}if(event.target.id==='admin-audit-search'){adminAuditQuery=event.target.value;renderAdminAuditRows();}if(event.target.closest('#product-form'))renderEditorCardPreview();if(event.target.closest('#banner-form')){if(event.target.name==='bannerButtonOffsetX'&&$('banner-cta-x-val'))$('banner-cta-x-val').textContent=`${event.target.value}px`;if(event.target.name==='bannerButtonOffsetY'&&$('banner-cta-y-val'))$('banner-cta-y-val').textContent=`${event.target.value}px`;settingsDirty=true;settingsPreviewController?.update();}if(event.target.closest('#checkout-form,#customer-profile-form')){const f=event.target.form;if(event.target.name==='city'||event.target.name==='state')event.target.dataset.autofilled='false';if(event.target.name==='postalCode'){const hintEl=f.id==='checkout-form'?$('checkout-pin-hint'):$('profile-pin-hint');void handlePinAutofill(f,event.target.value,hintEl);}if(event.target.name==='digipin'){const dHint=f.id==='checkout-form'?$('checkout-digipin-hint'):$('profile-digipin-hint');handleDigiPinFieldInput(f,event.target,dHint);}}if(event.target.closest('#checkout-form')){if(event.target.name)checkoutTouched.add(event.target.name);captureCheckout();if(cart.length&&['email','firstName','lastName','phone','city','state'].includes(event.target.name))scheduleBagSync('checkout');}if(event.target.closest('#email-auth-form[data-auth-mode="signup"]')&&(event.target.name==='password'||event.target.name==='confirmPassword')){const f=event.target.form,pw=String(f.elements.password?.value||''),cf=String(f.elements.confirmPassword?.value||''),hint=$('signup-password-hint');if(hint){hint.className='auth-password-hint';if(!pw&&!cf){hint.textContent='';}else if(pw.length<6){hint.classList.add('is-warn');hint.textContent='At least 6 characters needed.';}else if(!cf){hint.textContent='Re-enter your password below to confirm.';}else if(pw!==cf){hint.classList.add('is-warn');hint.textContent='Passwords do not match yet.';}else{hint.classList.add('is-ok');hint.textContent='✓ Passwords match';}}}});
 document.addEventListener('change',async event=>{const t=event.target;if(t.closest('#product-form'))renderEditorCardPreview();if(t.closest('#banner-form')){settingsDirty=true;settingsPreviewController?.update();}if(t.dataset.referenceFiles){try{addReferences(t.dataset.referenceFiles,t.files);refreshReferencePreviews(t.dataset.referenceFiles);}catch(error){toast(error.message);}t.value='';}
   if(t.id==='sort-filter'){filter.sort=t.value;renderProductResults();decorateCartButtons();syncInBagButtons();}if(t.id==='available-filter'){filter.available=t.checked;renderProductResults();decorateCartButtons();syncInBagButtons();}if(t.id==='category-filter')location.hash=t.value?`collection/${t.value}`:'shop';if(t.id==='admin-category'){adminCategory=t.value;renderAdminTable();}
   if(t.id==='admin-artwork-sort'&&isAdmin){
@@ -3598,7 +3647,7 @@ document.addEventListener('change',async event=>{const t=event.target;if(t.close
   if(t.dataset.requestStatus){t.disabled=true;try{await withSavingOverlay('Updating order status…',async()=>{await store.updateRequest(t.dataset.requestStatus,t.value);await fetchRequests();});toast('Request status updated.');}catch(error){await fetchRequests();toast(store.friendlyError(error));}finally{if(t.isConnected)t.disabled=false;}}
   if(t.id==='product-files'){$('editor-image-preview').replaceChildren();for(const [idx,file] of [...t.files].slice(0,8).entries()){if(!file.type.startsWith('image/'))continue;const image=document.createElement('img');const url=URL.createObjectURL(file);image.src=url;image.alt=file.name;image.onload=()=>{if(idx===0&&$('product-bg-color')){const sampled=sampleArtworkBgFromImage(image);if(sampled)$('product-bg-color').value=sampled;}renderEditorCardPreview();URL.revokeObjectURL(url);};image.onerror=()=>URL.revokeObjectURL(url);$('editor-image-preview').append(image);}renderEditorCardPreview();}
 });
-function renderSearch(){if($('search-input').value&&!catalogReady){$('search-results').innerHTML=catalogError?catalogErrorMarkup():skeletonMarkup('rows','Loading search results…');return;}const query=$('search-input').value;const results=filterProducts(products,{search:query}).slice(0,6);$('search-results').innerHTML=query?results.length?results.map(p=>`<a class="search-result" href="#product/${e(p.id)}" data-action="close-dialog"><img src="${e(imageOf(p))}" alt=""><div>${e(p.title)}<span>by ${e(p.artist||'Suprita Chatterjee')} · ${money(p.price)}</span></div></a>`).join(''):'<p class="muted" style="margin-top:25px">No artworks found. Try searching by title, artist or medium.</p>':`<p class="eyebrow" style="margin-top:25px">Quick links</p><div class="footer-links">${categoryLinks}</div>`;}
+function renderSearch(){if($('search-input').value&&!catalogReady){$('search-results').innerHTML=catalogError?catalogErrorMarkup():skeletonMarkup('rows','Loading search results…');return;}const query=$('search-input').value;const allMatches=filterProducts(products,{search:query});if(query&&query.trim().length>=2)noteSearchBeacon(query,allMatches.length);const results=allMatches.slice(0,6);$('search-results').innerHTML=query?results.length?results.map(p=>`<a class="search-result" href="#product/${e(p.id)}" data-action="close-dialog"><img src="${e(imageOf(p))}" alt=""><div>${e(p.title)}<span>by ${e(p.artist||'Suprita Chatterjee')} · ${money(p.price)}</span></div></a>`).join(''):'<p class="muted" style="margin-top:25px">No artworks found. Try searching by title, artist or medium.</p>':`<p class="eyebrow" style="margin-top:25px">Quick links</p><div class="footer-links">${categoryLinks}</div>`;}
 window.addEventListener('hashchange',()=>{
   if(location.hash==='#main'){return;}
   paymentSceneActive=false;
@@ -3699,6 +3748,7 @@ store.observeSettings(settings=>{
   if(nextJson===lastSettingsJson&&settingsReady)return;
   lastSettingsJson=nextJson;
   storeSettings=settings;settingsReady=true;settingsError='';applyStoreBanners();
+  initMarketingPixels(storeSettings);
   if(liveSiteEditor.isActive())return;
   const page=route().page;
   if((page==='home'||page==='shop'||page==='about')&&!isAnimationPlaying()&&!isUserInteractingInMain())render();
@@ -3742,6 +3792,7 @@ store.observeStockSchedule(nextSched=>{
   startStockClockTicker();
 },()=>{}).catch(()=>{});
 if(typeof window!=='undefined'){
+  captureAttribution();
   sendSiteBeacon('visit');
 }
 function refreshStoreContent(){

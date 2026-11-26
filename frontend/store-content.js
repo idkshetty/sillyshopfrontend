@@ -76,7 +76,7 @@ export function footerMarkup(c,categoryLinks='') {
     </div>
     <div class="footer-bottom">
       <span>${e(f.copyright.replaceAll('{year}',String(new Date().getFullYear()))).replace(e(c.brand.name),`<a href="#home" class="footer-brand-link">${e(brandName)}</a>`)}</span>
-      <div class="footer-bottom-links"><a href="#info/refunds">${e(c.pages?.refundsTitle||'Cancellation & returns')}</a><a href="#info/privacy">${e(f.privacyLabel)}</a><a href="#info/terms">${e(f.termsLabel)}</a><span class="footer-locale-pill">${e(f.locale)}</span></div>
+      <div class="footer-bottom-links"><a href="#info/refunds">${e(c.pages?.refundsTitle||'Cancellation & returns')}</a><a href="#info/privacy">${e(f.privacyLabel)}</a><a href="#info/terms">${e(f.termsLabel)}</a><a href="status.html" target="_blank" rel="noopener">System status</a><span class="footer-locale-pill">${e(f.locale)}</span></div>
     </div>
   </div>`;
 }

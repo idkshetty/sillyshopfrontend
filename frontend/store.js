@@ -390,10 +390,15 @@ export async function uploadProductImage(file,provider='freeimage'){
     return result.data.url;
   }
 }
-export async function saveCheckout(id,customer,cart,displayedProducts,customizations=[],payAtCheckout=false,promoCode=''){
+export async function saveCheckout(id,customer,cart,displayedProducts,customizations=[],payAtCheckout=false,promoCode='',attribution=null){
  const invalid=validateCustomer(customer);if(invalid)throw new Error(invalid);const {auth}=await backend();await auth.authStateReady();if(!auth.currentUser||auth.currentUser.isAnonymous)throw new Error('Sign in before checkout.');
  const extras=await prepareCustomizations(id,auth.currentUser.uid,customizations);
- return callBackend('createRequest',{requestId:id,customer,cart:cart.map(item=>{const matched=displayedProducts.find(p=>p.id===item.id);return {id:item.id,quantity:item.quantity,...(item.attachmentId?{attachmentId:item.attachmentId}:{}),unitPrice:matched?.unitPrice??matched?.price};}),customizations:extras,payAtCheckout,promoCode:String(promoCode||'').trim().toUpperCase()});
+ return callBackend('createRequest',{requestId:id,customer,cart:cart.map(item=>{const matched=displayedProducts.find(p=>p.id===item.id);return {id:item.id,quantity:item.quantity,...(item.attachmentId?{attachmentId:item.attachmentId}:{}),unitPrice:matched?.unitPrice??matched?.price};}),customizations:extras,payAtCheckout,promoCode:String(promoCode||'').trim().toUpperCase(),...(attribution?{attribution}:{})});
+}
+export async function loadSystemHealth({forceFresh=false}={}){
+ const res=await fetch(`${backendURL()}/health/deep${forceFresh?'?refresh=1':''}`,{cache:'no-store',signal:AbortSignal.timeout(9000)});
+ if(!res.ok)throw new Error(`HTTP ${res.status}`);
+ return res.json();
 }
 async function prepareCustomizations(requestId,uid,customizations) {
   const result=[];

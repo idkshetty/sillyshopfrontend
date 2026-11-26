@@ -91,3 +91,99 @@ test('reviewSection escapes and renders approved buyer collector cards', () => {
   assert.match(html, /Riya &lt;script&gt;/);
   assert.match(html, /Monsoon Cat/);
 });
+
+test('pilot commerce, 1-of-1 artwork pool, search, abandoned recovery, and system health markup render cleanly', async () => {
+  const {
+    pilotCommerceAnalyticsMarkup,
+    pilotArtworkPoolMarkup,
+    pilotSearchInsightsMarkup,
+    pilotAbandonedRecoveryMarkup,
+    pilotSystemHealthMarkup
+  } = await import('../frontend/pilot-analytics-ui.js');
+  const { sanitizeMetaPixelId, sanitizeGa4Id } = await import('../frontend/marketing-pixels.js');
+  const { footerMarkup, DEFAULT_CONTENT } = await import('../frontend/store-content.js');
+
+  assert.equal(sanitizeMetaPixelId('123456789012'), '123456789012');
+  assert.equal(sanitizeMetaPixelId('bad<script>'), '');
+  assert.equal(sanitizeGa4Id('g-abc12345'), 'G-ABC12345');
+  assert.equal(sanitizeGa4Id('UA-123'), '');
+
+  const traffic = {
+    commerce: {
+      kpis: {
+        ordersCount: 4,
+        grossRevenueInr: 1200,
+        aovInr: 300,
+        conversionRatePct: 4.5,
+        uniqueBuyers: 3,
+        returningBuyers: 1,
+        returningBuyerRatePct: 33.3,
+        firstTimeRevenueInr: 700,
+        returningRevenueInr: 500,
+        avgLtvInr: 400,
+        lifetimeOrders: 10,
+        lifetimeRevenueInr: 3200
+      },
+      artworkPool: {
+        totalArtworks: 25,
+        availableCount: 15,
+        soldOutCount: 10,
+        hiddenAvailableCount: 2,
+        sellThroughPct: 40,
+        soldLast30d: 6,
+        salesPerWeek: 1.4,
+        estDaysToSellOut: 75,
+        byCategory: [{ name: 'Fridge Magnet', total: 20, available: 12, sold: 8, sellThroughPct: 40 }],
+        byArtist: [{ name: 'Suprita', total: 25, available: 15, sold: 10, sellThroughPct: 40 }]
+      },
+      attributionChannels: [{ channel: 'instagram', sessions: 40, orders: 3, conversionRatePct: 7.5, revenueInr: 900 }],
+      searchInsights: {
+        totalSearches: 5,
+        topQueries: [{ query: 'cat magnet', count: 3, lastResultCount: 2 }],
+        zeroResultQueries: [{ query: 'frog bowl', zeroCount: 2 }]
+      },
+      abandonedCheckouts: [{
+        id: 'chk_1',
+        kind: 'checkout',
+        customerName: 'Asha',
+        email: 'asha@example.com',
+        phone: '9876543210',
+        city: 'Bengaluru',
+        itemTitles: ['Moon Cat'],
+        amountInr: 290,
+        ageMinutes: 35
+      }]
+    }
+  };
+
+  const commerceHtml = pilotCommerceAnalyticsMarkup(traffic);
+  assert.match(commerceHtml, /Commerce &amp; Attribution/);
+  assert.match(commerceHtml, /instagram/);
+  assert.match(commerceHtml, /900/);
+
+  const poolHtml = pilotArtworkPoolMarkup(traffic);
+  assert.match(poolHtml, /1-of-1 Artwork Pool/);
+  assert.match(poolHtml, /~75 days/);
+  assert.match(poolHtml, /40\.0% sell-through/);
+
+  const searchHtml = pilotSearchInsightsMarkup(traffic);
+  assert.match(searchHtml, /cat magnet/);
+  assert.match(searchHtml, /frog bowl/);
+
+  const abandonedHtml = pilotAbandonedRecoveryMarkup(traffic);
+  assert.match(abandonedHtml, /https:\/\/wa\.me\/919876543210/);
+  assert.match(abandonedHtml, /data-copy-recovery=/);
+
+  const healthHtml = pilotSystemHealthMarkup({
+    status: 'operational',
+    overall90dUptime: 99.98,
+    runtime: 'Node API',
+    checkedAt: '2026-11-26T10:00:00.000Z',
+    services: [{ id: 'api', name: 'Core API Gateway', status: 'operational', detail: 'Healthy', latencyMs: 12 }]
+  });
+  assert.match(healthHtml, /All Systems Operational/);
+  assert.match(healthHtml, /99\.98%/);
+  assert.match(healthHtml, /status\.html/);
+
+  assert.match(footerMarkup(DEFAULT_CONTENT), /href="status\.html"/);
+});

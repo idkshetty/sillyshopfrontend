@@ -29,13 +29,13 @@ function proxyToBackend(req,res){
 http.createServer(async(req,res)=>{
   try{
     const url=new URL(req.url,'http://localhost');let relative=decodeURIComponent(url.pathname);
-    if(relative.startsWith('/api/')||relative==='/config'||relative==='/health'||relative.startsWith('/webhooks/')){
+    if(relative.startsWith('/api/')||relative==='/config'||relative==='/health'||relative.startsWith('/health/')||relative==='/status-data'||relative.startsWith('/webhooks/')||['/public-store','/site-track','/cart-track','/stock-refresh-check'].includes(relative)){
       proxyToBackend(req,res);
       return;
     }
     if(!['GET','HEAD'].includes(req.method)){res.writeHead(405,{'Allow':'GET, HEAD'});res.end();return;}
     if(relative==='/')relative='/index.html';
-    else if(['/shop','/admin','/checkout','/auction'].includes(relative.toLowerCase()))relative+='.html';
+    else if(['/shop','/admin','/checkout','/auction','/status'].includes(relative.toLowerCase()))relative+='.html';
     const filename=path.resolve(root,'.'+relative);
     const lower=relative.toLowerCase(),segments=lower.split('/');
     const ext=path.extname(lower);
